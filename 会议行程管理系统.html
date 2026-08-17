@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>会议行程管理系统</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--primary:#2563eb;--primary-light:#dbeafe;--primary-dark:#1d4ed8;--success:#16a34a;--warning:#f59e0b;--danger:#dc2626;--gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-800:#1f2937;--gray-900:#111827;--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans SC",sans-serif;background:var(--gray-50);color:var(--gray-800);line-height:1.6;min-height:100vh}
+.hidden{display:none!important}
+/* Layout */
+.app-header{background:#fff;border-bottom:1px solid var(--gray-200);padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;position:fixed;top:0;left:0;right:0;z-index:100;box-shadow:var(--shadow)}
+.app-header .logo{font-size:18px;font-weight:700;color:var(--primary);display:flex;align-items:center;gap:8px}
+.app-header .logo svg{width:28px;height:28px}
+.app-header .user-info{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--gray-600)}
+.app-header .user-info .badge{background:var(--primary-light);color:var(--primary);padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600}
+.sidebar{position:fixed;top:60px;left:0;bottom:0;width:220px;background:#fff;border-right:1px solid var(--gray-200);padding:16px 0;overflow-y:auto;z-index:90}
+.sidebar a{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--gray-600);text-decoration:none;font-size:14px;transition:all .15s}
+.sidebar a:hover{background:var(--gray-50);color:var(--gray-800)}
+.sidebar a.active{background:var(--primary-light);color:var(--primary);font-weight:600;border-right:3px solid var(--primary)}
+.sidebar a svg{width:18px;height:18px;flex-shrink:0}
+.main{margin-left:220px;margin-top:60px;padding:24px;min-height:calc(100vh - 60px)}
+.main.no-sidebar{margin-left:0}
+/* Cards */
+.card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;margin-bottom:20px}
+.card-title{font-size:16px;font-weight:600;margin-bottom:16px;color:var(--gray-800);display:flex;align-items:center;justify-content:space-between}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;text-align:center}
+.stat-card .num{font-size:32px;font-weight:700;color:var(--primary)}
+.stat-card .label{font-size:13px;color:var(--gray-500);margin-top:4px}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;font-size:14px;font-weight:500;border:none;cursor:pointer;transition:all .15s;text-decoration:none}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dark)}
+.btn-success{background:var(--success);color:#fff}.btn-success:hover{background:#15803d}
+.btn-warning{background:var(--warning);color:#fff}.btn-warning:hover{background:#d97706}
+.btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#b91c1c}
+.btn-outline{background:#fff;color:var(--gray-700);border:1px solid var(--gray-300)}.btn-outline:hover{background:var(--gray-50)}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+/* Forms */
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:4px}
+.form-group label .req{color:var(--danger)}
+.form-control{width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;transition:border .15s;outline:none;font-family:inherit}
+.form-control:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+select.form-control{appearance:auto}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+/* Tables */
+.table-wrap{overflow-x:auto;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--gray-50);font-weight:600;text-align:left;padding:10px 12px;border-bottom:2px solid var(--gray-200);white-space:nowrap;color:var(--gray-600);position:sticky;top:0}
+td{padding:8px 12px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+tr:hover td{background:var(--gray-50)}
+/* Tags */
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.tag-blue{background:#dbeafe;color:#1d4ed8}
+.tag-green{background:#dcfce7;color:#15803d}
+.tag-yellow{background:#fef3c7;color:#92400e}
+.tag-red{background:#fee2e2;color:#991b1b}
+.tag-gray{background:var(--gray-100);color:var(--gray-600)}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:#fff;border-radius:12px;max-width:700px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--gray-200);display:flex;align-items:center;justify-content:space-between}
+.modal-header h3{font-size:18px;font-weight:600}
+.modal-close{background:none;border:none;font-size:24px;cursor:pointer;color:var(--gray-400);padding:4px}
+.modal-close:hover{color:var(--gray-700)}
+.modal-body{padding:24px}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--gray-200);display:flex;justify-content:flex-end;gap:8px}
+/* Notifications */
+.notif-item{padding:12px 16px;border-left:3px solid var(--primary);background:var(--gray-50);border-radius:0 6px 6px 0;margin-bottom:8px;font-size:13px}
+.notif-item.unread{border-left-color:var(--warning);background:#fffbeb}
+.notif-item .time{font-size:11px;color:var(--gray-400);margin-top:4px}
+/* Lock indicators */
+.locked{position:relative;opacity:.7}
+.locked::after{content:"🔒";position:absolute;top:4px;right:4px;font-size:12px}
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--gray-800);color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;z-index:300;animation:slideUp .3s ease}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+/* QR */
+.qr-container{text-align:center;padding:20px}
+.qr-container canvas,.qr-container img{margin:0 auto}
+/* Landing */
+.landing{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 50%,#3b82f6 100%)}
+.landing-card{background:#fff;border-radius:16px;padding:48px;max-width:480px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.landing-card h1{font-size:28px;color:var(--gray-800);margin-bottom:8px}
+.landing-card p{color:var(--gray-500);margin-bottom:32px}
+.landing-card .btn{width:100%;justify-content:center;padding:12px;margin-bottom:12px;font-size:15px}
+/* Alert */
+.alert{padding:12px 16px;border-radius:6px;margin-bottom:16px;font-size:13px;display:flex;align-items:flex-start;gap:8px}
+.alert-warning{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.alert-info{background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe}
+.alert-danger{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+.alert-success{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+/* Tabs */
+.tabs{display:flex;border-bottom:2px solid var(--gray-200);margin-bottom:20px}
+.tab{padding:10px 20px;font-size:14px;color:var(--gray-500);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.tab:hover{color:var(--gray-700)}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+/* Search */
+.search-box{position:relative;max-width:300px}
+.search-box input{padding-left:36px}
+.search-box svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--gray-400)}
+/* Responsive */
+@media(max-width:768px){
+.sidebar{display:none}.main{margin-left:0}
+.form-row,.form-row-3{grid-template-columns:1fr}
+.stat-grid{grid-template-columns:1fr 1fr}
+}
+/* Print */
+@media print{.app-header,.sidebar,.btn{display:none!important}.main{margin:0!important}}
+/* Scrollbar */
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--gray-100)}::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- ===== LANDING PAGE ===== -->
+<div id="landing" class="landing">
+<div class="landing-card">
+<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" style="margin:0 auto 16px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+<h1>会议行程管理系统</h1>
+<p>Conference Itinerary Management System</p>
+<button class="btn btn-primary" onclick="showView('login')">管理员/销售登录</button>
+<button class="btn btn-outline" onclick="showView('register')">参会人员报名</button>
+<button class="btn btn-outline" onclick="showView('publicLookup')">📱 送机信息查询</button>
+<button class="btn btn-outline" onclick="showView('setup')" style="font-size:12px;color:var(--gray-400)">⚙️ 系统初始化设置</button>
+</div>
+</div>
+
+<!-- ===== APP SHELL ===== -->
+<div id="appShell" class="hidden">
+<header class="app-header">
+<div class="logo">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+<span id="headerTitle">会议行程管理系统</span>
+</div>
+<div class="user-info">
+<span id="headerConfName" class="badge"></span>
+<span id="headerUserName"></span>
+<span id="headerUserRole" class="badge"></span>
+<button class="btn btn-sm btn-outline" onclick="logout()">退出</button>
+</div>
+</header>
+<nav class="sidebar" id="sidebar"></nav>
+<div class="main" id="mainContent"></div>
+</div>
+
+<!-- ===== MODAL CONTAINER ===== -->
+<div id="modalOverlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()">
+<div class="modal" id="modalContent"></div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast" class="toast hidden"></div>
+
+<script>
+// ============================================
+// STATE & DATA
+// ============================================
+const STORAGE_KEY = 'conf_mgmt_data';
+const SESSION_KEY = 'conf_mgmt_session';
+
+const DEFAULT_DATA = {
+  conference: { name:'', date:'', venueCities:[], regions:[], cities:[], lockedRows:{}, lockedCols:{}, tripRules:{cityMismatch:true,contractBreach:true,approvedCities:[]}, driverInfo:{}, settings:{} },
+  users: [],
+  admins: [
+    {id:'admin1',name:'会务负责人',phone:'13800000001',role:'conference_manager',password:'admin123'},
+    {id:'admin2',name:'会议负责人',phone:'13800000002',role:'client_manager',password:'admin123'}
+  ],
+  sales: [],
+  notifications: [],
+  drivers: []
+};
+
+let DB = {};
+let SESSION = {};
+
+function loadDB(){
+  try{ DB = JSON.parse(localStorage.getItem(STORAGE_KEY)) || JSON.parse(JSON.stringify(DEFAULT_DATA)); }
+  catch(e){ DB = JSON.parse(JSON.stringify(DEFAULT_DATA)); }
+  if(!DB.conference) DB.conference = JSON.parse(JSON.stringify(DEFAULT_DATA.conference));
+  if(!DB.drivers) DB.drivers = [];
+  if(!DB.notifications) DB.notifications = [];
+  if(!DB.sales) DB.sales = [];
+  if(!DB.admins) DB.admins = JSON.parse(JSON.stringify(DEFAULT_DATA.admins));
+}
+function saveDB(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
+function loadSession(){ try{ SESSION = JSON.parse(sessionStorage.getItem(SESSION_KEY)) || {}; }catch(e){ SESSION={}; } }
+function saveSession(){ sessionStorage.setItem(SESSION_KEY, JSON.stringify(SESSION)); }
+
+function genId(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,6); }
+function now(){ return new Date().toISOString(); }
+function fmtDate(iso){ if(!iso) return '-'; const d=new Date(iso); return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+
+// ============================================
+// TOAST & MODAL
+// ============================================
+function toast(msg, dur=2500){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.remove('hidden');
+  setTimeout(()=>t.classList.add('hidden'), dur);
+}
+function openModal(html){
+  document.getElementById('modalContent').innerHTML=html;
+  document.getElementById('modalOverlay').classList.remove('hidden');
+}
+function closeModal(){ document.getElementById('modalOverlay').classList.add('hidden'); }
+
+// ============================================
+// ROUTING
+// ============================================
+function showView(view, param){
+  document.getElementById('landing').classList.add('hidden');
+  document.getElementById('appShell').classList.add('hidden');
+
+  if(view==='login') return renderLogin();
+  if(view==='register') return renderRegister(param);
+  if(view==='publicLookup') return renderPublicLookup();
+  if(view==='setup') return renderSetup();
+
+  // Authenticated views
+  if(!SESSION.userId){ showView('login'); return; }
+  document.getElementById('appShell').classList.remove('hidden');
+  updateHeader();
+  renderSidebar(view);
+
+  const main = document.getElementById('mainContent');
+  switch(view){
+    case 'dashboard': renderDashboard(main); break;
+    case 'attendees': renderAttendees(main); break;
+    case 'notifications': renderNotifications(main); break;
+    case 'drivers': renderDrivers(main); break;
+    case 'locking': renderLocking(main); break;
+    case 'settings': renderSettings(main); break;
+    case 'qrcodes': renderQRCodes(main); break;
+    case 'sales': renderSalesManagement(main); break;
+    default: renderDashboard(main);
+  }
+}
+
+function updateHeader(){
+  document.getElementById('headerConfName').textContent = DB.conference.name || '未配置会议';
+  const u = DB.admins.find(a=>a.id===SESSION.userId) || DB.sales.find(s=>s.id===SESSION.userId) || DB.users.find(u=>u.id===SESSION.userId);
+  if(u){
+    document.getElementById('headerUserName').textContent = u.name;
+    const roleMap = {conference_manager:'会务负责人',client_manager:'会议负责人',sales:'销售',attendee:'参会人员'};
+    document.getElementById('headerUserRole').textContent = roleMap[u.role]||u.role;
+  }
+}
+
+// ============================================
+// SIDEBAR
+// ============================================
+function renderSidebar(active){
+  const sb = document.getElementById('sidebar');
+  const role = SESSION.role;
+  let links = [];
+
+  if(role==='conference_manager' || role==='client_manager'){
+    links = [
+      {v:'dashboard',icon:'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',label:'数据总览'},
+      {v:'attendees',icon:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',label:'参会人员管理'},
+      {v:'locking',icon:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',label:'名单锁定'},
+      {v:'notifications',icon:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',label:'变更通知'},
+      {v:'drivers',icon:'<rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 1 16 1 8"/>',label:'司机信息管理'},
+      {v:'qrcodes',icon:'<rect x="2" y="2" width="8" height="8" fill="none"/><rect x="14" y="2" width="8" height="8" fill="none"/><rect x="2" y="14" width="8" height="8" fill="none"/><rect x="14" y="14" width="4" height="4" fill="none"/>',label:'二维码管理'},
+      {v:'sales',icon:'<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>',label:'销售人员管理'},
+      {v:'settings',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',label:'系统设置'},
+    ];
+  } else if(role==='sales'){
+    links = [
+      {v:'dashboard',icon:'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',label:'我的参会人'},
+      {v:'attendees',icon:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>',label:'报名管理'},
+      {v:'drivers',icon:'<rect x="1" y="3" width="15" height="13"/>',label:'司机信息'},
+    ];
+  } else if(role==='attendee'){
+    links = [
+      {v:'dashboard',icon:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',label:'我的报名信息'},
+    ];
+  }
+
+  sb.innerHTML = links.map(l=>`<a href="#" class="${l.v===active?'active':''}" onclick="event.preventDefault();showView('${l.v}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${l.icon}</svg>${l.label}</a>`).join('');
+}
+
+// ============================================
+// LOGIN
+// ============================================
+function renderLogin(){
+  document.getElementById('landing').classList.remove('hidden');
+  document.getElementById('landing').innerHTML = `
+  <div class="landing-card">
+    <h1 style="font-size:22px;margin-bottom:20px">管理员/销售登录</h1>
+    <div class="form-group"><label>手机号</label><input class="form-control" id="loginPhone" placeholder="请输入手机号"></div>
+    <div class="form-group"><label>密码</label><input class="form-control" id="loginPwd" type="password" placeholder="请输入密码"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="doLogin()">登 录</button>
+    <p style="margin-top:16px;font-size:13px;color:var(--gray-400)">
+      <a href="#" onclick="event.preventDefault();showView('register')" style="color:var(--primary)">参会人员报名 →</a> &nbsp;|&nbsp;
+      <a href="#" onclick="event.preventDefault();showView('publicLookup')" style="color:var(--primary)">送机信息查询 →</a> &nbsp;|&nbsp;
+      <a href="#" onclick="event.preventDefault();showView('landing')" style="color:var(--gray-400)">返回首页</a>
+    </p>
+    <div style="margin-top:20px;padding:12px;background:var(--gray-50);border-radius:6px;font-size:12px;color:var(--gray-500)">
+      <strong>演示账号：</strong><br>
+      会务负责人：13800000001 / admin123<br>
+      会议负责人：13800000002 / admin123
+    </div>
+  </div>`;
+}
+
+function doLogin(){
+  const phone = document.getElementById('loginPhone').value.trim();
+  const pwd = document.getElementById('loginPwd').value.trim();
+  if(!phone){ toast('请输入手机号'); return; }
+
+  // Check admins
+  let user = DB.admins.find(a=>a.phone===phone && a.password===pwd);
+  if(user){
+    SESSION = {userId:user.id, role:user.role, name:user.name};
+    saveSession(); showView('dashboard'); return;
+  }
+  // Check sales
+  user = DB.sales.find(s=>s.phone===phone && s.password===pwd);
+  if(user){
+    SESSION = {userId:user.id, role:'sales', name:user.name};
+    saveSession(); showView('dashboard'); return;
+  }
+  // Check attendee (phone as password)
+  user = DB.users.find(u=>u.phone===phone && u.password===pwd);
+  if(user){
+    SESSION = {userId:user.id, role:'attendee', name:user.name};
+    saveSession(); showView('dashboard'); return;
+  }
+  toast('手机号或密码错误');
+}
+
+function logout(){
+  SESSION = {};
+  sessionStorage.removeItem(SESSION_KEY);
+  location.reload();
+}
+
+// ============================================
+// SETUP (Initial Configuration)
+// ============================================
+function renderSetup(){
+  document.getElementById('landing').classList.remove('hidden');
+  document.getElementById('landing').innerHTML = `
+  <div class="landing-card" style="max-width:600px;text-align:left">
+    <h1 style="font-size:20px;text-align:center;margin-bottom:20px">⚙️ 系统初始化设置</h1>
+    <div class="form-group"><label>会议名称 <span class="req">*</span></label><input class="form-control" id="setupName" placeholder="如：2026 HEMA SEM 大连&福州" value="${DB.conference.name||''}"></div>
+    <div class="form-row">
+      <div class="form-group"><label>会议日期</label><input class="form-control" id="setupDate" type="date" value="${DB.conference.date||''}"></div>
+      <div class="form-group"><label>会场城市（逗号分隔）</label><input class="form-control" id="setupCities" placeholder="大连,福州" value="${(DB.conference.venueCities||[]).join(',')}"></div>
+    </div>
+    <div class="form-group"><label>大区列表（逗号分隔）</label><input class="form-control" id="setupRegions" placeholder="华东,华北,华南" value="${(DB.conference.regions||[]).join(',')}"></div>
+    <div class="form-group"><label>会务负责人手机号</label><input class="form-control" id="setupMgrPhone" value="${DB.admins[0]?.phone||''}"></div>
+    <div class="form-group"><label>会务负责人密码</label><input class="form-control" id="setupMgrPwd" value="${DB.admins[0]?.password||''}"></div>
+    <div class="form-group"><label>会议负责人（客户）手机号</label><input class="form-control" id="setupClientPhone" value="${DB.admins[1]?.phone||''}"></div>
+    <div class="form-group"><label>会议负责人（客户）密码</label><input class="form-control" id="setupClientPwd" value="${DB.admins[1]?.password||''}"></div>
+    <div class="btn-group" style="justify-content:center;margin-top:24px">
+      <button class="btn btn-primary" onclick="saveSetup()">保存设置</button>
+      <button class="btn btn-outline" onclick="showView('landing')">返回首页</button>
+    </div>
+  </div>`;
+}
+
+function saveSetup(){
+  DB.conference.name = document.getElementById('setupName').value.trim();
+  DB.conference.date = document.getElementById('setupDate').value;
+  DB.conference.venueCities = document.getElementById('setupCities').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+  DB.conference.regions = document.getElementById('setupRegions').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+  DB.admins[0].phone = document.getElementById('setupMgrPhone').value.trim();
+  DB.admins[0].password = document.getElementById('setupMgrPwd').value.trim();
+  DB.admins[1].phone = document.getElementById('setupClientPhone').value.trim();
+  DB.admins[1].password = document.getElementById('setupClientPwd').value.trim();
+  saveDB();
+  toast('设置已保存');
+  setTimeout(()=>showView('landing'), 800);
+}
+
+// ============================================
+// DASHBOARD
+// ============================================
+function renderDashboard(el){
+  const role = SESSION.role;
+  let users = DB.users;
+  if(role==='sales'){
+    const sale = DB.sales.find(s=>s.id===SESSION.userId);
+    users = users.filter(u=>u.salesId===sale?.id || u.contactMobile===sale?.phone);
+  }
+
+  const total = users.length;
+  const filled = users.filter(u=>u.name).length;
+  const withFlight = users.filter(u=>u.flight==='Y').length;
+  const pendingApproval = users.filter(u=>u.tripAlert && !u.tripApproved).length;
+  const unreadNotifs = DB.notifications.filter(n=>!n.read).length;
+
+  el.innerHTML = `
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:20px">数据总览</h2>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="num">${total}</div><div class="label">总报名人数</div></div>
+      <div class="stat-card"><div class="num">${filled}</div><div class="label">已填写信息</div></div>
+      <div class="stat-card"><div class="num">${withFlight}</div><div class="label">航空出行</div></div>
+      <div class="stat-card"><div class="num" style="color:${pendingApproval>0?'var(--danger)':'var(--success)'}">${pendingApproval}</div><div class="label">待审批行程</div></div>
+    </div>
+    ${unreadNotifs>0 ? `<div class="alert alert-warning">📢 您有 <strong>${unreadNotifs}</strong> 条未读变更通知 <button class="btn btn-sm btn-warning" onclick="showView('notifications')" style="margin-left:12px">查看</button></div>` : ''}
+    <div class="card">
+      <div class="card-title">会场分布</div>
+      <div class="table-wrap"><table>
+        <tr><th>会场城市</th><th>报名人数</th><th>已确认行程</th></tr>
+        ${(DB.conference.venueCities||[]).map(city=>{
+          const cityUsers = users.filter(u=>u.venue===city);
+          const confirmed = cityUsers.filter(u=>u.departDate && u.returnDate);
+          return `<tr><td>${city}</td><td>${cityUsers.length}</td><td>${confirmed.length}</td></tr>`;
+        }).join('')}
+      </table></div>
+    </div>
+    ${role!=='attendee' ? `
+    <div class="card">
+      <div class="card-title">大区统计</div>
+      <div class="table-wrap"><table>
+        <tr><th>大区</th><th>报名人数</th><th>销售负责人</th></tr>
+        ${(DB.conference.regions||[]).map(r=>{
+          const rUsers = users.filter(u=>u.region===r);
+          const saleNames = [...new Set(rUsers.map(u=>u.contactName).filter(Boolean))].join(', ') || '-';
+          return `<tr><td>${r}</td><td>${rUsers.length}</td><td>${saleNames}</td></tr>`;
+        }).join('')}
+      </table></div>
+    </div>` : ''}
+  `;
+}
+
+// ============================================
+// ATTENDEES MANAGEMENT
+// ============================================
+function renderAttendees(el){
+  const role = SESSION.role;
+  let users = DB.users;
+  if(role==='sales'){
+    const sale = DB.sales.find(s=>s.id===SESSION.userId);
+    users = users.filter(u=>u.salesId===sale?.id || u.contactMobile===sale?.phone);
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <h2 style="font-size:20px;font-weight:600">参会人员管理</h2>
+      <div class="btn-group">
+        <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input class="form-control" placeholder="搜索姓名/手机/医院..." oninput="filterAttendees(this.value)"></div>
+        ${role!=='attendee' ? `<button class="btn btn-primary" onclick="addAttendee()">+ 新增</button>
+        <button class="btn btn-outline" onclick="importExcel()">📥 导入Excel</button>
+        <button class="btn btn-outline" onclick="exportExcel()">📤 导出Excel</button>` : ''}
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="table-wrap" style="max-height:70vh;overflow-y:auto">
+        <table id="attendeeTable">
+          <thead><tr>
+            <th>序号</th><th>姓名</th><th>城市</th><th>医院</th><th>科室</th><th>职称</th>
+            <th>会场</th><th>手机号</th><th>出发城市</th><th>到达城市</th>
+            <th>返程出发</th><th>返程到达</th><th>大区</th><th>销售</th>
+            <th>状态</th><th>操作</th>
+          </tr></thead>
+          <tbody id="attendeeBody"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  renderAttendeeRows(users);
+}
+
+function renderAttendeeRows(users){
+  const tbody = document.getElementById('attendeeBody');
+  if(!tbody) return;
+  const lockedRows = DB.conference.lockedRows || {};
+  const isLocked = (uid, col) => lockedRows[uid] === true || lockedRows[uid]?.[col] === true;
+
+  tbody.innerHTML = users.map((u,i)=>{
+    const rowLocked = lockedRows[u.id] === true;
+    const tripAlert = u.tripAlert ? `<span class="tag tag-red">⚠行程异常</span>` : '';
+    const approved = u.tripApproved ? `<span class="tag tag-green">已审批</span>` : '';
+    const statusTags = (u.flight==='Y'?'<span class="tag tag-blue">航空</span> ':'') + tripAlert + approved;
+
+    return `<tr class="${rowLocked?'locked':''}" style="${rowLocked?'background:#f0f0f0':''}">
+      <td>${i+1}</td>
+      <td><strong>${u.name||'-'}</strong></td>
+      <td>${u.city||'-'}</td>
+      <td>${u.hospital||'-'}</td>
+      <td>${u.department||'-'}</td>
+      <td>${u.title||'-'}</td>
+      <td>${u.venue||'-'}</td>
+      <td>${u.phone||'-'}</td>
+      <td>${u.departCity||'-'}</td>
+      <td>${u.arriveCity||'-'}</td>
+      <td>${u.returnDepartCity||'-'}</td>
+      <td>${u.returnArriveCity||'-'}</td>
+      <td>${u.region||'-'}</td>
+      <td>${u.contactName||'-'}</td>
+      <td>${statusTags||'<span class="tag tag-gray">未填写</span>'}</td>
+      <td>
+        <button class="btn btn-sm btn-outline" onclick="viewAttendee('${u.id}')">详情</button>
+        ${!rowLocked && SESSION.role!=='attendee' ? `<button class="btn btn-sm btn-primary" onclick="editAttendee('${u.id}')">编辑</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterAttendees(keyword){
+  const kw = keyword.toLowerCase();
+  let users = DB.users;
+  if(SESSION.role==='sales'){
+    const sale = DB.sales.find(s=>s.id===SESSION.userId);
+    users = users.filter(u=>u.salesId===sale?.id || u.contactMobile===sale?.phone);
+  }
+  const filtered = users.filter(u=>
+    (u.name||'').toLowerCase().includes(kw) ||
+    (u.phone||'').includes(kw) ||
+    (u.hospital||'').toLowerCase().includes(kw) ||
+    (u.city||'').toLowerCase().includes(kw)
+  );
+  renderAttendeeRows(filtered);
+}
+
+// ============================================
+// ADD / EDIT ATTENDEE
+// ============================================
+function addAttendee(){
+  const u = {
+    id: genId(), no: DB.users.length+1, type:'', name:'', city:'', hospital:'', department:'', title:'',
+    venue:'', sex:'', idNumber:'', phone:'', hcpId:'', accommodation:'', flight:'',
+    departDate:'', departCity:'', arriveCity:'', flightNo:'', departTime:'', arriveTime:'',
+    returnDate:'', returnDepartCity:'', returnArriveCity:'', returnFlightNo:'', returnDepartTime:'', returnArriveTime:'',
+    region:'', contactName:'', contactMobile:'', mslContact:'', remarks:'',
+    salesId:'', password:'', tripAlert:false, tripApproved:false, updatedAt:null, createdAt:now()
+  };
+  editAttendeeModal(u, true);
+}
+
+function editAttendee(uid){
+  const u = DB.users.find(x=>x.id===uid);
+  if(u) editAttendeeModal(u, false);
+}
+
+function viewAttendee(uid){
+  const u = DB.users.find(x=>x.id===uid);
+  if(!u) return;
+  openModal(`
+    <div class="modal-header"><h3>参会人详情</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div><strong>姓名：</strong>${u.name||'-'}</div>
+        <div><strong>类别：</strong>${u.type||'-'}</div>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <div><strong>城市：</strong>${u.city||'-'}</div>
+        <div><strong>医院：</strong>${u.hospital||'-'}</div>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <div><strong>科室：</strong>${u.department||'-'}</div>
+        <div><strong>职称：</strong>${u.title||'-'}</div>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <div><strong>会场：</strong>${u.venue||'-'}</div>
+        <div><strong>手机号：</strong>${u.phone||'-'}</div>
+      </div>
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--gray-200)">
+      <h4 style="margin-bottom:8px">去程信息</h4>
+      <div class="form-row-3">
+        <div><strong>出发日期：</strong>${u.departDate||'-'}</div>
+        <div><strong>出发城市：</strong>${u.departCity||'-'}</div>
+        <div><strong>到达城市：</strong>${u.arriveCity||'-'}</div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px">
+        <div><strong>航班/车次：</strong>${u.flightNo||'-'}</div>
+        <div><strong>出发时间：</strong>${u.departTime||'-'}</div>
+        <div><strong>到达时间：</strong>${u.arriveTime||'-'}</div>
+      </div>
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--gray-200)">
+      <h4 style="margin-bottom:8px">返程信息</h4>
+      <div class="form-row-3">
+        <div><strong>返回日期：</strong>${u.returnDate||'-'}</div>
+        <div><strong>出发城市：</strong>${u.returnDepartCity||'-'}</div>
+        <div><strong>到达城市：</strong>${u.returnArriveCity||'-'}</div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px">
+        <div><strong>航班/车次：</strong>${u.returnFlightNo||'-'}</div>
+        <div><strong>出发时间：</strong>${u.returnDepartTime||'-'}</div>
+        <div><strong>到达时间：</strong>${u.returnArriveTime||'-'}</div>
+      </div>
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--gray-200)">
+      <div class="form-row">
+        <div><strong>大区：</strong>${u.region||'-'}</div>
+        <div><strong>销售联系人：</strong>${u.contactName||'-'}</div>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <div><strong>销售手机：</strong>${u.contactMobile||'-'}</div>
+        <div><strong>MSL联系人：</strong>${u.mslContact||'-'}</div>
+      </div>
+      <div style="margin-top:8px"><strong>备注：</strong>${u.remarks||'-'}</div>
+      ${u.tripAlert ? `<div class="alert alert-danger" style="margin-top:12px">⚠️ 行程异常提醒：出发/返回城市与会场不匹配</div>` : ''}
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">关闭</button></div>
+  `);
+}
+
+function editAttendeeModal(u, isNew){
+  const venueOpts = (DB.conference.venueCities||[]).map(c=>`<option value="${c}" ${u.venue===c?'selected':''}>${c}</option>`).join('');
+  const regionOpts = (DB.conference.regions||[]).map(r=>`<option value="${r}" ${u.region===r?'selected':''}>${r}</option>`).join('');
+  const saleOpts = DB.sales.map(s=>`<option value="${s.id}" ${u.salesId===s.id?'selected':''}>${s.name} (${s.phone})</option>`).join('');
+
+  openModal(`
+    <div class="modal-header"><h3>${isNew?'新增':'编辑'}参会人员</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row-3">
+        <div class="form-group"><label>参会者类别</label><select class="form-control" id="f_type"><option value="">请选择</option><option value="听众" ${u.type==='听众'?'selected':''}>听众</option><option value="主持" ${u.type==='主持'?'selected':''}>主持</option><option value="讲者" ${u.type==='讲者'?'selected':''}>讲者</option><option value="讨论嘉宾" ${u.type==='讨论嘉宾'?'selected':''}>讨论嘉宾</option></select></div>
+        <div class="form-group"><label>姓名 <span class="req">*</span></label><input class="form-control" id="f_name" value="${u.name||''}"></div>
+        <div class="form-group"><label>性别</label><select class="form-control" id="f_sex"><option value="">请选择</option><option value="M" ${u.sex==='M'?'selected':''}>男</option><option value="F" ${u.sex==='F'?'selected':''}>女</option></select></div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group"><label>城市</label><input class="form-control" id="f_city" value="${u.city||''}"></div>
+        <div class="form-group"><label>医院/连锁</label><input class="form-control" id="f_hospital" value="${u.hospital||''}"></div>
+        <div class="form-group"><label>科室/门店</label><input class="form-control" id="f_department" value="${u.department||''}"></div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group"><label>职称</label><input class="form-control" id="f_title" value="${u.title||''}"></div>
+        <div class="form-group"><label>会场</label><select class="form-control" id="f_venue"><option value="">请选择</option>${venueOpts}</select></div>
+        <div class="form-group"><label>手机号 <span class="req">*</span></label><input class="form-control" id="f_phone" value="${u.phone||''}"></div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group"><label>身份证号/护照号</label><input class="form-control" id="f_idNumber" value="${u.idNumber||''}"></div>
+        <div class="form-group"><label>HCP客户编号</label><input class="form-control" id="f_hcpId" value="${u.hcpId||''}"></div>
+        <div class="form-group"><label>住宿安排</label><select class="form-control" id="f_accommodation"><option value="">请选择</option><option value="Y" ${u.accommodation==='Y'?'selected':''}>是</option><option value="N" ${u.accommodation==='N'?'selected':''}>否</option></select></div>
+      </div>
+      <div class="form-group"><label>是否航空出行</label><select class="form-control" id="f_flight" onchange="toggleFlightFields(this.value)"><option value="">请选择</option><option value="Y" ${u.flight==='Y'?'selected':''}>是</option><option value="N" ${u.flight==='N'?'selected':''}>否</option></select></div>
+      <div id="flightFields" class="${u.flight==='Y'?'':'hidden'}">
+        <h4 style="margin:12px 0 8px;color:var(--primary)">去程信息</h4>
+        <div class="form-row-3">
+          <div class="form-group"><label>出发日期</label><input class="form-control" id="f_departDate" type="date" value="${u.departDate||''}"></div>
+          <div class="form-group"><label>出发城市</label><input class="form-control" id="f_departCity" value="${u.departCity||''}"></div>
+          <div class="form-group"><label>到达城市</label><input class="form-control" id="f_arriveCity" value="${u.arriveCity||''}"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>航班/车次号</label><input class="form-control" id="f_flightNo" value="${u.flightNo||''}"></div>
+          <div class="form-group"><label>出发时间</label><input class="form-control" id="f_departTime" type="time" value="${u.departTime||''}"></div>
+          <div class="form-group"><label>到达时间</label><input class="form-control" id="f_arriveTime" type="time" value="${u.arriveTime||''}"></div>
+        </div>
+        <h4 style="margin:12px 0 8px;color:var(--primary)">返程信息</h4>
+        <div class="form-row-3">
+          <div class="form-group"><label>返回日期</label><input class="form-control" id="f_returnDate" type="date" value="${u.returnDate||''}"></div>
+          <div class="form-group"><label>出发城市</label><input class="form-control" id="f_returnDepartCity" value="${u.returnDepartCity||''}"></div>
+          <div class="form-group"><label>到达城市</label><input class="form-control" id="f_returnArriveCity" value="${u.returnArriveCity||''}"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>航班/车次号</label><input class="form-control" id="f_returnFlightNo" value="${u.returnFlightNo||''}"></div>
+          <div class="form-group"><label>出发时间</label><input class="form-control" id="f_returnDepartTime" type="time" value="${u.returnDepartTime||''}"></div>
+          <div class="form-group"><label>到达时间</label><input class="form-control" id="f_returnArriveTime" type="time" value="${u.returnArriveTime||''}"></div>
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group"><label>大区</label><select class="form-control" id="f_region"><option value="">请选择</option>${regionOpts}</select></div>
+        <div class="form-group"><label>销售联系人</label><input class="form-control" id="f_contactName" value="${u.contactName||''}"></div>
+        <div class="form-group"><label>销售手机</label><input class="form-control" id="f_contactMobile" value="${u.contactMobile||''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>MSL医学部联系人</label><input class="form-control" id="f_mslContact" value="${u.mslContact||''}"></div>
+        <div class="form-group"><label>负责销售</label><select class="form-control" id="f_salesId"><option value="">请选择</option>${saleOpts}</select></div>
+      </div>
+      <div class="form-group"><label>备注</label><textarea class="form-control" id="f_remarks" rows="2">${u.remarks||''}</textarea></div>
+      ${isNew ? `<div class="form-group"><label>登录密码（参会人修改信息用）</label><input class="form-control" id="f_password" placeholder="留空则用手机号后6位"></div>` : ''}
+      <div id="tripAlertBox"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveAttendee('${u.id}',${isNew})">保存</button>
+    </div>
+  `);
+}
+
+function toggleFlightFields(val){
+  document.getElementById('flightFields').classList.toggle('hidden', val!=='Y');
+}
+
+function saveAttendee(uid, isNew){
+  const get = id => document.getElementById(id)?.value?.trim() || '';
+  let u = isNew ? {id:uid, createdAt:now()} : DB.users.find(x=>x.id===uid);
+  if(!u) return;
+
+  Object.assign(u, {
+    type:get('f_type'), name:get('f_name'), sex:get('f_sex'), city:get('f_city'),
+    hospital:get('f_hospital'), department:get('f_department'), title:get('f_title'),
+    venue:get('f_venue'), phone:get('f_phone'), idNumber:get('f_idNumber'),
+    hcpId:get('f_hcpId'), accommodation:get('f_accommodation'), flight:get('f_flight'),
+    departDate:get('f_departDate'), departCity:get('f_departCity'), arriveCity:get('f_arriveCity'),
+    flightNo:get('f_flightNo'), departTime:get('f_departTime'), arriveTime:get('f_arriveTime'),
+    returnDate:get('f_returnDate'), returnDepartCity:get('f_returnDepartCity'), returnArriveCity:get('f_returnArriveCity'),
+    returnFlightNo:get('f_returnFlightNo'), returnDepartTime:get('f_returnDepartTime'), returnArriveTime:get('f_returnArriveTime'),
+    region:get('f_region'), contactName:get('f_contactName'), contactMobile:get('f_contactMobile'),
+    mslContact:get('f_mslContact'), salesId:get('f_salesId'), remarks:get('f_remarks'),
+    updatedAt:now()
+  });
+  if(isNew){
+    u.password = get('f_password') || (get('f_phone')||'').slice(-6);
+    u.tripAlert = false;
+    u.tripApproved = false;
+    DB.users.push(u);
+  }
+
+  // Trip validation
+  validateTrip(u);
+
+  saveDB();
+  closeModal();
+  toast('保存成功');
+  showView('attendees');
+}
+
+// ============================================
+// TRIP VALIDATION
+// ============================================
+function validateTrip(u){
+  if(u.flight!=='Y') { u.tripAlert=false; return; }
+  const cities = DB.conference.venueCities || [];
+  if(!cities.length) return;
+
+  let alerts = [];
+  // Check: arrival city should match a venue city
+  if(u.arriveCity && !cities.includes(u.arriveCity)){
+    alerts.push(`去程到达城市"${u.arriveCity}"不在会场城市${cities.join('/')}中`);
+  }
+  // Check: return departure city should match a venue city
+  if(u.returnDepartCity && !cities.includes(u.returnDepartCity)){
+    alerts.push(`返程出发城市"${u.returnDepartCity}"不在会场城市${cities.join('/')}中`);
+  }
+  // Check: depart city != arrive city for return (city mismatch)
+  if(u.departCity && u.returnArriveCity && u.departCity !== u.returnArriveCity){
+    alerts.push(`出发城市(${u.departCity})与返回城市(${u.returnArriveCity})不一致`);
+  }
+
+  u.tripAlert = alerts.length > 0;
+  u.tripAlertDetails = alerts.join('; ');
+  u.tripApproved = false;
+
+  if(u.tripAlert){
+    DB.notifications.push({
+      id: genId(), type:'trip_alert', userId:u.id, userName:u.name,
+      message: `⚠️ ${u.name} 行程异常：${alerts.join('；')}，需要审批`,
+      time: now(), read: false
+    });
+  }
+}
+
+// ============================================
+// LOCKING
+// ============================================
+function renderLocking(el){
+  const lockedRows = DB.conference.lockedRows || {};
+  const lockedCols = DB.conference.lockedCols || {};
+
+  el.innerHTML = `
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:20px">名单锁定管理</h2>
+    <div class="alert alert-info">💡 锁定后的行/列，参会人员将无法修改对应信息。可分行、分列锁定。</div>
+    <div class="card">
+      <div class="card-title">
+        <span>行锁定（锁定整行）</span>
+        <button class="btn btn-sm btn-primary" onclick="lockAllRows()">全部锁定</button>
+      </div>
+      <div class="table-wrap" style="max-height:400px;overflow-y:auto">
+        <table>
+          <tr><th>序号</th><th>姓名</th><th>手机号</th><th>状态</th><th>操作</th></tr>
+          ${DB.users.map((u,i)=>{
+            const locked = lockedRows[u.id] === true;
+            return `<tr>
+              <td>${i+1}</td><td>${u.name||'-'}</td><td>${u.phone||'-'}</td>
+              <td>${locked?'<span class="tag tag-red">🔒 已锁定</span>':'<span class="tag tag-green">未锁定</span>'}</td>
+              <td><button class="btn btn-sm ${locked?'btn-success':'btn-danger'}" onclick="toggleRowLock('${u.id}')">${locked?'解锁':'锁定'}</button></td>
+            </tr>`;
+          }).join('')}
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">列锁定（锁定特定字段）</div>
+      <div class="alert alert-info">选择要全局锁定的字段，锁定后所有参会人员的该字段不可修改：</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
+        ${[
+          ['name','姓名'],['phone','手机号'],['idNumber','身份证号'],['venue','会场'],
+          ['departCity','去程出发城市'],['arriveCity','去程到达城市'],['departDate','出发日期'],
+          ['returnDepartCity','返程出发城市'],['returnArriveCity','返程到达城市'],['returnDate','返回日期'],
+          ['flightNo','航班号'],['region','大区'],['contactName','销售联系人']
+        ].map(([key,label])=>`
+          <label style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--gray-50);border-radius:6px;cursor:pointer">
+            <input type="checkbox" ${lockedCols[key]?'checked':''} onchange="toggleColLock('${key}',this.checked)">
+            <span>${label}</span>
+            ${lockedCols[key]?'<span class="tag tag-red">已锁定</span>':''}
+          </label>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function toggleRowLock(uid){
+  if(!DB.conference.lockedRows) DB.conference.lockedRows={};
+  DB.conference.lockedRows[uid] = !DB.conference.lockedRows[uid];
+  saveDB();
+  showView('locking');
+}
+
+function lockAllRows(){
+  if(!confirm('确定要锁定所有参会人员吗？')) return;
+  DB.conference.lockedRows = {};
+  DB.users.forEach(u=> DB.conference.lockedRows[u.id]=true);
+  saveDB(); showView('locking'); toast('已全部锁定');
+}
+
+function toggleColLock(col, checked){
+  if(!DB.conference.lockedCols) DB.conference.lockedCols={};
+  DB.conference.lockedCols[col] = checked;
+  saveDB(); showView('locking');
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+function renderNotifications(el){
+  const notifs = DB.notifications.sort((a,b)=>new Date(b.time)-new Date(a.time));
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:20px;font-weight:600">变更通知</h2>
+      <button class="btn btn-outline" onclick="markAllRead()">全部已读</button>
+    </div>
+    ${notifs.length===0 ? '<div class="card" style="text-align:center;color:var(--gray-400);padding:40px">暂无通知</div>' : ''}
+    ${notifs.map(n=>`
+      <div class="notif-item ${n.read?'':'unread'}">
+        <div>${n.message}</div>
+        <div class="time">${fmtDate(n.time)} ${!n.read?'<button class="btn btn-sm btn-outline" onclick="markRead(\''+n.id+'\')" style="margin-left:8px">标为已读</button>':''}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function markRead(nid){
+  const n = DB.notifications.find(x=>x.id===nid);
+  if(n) n.read=true;
+  saveDB(); showView('notifications');
+}
+function markAllRead(){
+  DB.notifications.forEach(n=>n.read=true);
+  saveDB(); showView('notifications');
+}
+
+// ============================================
+// DRIVERS MANAGEMENT
+// ============================================
+function renderDrivers(el){
+  const drivers = DB.drivers || [];
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:20px;font-weight:600">司机信息管理</h2>
+      <button class="btn btn-primary" onclick="addDriver()">+ 新增司机</button>
+    </div>
+    <div class="card">
+      <div class="card-title">去程接机司机</div>
+      <div class="table-wrap"><table>
+        <tr><th>司机姓名</th><th>手机号</th><th>车牌号</th><th>负责参会人</th><th>接机时间</th><th>接机地点</th><th>操作</th></tr>
+        ${drivers.filter(d=>d.type==='pickup').map(d=>`
+          <tr>
+            <td>${d.name}</td><td>${d.phone}</td><td>${d.plate}</td>
+            <td>${(d.assignedUsers||[]).map(uid=>{const u=DB.users.find(x=>x.id===uid);return u?u.name:'-'}).join(', ')||'-'}</td>
+            <td>${d.time||'-'}</td><td>${d.location||'-'}</td>
+            <td><button class="btn btn-sm btn-outline" onclick="editDriver('${d.id}')">编辑</button> <button class="btn btn-sm btn-danger" onclick="deleteDriver('${d.id}')">删除</button></td>
+          </tr>
+        `).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--gray-400)">暂无数据</td></tr>'}
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">返程送机司机</div>
+      <div class="table-wrap"><table>
+        <tr><th>司机姓名</th><th>手机号</th><th>车牌号</th><th>负责参会人</th><th>送机时间</th><th>送机地点</th><th>操作</th></tr>
+        ${drivers.filter(d=>d.type==='dropoff').map(d=>`
+          <tr>
+            <td>${d.name}</td><td>${d.phone}</td><td>${d.plate}</td>
+            <td>${(d.assignedUsers||[]).map(uid=>{const u=DB.users.find(x=>x.id===uid);return u?u.name:'-'}).join(', ')||'-'}</td>
+            <td>${d.time||'-'}</td><td>${d.location||'-'}</td>
+            <td><button class="btn btn-sm btn-outline" onclick="editDriver('${d.id}')">编辑</button> <button class="btn btn-sm btn-danger" onclick="deleteDriver('${d.id}')">删除</button></td>
+          </tr>
+        `).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--gray-400)">暂无数据</td></tr>'}
+      </table></div>
+    </div>
+  `;
+}
+
+function addDriver(){ editDriverModal({id:genId(),type:'pickup',name:'',phone:'',plate:'',assignedUsers:[],time:'',location:''},true); }
+function editDriver(did){
+  const d = DB.drivers.find(x=>x.id===did);
+  if(d) editDriverModal(d,false);
+}
+function deleteDriver(did){
+  if(!confirm('确定删除该司机信息？')) return;
+  DB.drivers = DB.drivers.filter(d=>d.id!==did);
+  saveDB(); showView('drivers'); toast('已删除');
+}
+
+function editDriverModal(d, isNew){
+  const userOpts = DB.users.map(u=>`<option value="${u.id}" ${(d.assignedUsers||[]).includes(u.id)?'selected':''}>${u.name} (${u.phone||''})</option>`).join('');
+  openModal(`
+    <div class="modal-header"><h3>${isNew?'新增':'编辑'}司机</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>类型</label><select class="form-control" id="d_type"><option value="pickup" ${d.type==='pickup'?'selected':''}>去程接机</option><option value="dropoff" ${d.type==='dropoff'?'selected':''}>返程送机</option></select></div>
+        <div class="form-group"><label>司机姓名 <span class="req">*</span></label><input class="form-control" id="d_name" value="${d.name||''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>手机号 <span class="req">*</span></label><input class="form-control" id="d_phone" value="${d.phone||''}"></div>
+        <div class="form-group"><label>车牌号</label><input class="form-control" id="d_plate" value="${d.plate||''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>时间</label><input class="form-control" id="d_time" value="${d.time||''}" placeholder="如：08:30"></div>
+        <div class="form-group"><label>地点</label><input class="form-control" id="d_location" value="${d.location||''}" placeholder="如：T3航站楼到达口"></div>
+      </div>
+      <div class="form-group"><label>负责参会人（多选）</label><select class="form-control" id="d_users" multiple size="6" style="height:auto">${userOpts}</select><small style="color:var(--gray-400)">按住Ctrl/Cmd多选</small></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveDriver('${d.id}',${isNew})">保存</button>
+    </div>
+  `);
+}
+
+function saveDriver(did, isNew){
+  const get=id=>document.getElementById(id)?.value?.trim()||'';
+  const sel=document.getElementById('d_users');
+  const assigned=[...sel.selectedOptions].map(o=>o.value);
+  const d={id:did,type:get('d_type'),name:get('d_name'),phone:get('d_phone'),plate:get('d_plate'),time:get('d_time'),location:get('d_location'),assignedUsers:assigned};
+  if(isNew) DB.drivers.push(d);
+  else{ const idx=DB.drivers.findIndex(x=>x.id===did); if(idx>=0) DB.drivers[idx]=d; }
+  saveDB(); closeModal(); showView('drivers'); toast('保存成功');
+}
+
+// ============================================
+// QR CODES
+// ============================================
+function renderQRCodes(el){
+  const baseUrl = DB.conference.accessUrl || location.href.split('#')[0].split('?')[0];
+  const isLocal = !DB.conference.accessUrl;
+  const warnHtml = isLocal ? '<div class="alert alert-warning" style="margin-bottom:20px">\u26a0\ufe0f 未配置系统访问地址，二维码使用本机路径，他人扫码无法访问。请先在 <a href="#" onclick="event.preventDefault();showView(\'settings\')" style="color:var(--primary)">系统设置</a> 中配置公网URL。</div>' : '';
+  el.innerHTML = `
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:20px">二维码管理</h2>
+    ${warnHtml}
+    <div class="card">
+      <div class="card-title">报名二维码</div>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px">参会者扫描此二维码可进入报名页面填写信息${isLocal ? ' <strong style="color:var(--danger)">（当前为本机地址，请先配置公网URL）</strong>' : ''}</p>
+      <div class="qr-container">
+        <div id="qrRegister"></div>
+        <p style="margin-top:8px;font-size:12px;color:var(--gray-400)">扫码报名</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">个人专属报名二维码</div>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px">为每位参会人生成专属二维码，扫码后自动关联身份</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px" id="personalQRs"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">送机信息查询二维码</div>
+      <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px">参会者扫码输入手机号即可查询送机信息</p>
+      <div class="qr-container">
+        <div id="qrLookup"></div>
+        <p style="margin-top:8px;font-size:12px;color:var(--gray-400)">扫码查询送机信息</p>
+      </div>
+    </div>
+  `;
+
+  // Generate QR codes
+  setTimeout(()=>{
+    const qrReg = document.getElementById('qrRegister');
+    if(qrReg){ qrReg.innerHTML=''; new QRCode(qrReg,{text:baseUrl+'#register',width:200,height:200,colorDark:'#2563eb'}); }
+
+    const qrLookup = document.getElementById('qrLookup');
+    if(qrLookup){ qrLookup.innerHTML=''; new QRCode(qrLookup,{text:baseUrl+'#lookup',width:200,height:200,colorDark:'#16a34a'}); }
+
+    const container = document.getElementById('personalQRs');
+    if(container){
+      DB.users.forEach(u=>{
+        if(!u.name) return;
+        const div=document.createElement('div');
+        div.style.textAlign='center';
+        div.innerHTML=`<div id="qr_${u.id}"></div><p style="font-size:12px;margin-top:4px">${u.name}</p>`;
+        container.appendChild(div);
+        setTimeout(()=>{
+          const el=document.getElementById('qr_'+u.id);
+          if(el) new QRCode(el,{text:baseUrl+'#register?uid='+u.id,width:120,height:120,colorDark:'#2563eb'});
+        },50);
+      });
+    }
+  },100);
+}
+
+// ============================================
+// SALES MANAGEMENT
+// ============================================
+function renderSalesManagement(el){
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:20px;font-weight:600">销售人员管理</h2>
+      <button class="btn btn-primary" onclick="addSales()">+ 新增销售</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap"><table>
+        <tr><th>姓名</th><th>手机号</th><th>密码</th><th>负责参会人数</th><th>操作</th></tr>
+        ${DB.sales.map(s=>{
+          const count = DB.users.filter(u=>u.salesId===s.id).length;
+          return `<tr>
+            <td>${s.name}</td><td>${s.phone}</td><td>${s.password}</td><td>${count}</td>
+            <td><button class="btn btn-sm btn-outline" onclick="editSales('${s.id}')">编辑</button> <button class="btn btn-sm btn-danger" onclick="deleteSales('${s.id}')">删除</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--gray-400)">暂无销售人员</td></tr>'}
+      </table></div>
+    </div>
+  `;
+}
+
+function addSales(){ editSalesModal({id:genId(),name:'',phone:'',password:'123456'},true); }
+function editSales(sid){ const s=DB.sales.find(x=>x.id===sid); if(s) editSalesModal(s,false); }
+function deleteSales(sid){
+  if(!confirm('确定删除？')) return;
+  DB.sales=DB.sales.filter(s=>s.id!==sid);
+  saveDB(); showView('sales'); toast('已删除');
+}
+
+function editSalesModal(s, isNew){
+  openModal(`
+    <div class="modal-header"><h3>${isNew?'新增':'编辑'}销售</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>姓名 <span class="req">*</span></label><input class="form-control" id="s_name" value="${s.name||''}"></div>
+      <div class="form-group"><label>手机号 <span class="req">*</span></label><input class="form-control" id="s_phone" value="${s.phone||''}"></div>
+      <div class="form-group"><label>登录密码</label><input class="form-control" id="s_password" value="${s.password||''}"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveSales('${s.id}',${isNew})">保存</button>
+    </div>
+  `);
+}
+
+function saveSales(sid, isNew){
+  const get=id=>document.getElementById(id)?.value?.trim()||'';
+  const s={id:sid,name:get('s_name'),phone:get('s_phone'),password:get('s_password')};
+  if(!s.name||!s.phone){toast('请填写姓名和手机号');return;}
+  if(isNew) DB.sales.push(s);
+  else{ const idx=DB.sales.findIndex(x=>x.id===sid); if(idx>=0) DB.sales[idx]=s; }
+  saveDB(); closeModal(); showView('sales'); toast('保存成功');
+}
+
+// ============================================
+// SETTINGS
+// ============================================
+function renderSettings(el){
+  el.innerHTML = `
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:20px">系统设置</h2>
+    <div class="card">
+      <div class="card-title">会议信息</div>
+      <div class="form-row">
+        <div class="form-group"><label>会议名称</label><input class="form-control" id="set_name" value="${DB.conference.name||''}"></div>
+        <div class="form-group"><label>会议日期</label><input class="form-control" id="set_date" type="date" value="${DB.conference.date||''}"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>系统访问地址 <span style="color:var(--gray-400);font-weight:400;font-size:12px">（HTML文件部署后的公网URL，用于生成报名二维码）</span></label>
+        <input class="form-control" id="set_url" placeholder="例如：https://example.com/会议行程管理系统.html" value="${DB.conference.accessUrl||''}" style="font-size:13px">
+        <p style="font-size:12px;color:var(--gray-400);margin-top:4px">💡 可将文件上传到腾讯云COS、阿里云OSS等获取分享链接填入。未配置时二维码使用当前页面地址（仅本机有效）。</p>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>会场城市（逗号分隔）</label><input class="form-control" id="set_cities" value="${(DB.conference.venueCities||[]).join(',')}"></div>
+        <div class="form-group"><label>大区列表（逗号分隔）</label><input class="form-control" id="set_regions" value="${(DB.conference.regions||[]).join(',')}"></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <div class="card-title">行程校验规则</div>
+      <div class="form-group"><label>
+        <input type="checkbox" id="rule_mismatch" ${DB.conference.tripRules?.cityMismatch!==false?'checked':''}> 出发/返回城市不一致时提醒
+      </label></div>
+      <div class="form-group"><label>
+        <input type="checkbox" id="rule_breach" ${DB.conference.tripRules?.contractBreach!==false?'checked':''}> 出发/到达城市不在会场城市中提醒（违约检测）
+      </label></div>
+      <button class="btn btn-primary" onclick="saveTripRules()">保存规则</button>
+    </div>
+    <div class="card">
+      <div class="card-title">管理员账号</div>
+      <div class="table-wrap"><table>
+        <tr><th>角色</th><th>姓名</th><th>手机号</th><th>密码</th><th>操作</th></tr>
+        ${DB.admins.map((a,i)=>`
+          <tr>
+            <td>${a.role==='conference_manager'?'会务负责人':'会议负责人'}</td>
+            <td><input class="form-control" id="adm_name_${i}" value="${a.name}" style="width:120px"></td>
+            <td><input class="form-control" id="adm_phone_${i}" value="${a.phone}" style="width:140px"></td>
+            <td><input class="form-control" id="adm_pwd_${i}" value="${a.password}" style="width:120px"></td>
+            <td><button class="btn btn-sm btn-primary" onclick="saveAdmin(${i})">保存</button></td>
+          </tr>
+        `).join('')}
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--danger)">危险操作</div>
+      <button class="btn btn-danger" onclick="if(confirm('确定清空所有数据？此操作不可恢复！')){localStorage.removeItem('${STORAGE_KEY}');location.reload();}">重置所有数据</button>
+    </div>
+  `;
+}
+
+function saveSettings(){
+  DB.conference.name = document.getElementById('set_name').value.trim();
+  DB.conference.date = document.getElementById('set_date').value;
+  DB.conference.accessUrl = document.getElementById('set_url').value.trim();
+  DB.conference.venueCities = document.getElementById('set_cities').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+  DB.conference.regions = document.getElementById('set_regions').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+  saveDB(); toast('设置已保存');
+}
+
+function saveTripRules(){
+  if(!DB.conference.tripRules) DB.conference.tripRules={};
+  DB.conference.tripRules.cityMismatch = document.getElementById('rule_mismatch').checked;
+  DB.conference.tripRules.contractBreach = document.getElementById('rule_breach').checked;
+  saveDB(); toast('规则已保存');
+}
+
+function saveAdmin(i){
+  DB.admins[i].name = document.getElementById('adm_name_'+i).value.trim();
+  DB.admins[i].phone = document.getElementById('adm_phone_'+i).value.trim();
+  DB.admins[i].password = document.getElementById('adm_pwd_'+i).value.trim();
+  saveDB(); toast('管理员信息已更新');
+}
+
+// ============================================
+// REGISTRATION FORM (for attendees)
+// ============================================
+function renderRegister(param){
+  document.getElementById('landing').classList.remove('hidden');
+  const uid = param || new URLSearchParams(location.hash.split('?')[1]||'').get('uid');
+  const existingUser = uid ? DB.users.find(u=>u.id===uid) : null;
+
+  const venueOpts = (DB.conference.venueCities||[]).map(c=>`<option value="${c}">${c}</option>`).join('');
+  const regionOpts = (DB.conference.regions||[]).map(r=>`<option value="${r}">${r}</option>`).join('');
+
+  document.getElementById('landing').innerHTML = `
+  <div style="max-width:680px;width:95%;margin:40px auto">
+    <div class="card" style="border-radius:16px">
+      <h2 style="text-align:center;margin-bottom:4px;font-size:22px">${DB.conference.name||'会议报名'}</h2>
+      <p style="text-align:center;color:var(--gray-500);margin-bottom:24px;font-size:14px">${DB.conference.date||''} ${venueOpts?'| 会场：'+(DB.conference.venueCities||[]).join(' / '):''}</p>
+
+      <div id="regStep1">
+        <div class="alert alert-info">请输入您的手机号验证身份${existingUser?'':'，或联系会务负责人获取报名链接'}</div>
+        <div class="form-group"><label>手机号 <span class="req">*</span></label><input class="form-control" id="reg_phone" value="${existingUser?.phone||''}" placeholder="请输入报名时的手机号"></div>
+        <div class="form-group"><label>验证码</label>
+          <div style="display:flex;gap:8px">
+            <input class="form-control" id="reg_code" placeholder="输入验证码">
+            <button class="btn btn-outline" onclick="sendCode()" id="sendCodeBtn">获取验证码</button>
+          </div>
+          <small style="color:var(--gray-400)">演示模式：验证码为 888888</small>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="verifyRegPhone()">验证并进入填写</button>
+      </div>
+
+      <div id="regStep2" class="hidden">
+        <input type="hidden" id="reg_uid" value="${existingUser?.id||''}">
+        <div class="form-row-3">
+          <div class="form-group"><label>参会者类别</label><select class="form-control" id="r_type"><option value="">请选择</option><option value="听众">听众</option><option value="主持">主持</option><option value="讲者">讲者</option><option value="讨论嘉宾">讨论嘉宾</option></select></div>
+          <div class="form-group"><label>姓名 <span class="req">*</span></label><input class="form-control" id="r_name" value="${existingUser?.name||''}"></div>
+          <div class="form-group"><label>性别</label><select class="form-control" id="r_sex"><option value="">请选择</option><option value="M">男</option><option value="F">女</option></select></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>城市</label><input class="form-control" id="r_city" value="${existingUser?.city||''}"></div>
+          <div class="form-group"><label>医院/连锁</label><input class="form-control" id="r_hospital" value="${existingUser?.hospital||''}"></div>
+          <div class="form-group"><label>科室/门店</label><input class="form-control" id="r_department" value="${existingUser?.department||''}"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>职称</label><input class="form-control" id="r_title" value="${existingUser?.title||''}"></div>
+          <div class="form-group"><label>会场</label><select class="form-control" id="r_venue"><option value="">请选择</option>${venueOpts}</select></div>
+          <div class="form-group"><label>身份证号/护照号</label><input class="form-control" id="r_idNumber" value="${existingUser?.idNumber||''}"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>HCP客户编号</label><input class="form-control" id="r_hcpId" value="${existingUser?.hcpId||''}"></div>
+          <div class="form-group"><label>住宿安排</label><select class="form-control" id="r_accommodation"><option value="">请选择</option><option value="Y">是</option><option value="N">否</option></select></div>
+          <div class="form-group"><label>是否航空出行</label><select class="form-control" id="r_flight" onchange="document.getElementById('r_flightFields').classList.toggle('hidden',this.value!=='Y')"><option value="">请选择</option><option value="Y">是</option><option value="N">否</option></select></div>
+        </div>
+        <div id="r_flightFields" class="hidden">
+          <h4 style="margin:12px 0 8px;color:var(--primary);font-size:14px">✈️ 去程信息</h4>
+          <div class="form-row-3">
+            <div class="form-group"><label>出发日期</label><input class="form-control" id="r_departDate" type="date"></div>
+            <div class="form-group"><label>出发城市</label><input class="form-control" id="r_departCity"></div>
+            <div class="form-group"><label>到达城市</label><input class="form-control" id="r_arriveCity"></div>
+          </div>
+          <div class="form-row-3">
+            <div class="form-group"><label>航班/车次号</label><input class="form-control" id="r_flightNo"></div>
+            <div class="form-group"><label>出发时间</label><input class="form-control" id="r_departTime" type="time"></div>
+            <div class="form-group"><label>到达时间</label><input class="form-control" id="r_arriveTime" type="time"></div>
+          </div>
+          <h4 style="margin:12px 0 8px;color:var(--primary);font-size:14px">✈️ 返程信息</h4>
+          <div class="form-row-3">
+            <div class="form-group"><label>返回日期</label><input class="form-control" id="r_returnDate" type="date"></div>
+            <div class="form-group"><label>出发城市</label><input class="form-control" id="r_returnDepartCity"></div>
+            <div class="form-group"><label>到达城市</label><input class="form-control" id="r_returnArriveCity"></div>
+          </div>
+          <div class="form-row-3">
+            <div class="form-group"><label>航班/车次号</label><input class="form-control" id="r_returnFlightNo"></div>
+            <div class="form-group"><label>出发时间</label><input class="form-control" id="r_returnDepartTime" type="time"></div>
+            <div class="form-group"><label>到达时间</label><input class="form-control" id="r_returnArriveTime" type="time"></div>
+          </div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>大区</label><select class="form-control" id="r_region"><option value="">请选择</option>${regionOpts}</select></div>
+          <div class="form-group"><label>MSL医学部联系人</label><input class="form-control" id="r_mslContact"></div>
+          <div class="form-group"><label>备注</label><input class="form-control" id="r_remarks"></div>
+        </div>
+        <div id="regTripAlert"></div>
+        <button class="btn btn-success" style="width:100%;justify-content:center;padding:12px;margin-top:16px" onclick="submitRegForm()">提交报名</button>
+      </div>
+    </div>
+    <p style="text-align:center;margin-top:16px"><a href="#" onclick="event.preventDefault();showView('landing')" style="color:var(--gray-400);font-size:13px">← 返回首页</a></p>
+  </div>`;
+
+  // Auto-fill if existing user
+  if(existingUser){
+    setTimeout(()=>{
+      document.getElementById('regStep1').classList.add('hidden');
+      document.getElementById('regStep2').classList.remove('hidden');
+      // Fill existing data
+      ['type','name','sex','city','hospital','department','title','venue','idNumber','hcpId','accommodation','flight','region','mslContact','remarks'].forEach(f=>{
+        const el=document.getElementById('r_'+f);
+        if(el && existingUser[f]) el.value=existingUser[f];
+      });
+      if(existingUser.flight==='Y'){
+        document.getElementById('r_flightFields').classList.remove('hidden');
+        ['departDate','departCity','arriveCity','flightNo','departTime','arriveTime','returnDate','returnDepartCity','returnArriveCity','returnFlightNo','returnDepartTime','returnArriveTime'].forEach(f=>{
+          const el=document.getElementById('r_'+f);
+          if(el && existingUser[f]) el.value=existingUser[f];
+        });
+      }
+    },100);
+  }
+}
+
+function sendCode(){
+  const btn=document.getElementById('sendCodeBtn');
+  btn.disabled=true; btn.textContent='已发送';
+  toast('验证码已发送（演示模式：888888）');
+  let sec=60;
+  const timer=setInterval(()=>{
+    sec--;
+    btn.textContent=sec+'s后重发';
+    if(sec<=0){clearInterval(timer);btn.disabled=false;btn.textContent='获取验证码';}
+  },1000);
+}
+
+function verifyRegPhone(){
+  const phone=document.getElementById('reg_phone').value.trim();
+  const code=document.getElementById('reg_code').value.trim();
+  if(!phone){toast('请输入手机号');return;}
+  if(code!=='888888'){toast('验证码错误（演示模式请输入888888）');return;}
+
+  // Check if user exists
+  let user = DB.users.find(u=>u.phone===phone);
+  if(!user){
+    // Create new user
+    user = {
+      id:genId(), no:DB.users.length+1, type:'', name:'', city:'', hospital:'', department:'', title:'',
+      venue:'', sex:'', idNumber:'', phone:phone, hcpId:'', accommodation:'', flight:'',
+      departDate:'', departCity:'', arriveCity:'', flightNo:'', departTime:'', arriveTime:'',
+      returnDate:'', returnDepartCity:'', returnArriveCity:'', returnFlightNo:'', returnDepartTime:'', returnArriveTime:'',
+      region:'', contactName:'', contactMobile:'', mslContact:'', remarks:'',
+      salesId:'', password:phone.slice(-6), tripAlert:false, tripApproved:false, updatedAt:null, createdAt:now()
+    };
+    DB.users.push(user);
+    saveDB();
+  }
+
+  // Check if locked
+  if(DB.conference.lockedRows?.[user.id]===true){
+    toast('您的报名信息已被锁定，无法修改。请联系会务负责人。');
+    return;
+  }
+
+  document.getElementById('reg_uid').value=user.id;
+  document.getElementById('regStep1').classList.add('hidden');
+  document.getElementById('regStep2').classList.remove('hidden');
+}
+
+function submitRegForm(){
+  const uid=document.getElementById('reg_uid').value;
+  const u=DB.users.find(x=>x.id===uid);
+  if(!u){toast('用户不存在');return;}
+
+  // Check lock
+  if(DB.conference.lockedRows?.[uid]===true){
+    toast('报名信息已锁定，无法修改');return;
+  }
+  const lockedCols = DB.conference.lockedCols || {};
+
+  const get=id=>document.getElementById(id)?.value?.trim()||'';
+  const oldData = {...u};
+
+  // Update fields (skip locked columns)
+  const fieldMap = {type:'r_type',name:'r_name',sex:'r_sex',city:'r_city',hospital:'r_hospital',
+    department:'r_department',title:'r_title',venue:'r_venue',idNumber:'r_idNumber',hcpId:'r_hcpId',
+    accommodation:'r_accommodation',flight:'r_flight',departDate:'r_departDate',departCity:'r_departCity',
+    arriveCity:'r_arriveCity',flightNo:'r_flightNo',departTime:'r_departTime',arriveTime:'r_arriveTime',
+    returnDate:'r_returnDate',returnDepartCity:'r_returnDepartCity',returnArriveCity:'r_returnArriveCity',
+    returnFlightNo:'r_returnFlightNo',returnDepartTime:'r_returnDepartTime',returnArriveTime:'r_returnArriveTime',
+    region:'r_region',mslContact:'r_mslContact',remarks:'r_remarks'};
+
+  Object.entries(fieldMap).forEach(([key,elId])=>{
+    if(!lockedCols[key]) u[key]=get(elId);
+  });
+  u.updatedAt=now();
+
+  // Trip validation
+  validateTrip(u);
+
+  // Generate change notification
+  const changes=[];
+  Object.keys(fieldMap).forEach(k=>{
+    if(oldData[k]!==u[k] && oldData[k] && u[k]) changes.push(`${k}: ${oldData[k]} → ${u[k]}`);
+  });
+  if(changes.length>0){
+    DB.notifications.push({
+      id:genId(), type:'change', userId:u.id, userName:u.name,
+      message:`📝 ${u.name} 修改了报名信息：${changes.join('；')}`,
+      time:now(), read:false
+    });
+  }
+
+  saveDB();
+
+  // Show trip alert if any
+  if(u.tripAlert){
+    document.getElementById('regTripAlert').innerHTML=`<div class="alert alert-warning" style="margin-top:12px">⚠️ 系统检测到您的行程信息可能存在异常（${u.tripAlertDetails}），会务负责人将进行审核。</div>`;
+  }
+
+  toast('报名成功！');
+  setTimeout(()=>{
+    document.getElementById('landing').innerHTML=`
+    <div class="landing-card">
+      <div style="font-size:48px;margin-bottom:16px">✅</div>
+      <h1 style="font-size:22px">报名成功</h1>
+      <p style="margin-bottom:24px">您的报名信息已提交，请等待会务负责人确认。</p>
+      <button class="btn btn-outline" onclick="showView('landing')">返回首页</button>
+    </div>`;
+  },1500);
+}
+
+// ============================================
+// PUBLIC LOOKUP (drop-off info by phone)
+// ============================================
+function renderPublicLookup(){
+  document.getElementById('landing').classList.remove('hidden');
+  document.getElementById('landing').innerHTML = `
+  <div class="landing-card" style="max-width:500px">
+    <h1 style="font-size:22px;margin-bottom:20px">📱 送机信息查询</h1>
+    <p style="color:var(--gray-500);margin-bottom:24px">输入您的手机号查询返程送机信息</p>
+    <div class="form-group"><label>手机号</label><input class="form-control" id="lookup_phone" placeholder="请输入报名时的手机号"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="doLookup()">查询</button>
+    <div id="lookupResult" style="margin-top:20px"></div>
+    <p style="margin-top:20px"><a href="#" onclick="event.preventDefault();showView('landing')" style="color:var(--gray-400);font-size:13px">← 返回首页</a></p>
+  </div>`;
+}
+
+function doLookup(){
+  const phone=document.getElementById('lookup_phone').value.trim();
+  if(!phone){toast('请输入手机号');return;}
+  const user=DB.users.find(u=>u.phone===phone);
+  const result=document.getElementById('lookupResult');
+  if(!user){
+    result.innerHTML=`<div class="alert alert-danger">未找到该手机号的报名记录</div>`;
+    return;
+  }
+  // Find drop-off driver
+  const dropoffDrivers = (DB.drivers||[]).filter(d=>d.type==='dropoff' && (d.assignedUsers||[]).includes(user.id));
+  const pickupDrivers = (DB.drivers||[]).filter(d=>d.type==='pickup' && (d.assignedUsers||[]).includes(user.id));
+
+  let html=`<div class="alert alert-success">✅ 找到您的信息：<strong>${user.name}</strong></div>`;
+
+  if(pickupDrivers.length>0){
+    html+=`<div class="card" style="text-align:left;margin-top:12px"><h4 style="margin-bottom:8px;color:var(--primary)">🚗 去程接机信息</h4>`;
+    pickupDrivers.forEach(d=>{
+      html+=`<div style="padding:8px 0;border-bottom:1px solid var(--gray-100)">
+        <div><strong>司机：</strong>${d.name} | <strong>电话：</strong>${d.phone}</div>
+        <div><strong>车牌：</strong>${d.plate||'-'} | <strong>时间：</strong>${d.time||'-'}</div>
+        <div><strong>地点：</strong>${d.location||'-'}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+
+  if(dropoffDrivers.length>0){
+    html+=`<div class="card" style="text-align:left;margin-top:12px"><h4 style="margin-bottom:8px;color:var(--primary)">🚗 返程送机信息</h4>`;
+    dropoffDrivers.forEach(d=>{
+      html+=`<div style="padding:8px 0;border-bottom:1px solid var(--gray-100)">
+        <div><strong>司机：</strong>${d.name} | <strong>电话：</strong>${d.phone}</div>
+        <div><strong>车牌：</strong>${d.plate||'-'} | <strong>时间：</strong>${d.time||'-'}</div>
+        <div><strong>地点：</strong>${d.location||'-'}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+
+  if(pickupDrivers.length===0 && dropoffDrivers.length===0){
+    html+=`<div class="alert alert-warning" style="margin-top:12px">暂未分配司机信息，请联系会务负责人</div>`;
+  }
+
+  // Show trip info
+  if(user.flight==='Y'){
+    html+=`<div class="card" style="text-align:left;margin-top:12px">
+      <h4 style="margin-bottom:8px;color:var(--primary)">✈️ 您的行程信息</h4>
+      <div class="form-row" style="font-size:13px">
+        <div><strong>去程：</strong>${user.departDate||'-'} ${user.departCity||'-'} → ${user.arriveCity||'-'} ${user.flightNo||''}</div>
+        <div><strong>返程：</strong>${user.returnDate||'-'} ${user.returnDepartCity||'-'} → ${user.returnArriveCity||'-'} ${user.returnFlightNo||''}</div>
+      </div>
+    </div>`;
+  }
+
+  result.innerHTML=html;
+}
+
+// ============================================
+// IMPORT / EXPORT EXCEL
+// ============================================
+function importExcel(){
+  openModal(`
+    <div class="modal-header"><h3>导入Excel</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="alert alert-info">请选择报名表Excel文件导入。系统会自动识别表头并匹配字段。</div>
+      <div class="form-group"><label>选择文件</label><input type="file" id="importFile" accept=".xlsx,.xls,.csv" class="form-control"></div>
+      <div id="importPreview"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="doImport()">导入</button>
+    </div>
+  `);
+}
+
+function doImport(){
+  const file=document.getElementById('importFile').files[0];
+  if(!file){toast('请选择文件');return;}
+
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const data=new Uint8Array(e.target.result);
+      // Simple CSV-like parsing for xlsx would need a library, so we'll use a basic approach
+      // For demo, parse as text
+      const text=new TextDecoder().decode(data);
+      toast('文件已读取，正在解析...');
+
+      // For a proper xlsx parser, we'd need SheetJS. Let's create a simplified import
+      // that handles the template format
+      document.getElementById('importPreview').innerHTML=`<div class="alert alert-warning">Excel解析需要SheetJS库支持。请将Excel另存为CSV格式后重新导入，或手动添加参会人员。</div>`;
+    }catch(err){
+      toast('文件解析失败：'+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function exportExcel(){
+  // Generate CSV export
+  const headers=['序号','参会者类别','姓名','城市','医院/连锁','科室/门店','职称','会场','性别','身份证号','手机号','HCP编号','住宿','航空','出发日期','出发城市','到达城市','航班号','出发时间','到达时间','返回日期','返程出发','返程到达','返程航班','返程出发时间','返程到达时间','大区','销售联系人','销售手机','MSL联系人','备注','行程异常','登录密码'];
+  const rows=DB.users.map((u,i)=>[
+    i+1,u.type,u.name,u.city,u.hospital,u.department,u.title,u.venue,u.sex==='M'?'男':'女',
+    u.idNumber,u.phone,u.hcpId,u.accommodation,u.flight,
+    u.departDate,u.departCity,u.arriveCity,u.flightNo,u.departTime,u.arriveTime,
+    u.returnDate,u.returnDepartCity,u.returnArriveCity,u.returnFlightNo,u.returnDepartTime,u.returnArriveTime,
+    u.region,u.contactName,u.contactMobile,u.mslContact,u.remarks,
+    u.tripAlert?'是':'否',u.password||''
+  ]);
+
+  let csv='\uFEFF'+headers.join(',')+'\n';
+  rows.forEach(r=>{
+    csv+=r.map(v=>{
+      if(v===undefined||v===null) return '';
+      v=String(v);
+      if(v.includes(',')||v.includes('"')||v.includes('\n')) return '"'+v.replace(/"/g,'""')+'"';
+      return v;
+    }).join(',')+'\n';
+  });
+
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(DB.conference.name||'会议')+'_报名名单_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  toast('导出成功');
+}
+
+// ============================================
+// INIT
+// ============================================
+function init(){
+  loadDB();
+  loadSession();
+
+  // Check URL hash for routing
+  const hash=location.hash.replace('#','');
+  if(hash.startsWith('register')){
+    const params=new URLSearchParams(hash.split('?')[1]||'');
+    showView('register',params.get('uid'));
+  } else if(hash==='lookup'){
+    showView('publicLookup');
+  } else if(hash==='setup'){
+    showView('setup');
+  } else if(SESSION.userId){
+    showView('dashboard');
+  } else {
+    // Show landing
+    document.getElementById('landing').classList.remove('hidden');
+    document.getElementById('landing').innerHTML = `
+    <div class="landing-card">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" style="margin:0 auto 16px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <h1>${DB.conference.name||'会议行程管理系统'}</h1>
+      <p>${DB.conference.date||'Conference Itinerary Management'}</p>
+      <button class="btn btn-primary" onclick="showView('login')">管理员/销售登录</button>
+      <button class="btn btn-outline" onclick="showView('register')">参会人员报名</button>
+      <button class="btn btn-outline" onclick="showView('publicLookup')">📱 送机信息查询</button>
+      <button class="btn btn-outline" onclick="showView('setup')" style="font-size:12px;color:var(--gray-400)">⚙️ 系统初始化设置</button>
+      ${DB.users.length===0 && !DB.conference.name ? '<div class="alert alert-warning" style="margin-top:16px;font-size:12px">首次使用请先进行 <a href="#" onclick="event.preventDefault();showView(\'setup\')" style="color:var(--primary)">系统设置</a></div>' : ''}
+    </div>`;
+  }
+}
+
+// Handle hash changes
+window.addEventListener('hashchange', ()=>{
+  const hash=location.hash.replace('#','');
+  if(hash.startsWith('register')){
+    const params=new URLSearchParams(hash.split('?')[1]||'');
+    showView('register',params.get('uid'));
+  } else if(hash==='lookup'){
+    showView('publicLookup');
+  }
+});
+
+init();
+</script>
+</body>
+</html>

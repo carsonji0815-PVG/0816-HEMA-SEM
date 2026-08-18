@@ -26,7 +26,7 @@ create table if not exists public.meetings (
   end_date date,
   venues text[] not null default '{}',
   service_phone text,
-  brand_color text not null default '#205d43',
+  brand_color text not null default '#5267d9',
   auth_mode text not null default 'region_name_phone',
   flight_lead_minutes integer not null default 120,
   train_lead_minutes integer not null default 90,

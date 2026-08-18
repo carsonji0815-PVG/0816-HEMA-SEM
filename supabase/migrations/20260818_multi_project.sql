@@ -5,7 +5,7 @@ alter table public.meetings add column if not exists start_date date;
 alter table public.meetings add column if not exists end_date date;
 alter table public.meetings add column if not exists venues text[] not null default '{}';
 alter table public.meetings add column if not exists service_phone text;
-alter table public.meetings add column if not exists brand_color text not null default '#205d43';
+alter table public.meetings add column if not exists brand_color text not null default '#5267d9';
 alter table public.meetings add column if not exists auth_mode text not null default 'region_name_phone';
 alter table public.meetings add column if not exists flight_lead_minutes integer not null default 120;
 alter table public.meetings add column if not exists train_lead_minutes integer not null default 90;
@@ -116,7 +116,7 @@ begin
     select * into v_source from public.meetings where id=p_source_id;
   end if;
   insert into public.meetings(slug,name,deadline,capacity,allowed_departure_cities,check_city_mismatch,check_departure_city,client_name,start_date,end_date,venues,service_phone,brand_color,auth_mode,flight_lead_minutes,train_lead_minutes,field_config)
-  values(lower(trim(p_slug)),trim(p_name),case when p_source_id is null then null else v_source.deadline end,coalesce(v_source.capacity,120),coalesce(v_source.allowed_departure_cities,'{}'),coalesce(v_source.check_city_mismatch,true),coalesce(v_source.check_departure_city,true),v_source.client_name,v_source.start_date,v_source.end_date,coalesce(v_source.venues,'{}'),v_source.service_phone,coalesce(v_source.brand_color,'#205d43'),coalesce(v_source.auth_mode,'region_name_phone'),coalesce(v_source.flight_lead_minutes,120),coalesce(v_source.train_lead_minutes,90),coalesce(v_source.field_config,'{}'::jsonb))
+  values(lower(trim(p_slug)),trim(p_name),case when p_source_id is null then null else v_source.deadline end,coalesce(v_source.capacity,120),coalesce(v_source.allowed_departure_cities,'{}'),coalesce(v_source.check_city_mismatch,true),coalesce(v_source.check_departure_city,true),v_source.client_name,v_source.start_date,v_source.end_date,coalesce(v_source.venues,'{}'),v_source.service_phone,coalesce(v_source.brand_color,'#5267d9'),coalesce(v_source.auth_mode,'region_name_phone'),coalesce(v_source.flight_lead_minutes,120),coalesce(v_source.train_lead_minutes,90),coalesce(v_source.field_config,'{}'::jsonb))
   returning id into v_id;
   insert into public.meeting_members(meeting_id,user_id,display_name,phone,role) values(v_id,auth.uid(),v_profile.display_name,v_profile.phone,'ops');
   if p_source_id is not null then

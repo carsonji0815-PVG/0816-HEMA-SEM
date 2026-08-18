@@ -29,7 +29,7 @@ const registrationView = (row: Record<string, unknown>) => ({
   region: row.region || "", contactName: row.contact_name || "", contactMobile: row.contact_mobile || "", mslContact: row.msl_contact || "", remarks: row.remarks === "公开报名认证，待填写完整信息" ? "" : row.remarks || "",
 });
 const projectView = (meeting: Record<string, unknown>) => ({
-  name: meeting.name || "参会服务", clientName: meeting.client_name || "", venues: meeting.venues || [], servicePhone: meeting.service_phone || "", brandColor: meeting.brand_color || "#205d43", fieldConfig: meeting.field_config || {}, flightLeadMinutes: meeting.flight_lead_minutes || 120, trainLeadMinutes: meeting.train_lead_minutes || 90,
+  name: meeting.name || "参会服务", clientName: meeting.client_name || "", venues: meeting.venues || [], servicePhone: meeting.service_phone || "", brandColor: meeting.brand_color || "#5267d9", fieldConfig: meeting.field_config || {}, flightLeadMinutes: meeting.flight_lead_minutes || 120, trainLeadMinutes: meeting.train_lead_minutes || 90,
 });
 
 export default {

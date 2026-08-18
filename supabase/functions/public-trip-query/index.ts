@@ -37,14 +37,43 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   if ((count || 0) >= 20) return reply({ error: "查询过于频繁，请稍后再试" }, 429);
   await db.from("public_query_logs").insert({ ip_hash: ipHash });
 
-  let payload: { phone?: string; meeting?: string };
+  let payload: { action?: string; phone?: string; meeting?: string; region?: string; name?: string };
   try { payload = await request.json(); } catch { return reply({ error: "Invalid request" }, 400); }
   const phone = String(payload.phone || "").replace(/\D/g, "").slice(-11);
   const slug = String(payload.meeting || "").trim();
   if (!/^1\d{10}$/.test(phone) || !slug) return reply({ error: "请输入正确的手机号" }, 400);
 
-  const { data: meeting } = await db.from("meetings").select("id,name").eq("slug", slug).maybeSingle();
+  const { data: meeting } = await db.from("meetings").select("id,name,deadline,master_locked").eq("slug", slug).maybeSingle();
   if (!meeting) return reply({ error: "未找到会议" }, 404);
+
+  if (payload.action === "register") {
+    const name = String(payload.name || "").trim().slice(0, 50);
+    const region = String(payload.region || "").trim().slice(0, 50);
+    if (!name || !region) return reply({ error: "请填写大区和姓名" }, 400);
+    if (meeting.master_locked) return reply({ error: "报名已关闭，请联系会务负责人" }, 423);
+    if (meeting.deadline && new Date(meeting.deadline).getTime() < Date.now()) return reply({ error: "报名已截止，请联系会务负责人" }, 410);
+    const { data: duplicate } = await db.from("attendees").select("id").eq("meeting_id", meeting.id).eq("phone", phone).maybeSingle();
+    if (duplicate) return reply({ error: "该手机号已完成报名，请勿重复提交" }, 409);
+    const { data: owner } = await db.from("profiles").select("user_id").eq("meeting_id", meeting.id).eq("role", "ops").order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (!owner) return reply({ error: "会务负责人尚未配置，请稍后再试" }, 503);
+    const reference = `WEB-${phone.slice(-4)}-${Date.now().toString(36).toUpperCase()}`;
+    const { error: insertError } = await db.from("attendees").insert({
+      meeting_id: meeting.id,
+      owner_id: owner.user_id,
+      attendee_type: "公开报名",
+      name,
+      region,
+      phone,
+      id_number: "待补充",
+      hcp_id: reference,
+      approval: "normal",
+      risks: [],
+      remarks: "公开报名入口提交，待会务补充完整信息",
+    });
+    if (insertError) return reply({ error: "报名提交失败，请稍后重试" }, 500);
+    return reply({ registered: true, reference });
+  }
+
   const { data: attendee } = await db.from("attendees")
     .select("id,name,out_date,out_from,out_to,out_no,out_departure,out_arrival,return_date,return_from,return_to,return_no,return_departure,return_arrival")
     .eq("meeting_id", meeting.id).eq("phone", phone).maybeSingle();

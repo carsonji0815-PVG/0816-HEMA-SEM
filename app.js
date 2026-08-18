@@ -455,8 +455,21 @@
   }
 
   function copyRegistrationLink() { const url = `${location.origin}${location.pathname}#register`; navigator.clipboard?.writeText(url).then(() => toast("报名链接已复制")).catch(() => toast(url)); }
-  function renderQr() { const box = $("#qrCanvas"); if (!box) return; const url = `${location.origin}${location.pathname}#register`; box.innerHTML = ""; if (window.QRCode) new QRCode(box, { text:url, width:134, height:134, colorDark:"#18231d", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.M }); else box.innerHTML = `<button class="text-button" type="button">复制报名链接</button>`; box.querySelector("button")?.addEventListener("click",copyRegistrationLink); }
-  function downloadQr() { const source = $("#qrCanvas canvas") || $("#qrCanvas img"); if (!source) return copyRegistrationLink(); const link = document.createElement("a"); link.download = "HEMA-SEM-报名二维码.png"; link.href = source.tagName === "CANVAS" ? source.toDataURL("image/png") : source.src; link.click(); }
+  function renderQr() { const box = $("#qrCanvas"); if (!box) return; const url = `${location.origin}${location.pathname}?source=qr#register`; box.innerHTML = ""; if (window.QRCode) new QRCode(box, { text:url, width:160, height:160, colorDark:"#000000", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.H }); else box.innerHTML = `<button class="text-button" type="button">复制报名链接</button>`; box.querySelector("button")?.addEventListener("click",copyRegistrationLink); }
+  function downloadQr() {
+    const source = $("#qrCanvas canvas") || $("#qrCanvas img");
+    if (!source) return copyRegistrationLink();
+    const output = document.createElement("canvas");
+    output.width = 240; output.height = 240;
+    const context = output.getContext("2d");
+    context.fillStyle = "#ffffff"; context.fillRect(0,0,240,240);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(source,20,20,200,200);
+    const link = document.createElement("a");
+    link.download = "HEMA-SEM-报名二维码.png";
+    link.href = output.toDataURL("image/png");
+    link.click();
+  }
 
   function exportExcel() {
     const headers = ["No.\n序号","Attendee Type\n参会者类别","Name\n客户姓名(姓/名)*","City\n城市","Hospital/Chain\n医院/连锁","Department/Store\n科室/门店","Title\n职称","会场\n（多城会议）","Sex\n性别","ID/Passpor No.*\n身份证号/护照号*","Mobile Phone #\n手机号","HCP ID*\n客户编号*","Accommodation\n住宿安排(Y/N)","Flight\n是否航空(Y/N)","Departure Date\n出发日期","Departure City 出发城市","Arrival City 到达城市","Flight/Train No.\n航班/车次号","Departure time 出发时间","Arrival time 到达时间","Return Date\n返回日期","Departure City 出发城市","Arrival City 到达城市","Flight/Train No.\n航班/车次号","Departure time 出发时间","Arrival time 到达时间","Region\n大区","Contact Name\n销售联系人姓名","Contact Mobile\n销售联系人手机","MSL医学部联系人","Remarks\n备注（本地客户/VIP异地用车备注）"];

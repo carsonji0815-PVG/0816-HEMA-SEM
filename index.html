@@ -13,7 +13,14 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-    <script src="app-config.js" defer></script>
+    <script>
+      window.APP_CONFIG = {
+        mode: "production",
+        supabaseUrl: "https://bupsipicxwyeuxunkvii.supabase.co",
+        supabaseAnonKey: "sb_publishable_grWeE2d8EPmAozkMurNRDA_GTFJC-h-",
+        eventSlug: "hema-sem-2026",
+      };
+    </script>
     <script src="app.js" defer></script>
   </head>
   <body>

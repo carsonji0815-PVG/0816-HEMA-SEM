@@ -63,6 +63,8 @@ create table if not exists public.attendees (
   return_departure time,
   return_arrival time,
   region text,
+  contact_name text,
+  contact_mobile text,
   msl_contact text,
   remarks text,
   approval public.approval_status not null default 'normal',
@@ -72,6 +74,9 @@ create table if not exists public.attendees (
   updated_at timestamptz not null default now(),
   unique (meeting_id, phone)
 );
+
+alter table public.attendees add column if not exists contact_name text;
+alter table public.attendees add column if not exists contact_mobile text;
 
 create index if not exists attendees_meeting_owner_idx on public.attendees(meeting_id, owner_id);
 create index if not exists attendees_phone_idx on public.attendees(meeting_id, phone);

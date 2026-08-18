@@ -75,6 +75,7 @@
   let backendMeetingId = null;
   let syncTimer = null;
   let lastLookupSchedule = null;
+  let publicAuthSession = null;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -191,11 +192,11 @@
       const t = row.transports?.find(item => item.direction === direction) || {};
       return { driver: t.driver_name || "待分配", phone: t.driver_phone || "—", vehicle: t.vehicle || "待分配", time: t.service_time ? new Date(t.service_time).toLocaleString("zh-CN", { hour12: false }).replaceAll("/", "-") : "待设置", point: t.meeting_point || "待设置" };
     };
-    return { id:row.id, attendeeType:row.attendee_type||"", name:row.name, city:row.city||"", hospital:row.hospital||"", department:row.department||"", title:row.title||"", venue:row.venue||"", sex:row.sex||"", idNumber:row.id_number, phone:row.phone, hcpId:row.hcp_id, accommodation:row.accommodation?"Y":"N", flight:row.is_flight?"Y":"N", region:row.region||"", mslContact:row.msl_contact||"", remarks:row.remarks||"", ownerId:row.owner_id, outDate:row.out_date||"", outFrom:row.out_from||"", outTo:row.out_to||"", outNo:row.out_no||"", outDeparture:(row.out_departure||"").slice(0,5), outArrival:(row.out_arrival||"").slice(0,5), returnDate:row.return_date||"", returnFrom:row.return_from||"", returnTo:row.return_to||"", returnNo:row.return_no||"", returnDeparture:(row.return_departure||"").slice(0,5), returnArrival:(row.return_arrival||"").slice(0,5), approval:row.approval, risks:row.risks||[], createdAt:row.created_at, transport:{pickup:trip("pickup"),dropoff:trip("dropoff")} };
+    return { id:row.id, attendeeType:row.attendee_type||"", name:row.name, city:row.city||"", hospital:row.hospital||"", department:row.department||"", title:row.title||"", venue:row.venue||"", sex:row.sex||"", idNumber:row.id_number, phone:row.phone, hcpId:row.hcp_id, accommodation:row.accommodation?"Y":"N", flight:row.is_flight?"Y":"N", region:row.region||"", contactName:row.contact_name||"", contactMobile:row.contact_mobile||"", mslContact:row.msl_contact||"", remarks:row.remarks||"", ownerId:row.owner_id, outDate:row.out_date||"", outFrom:row.out_from||"", outTo:row.out_to||"", outNo:row.out_no||"", outDeparture:(row.out_departure||"").slice(0,5), outArrival:(row.out_arrival||"").slice(0,5), returnDate:row.return_date||"", returnFrom:row.return_from||"", returnTo:row.return_to||"", returnNo:row.return_no||"", returnDeparture:(row.return_departure||"").slice(0,5), returnArrival:(row.return_arrival||"").slice(0,5), approval:row.approval, risks:row.risks||[], createdAt:row.created_at, transport:{pickup:trip("pickup"),dropoff:trip("dropoff")} };
   }
 
   function toDbAttendee(a) {
-    return { id:a.id, meeting_id:backendMeetingId, owner_id:a.ownerId, attendee_type:a.attendeeType||null, name:a.name, city:a.city||null, hospital:a.hospital||null, department:a.department||null, title:a.title||null, venue:a.venue||null, sex:a.sex||null, id_number:a.idNumber, phone:a.phone, hcp_id:a.hcpId, accommodation:a.accommodation==="Y", is_flight:a.flight==="Y", out_date:a.outDate||null, out_from:a.outFrom||null, out_to:a.outTo||null, out_no:a.outNo||null, out_departure:a.outDeparture||null, out_arrival:a.outArrival||null, return_date:a.returnDate||null, return_from:a.returnFrom||null, return_to:a.returnTo||null, return_no:a.returnNo||null, return_departure:a.returnDeparture||null, return_arrival:a.returnArrival||null, region:a.region||null, msl_contact:a.mslContact||null, remarks:a.remarks||null, approval:a.approval, risks:a.risks||[], row_locked:state.locks.rows.includes(a.id) };
+    return { id:a.id, meeting_id:backendMeetingId, owner_id:a.ownerId, attendee_type:a.attendeeType||null, name:a.name, city:a.city||null, hospital:a.hospital||null, department:a.department||null, title:a.title||null, venue:a.venue||null, sex:a.sex||null, id_number:a.idNumber, phone:a.phone, hcp_id:a.hcpId, accommodation:a.accommodation==="Y", is_flight:a.flight==="Y", out_date:a.outDate||null, out_from:a.outFrom||null, out_to:a.outTo||null, out_no:a.outNo||null, out_departure:a.outDeparture||null, out_arrival:a.outArrival||null, return_date:a.returnDate||null, return_from:a.returnFrom||null, return_to:a.returnTo||null, return_no:a.returnNo||null, return_departure:a.returnDeparture||null, return_arrival:a.returnArrival||null, region:a.region||null, contact_name:a.contactName||null, contact_mobile:a.contactMobile||null, msl_contact:a.mslContact||null, remarks:a.remarks||null, approval:a.approval, risks:a.risks||[], row_locked:state.locks.rows.includes(a.id) };
   }
 
   async function syncBackend() {
@@ -237,6 +238,7 @@
     $("#registrationForm").addEventListener("input", updateLiveRisk);
     $("#registrationForm").addEventListener("submit", submitRegistration);
     $("#publicRegistrationForm").addEventListener("submit", submitPublicRegistration);
+    $("#publicFullRegistrationForm").addEventListener("submit", submitPublicFullRegistration);
     $("#lookupForm").addEventListener("submit", queryTransport);
     $("#settingsForm").addEventListener("submit", saveSettings);
   }
@@ -253,6 +255,7 @@
     $("#masterLock").addEventListener("change", event => { if (!canManage()) return deny(); state.locks.master = event.target.checked; addNotification("lock", `${currentUser().name}${event.target.checked ? "锁定" : "解锁"}了全部名单`); saveState(); renderAll(); });
     $("#copyRegistrationLink").addEventListener("click", copyRegistrationLink);
     $("#downloadQr").addEventListener("click", downloadQr);
+    $("#backToPublicAuth").addEventListener("click", resetPublicRegistrationStep);
     $$('[data-portal-tab]').forEach(button => button.addEventListener("click", () => { location.hash = button.dataset.portalTab === "lookup" ? "lookup" : "portal"; }));
     $("#resetDemo").addEventListener("click", () => { if (!confirm("确认恢复全部演示数据？")) return; state = initialState(); saveState(); populateUsers(); renderAll(); toast("已恢复演示数据"); });
   }
@@ -444,19 +447,47 @@
     const phone = normalizePhone(data.phone);
     if (phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的 11 位手机号。</div>`; return; }
     if (!window.APP_CONFIG?.supabaseUrl) { result.innerHTML = `<div class="lookup-error">报名服务暂不可用，请联系会务负责人。</div>`; return; }
-    submit.disabled = true; submit.textContent = "正在提交…";
+    submit.disabled = true; submit.textContent = "正在验证…";
     try {
       const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, {
         method:"POST",
         headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey},
-        body:JSON.stringify({action:"register",meeting:window.APP_CONFIG.eventSlug,region:data.region,name:data.name,phone}),
+        body:JSON.stringify({action:"authenticate",meeting:window.APP_CONFIG.eventSlug,region:data.region,name:data.name,phone}),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "提交失败");
-      result.innerHTML = `<div class="lookup-success"><strong>✓ 报名已提交</strong><br />会务负责人将通过手机号与你确认后续行程。</div>`;
-      form.reset();
+      if (!response.ok) throw new Error(payload.error || "验证失败");
+      publicAuthSession = { region:data.region.trim(), name:data.name.trim(), phone };
+      showPublicFullRegistration(payload.attendee || publicAuthSession);
     } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
-    finally { submit.disabled = false; submit.innerHTML = `提交报名 <span>→</span>`; }
+    finally { submit.disabled = false; submit.innerHTML = `验证并进入报名表 <span>→</span>`; }
+  }
+
+  function showPublicFullRegistration(attendee = {}) {
+    const form = $("#publicFullRegistrationForm");
+    const aliases = { attendeeType:"attendeeType", name:"name", city:"city", hospital:"hospital", department:"department", title:"title", venue:"venue", sex:"sex", idNumber:"idNumber", phone:"phone", hcpId:"hcpId", accommodation:"accommodation", flight:"flight", region:"region", contactName:"contactName", contactMobile:"contactMobile", mslContact:"mslContact", remarks:"remarks", outDate:"outDate", outFrom:"outFrom", outTo:"outTo", outNo:"outNo", outDeparture:"outDeparture", outArrival:"outArrival", returnDate:"returnDate", returnFrom:"returnFrom", returnTo:"returnTo", returnNo:"returnNo", returnDeparture:"returnDeparture", returnArrival:"returnArrival" };
+    Object.entries(aliases).forEach(([field,key]) => { if (form.elements[field]) form.elements[field].value = attendee[key] ?? publicAuthSession?.[key] ?? (field === "attendeeType" ? "HCP" : ""); });
+    form.elements.name.value = publicAuthSession.name; form.elements.phone.value = publicAuthSession.phone; form.elements.region.value = publicAuthSession.region;
+    $("#publicRegistrationResult").innerHTML = ""; $("#publicAuthStep").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.remove("is-hidden"); $(".portal-card").classList.add("expanded");
+    scrollTo({top:0,behavior:"smooth"});
+  }
+
+  function resetPublicRegistrationStep() {
+    publicAuthSession = null; const form = $("#publicFullRegistrationForm"); form.reset(); form.querySelectorAll("input,select,textarea").forEach(input => input.disabled = false); form.querySelector('button[type="submit"]').classList.remove("is-hidden"); $("#backToPublicAuth").textContent = "返回验证"; $("#publicFullRegistrationStep").classList.add("is-hidden"); $("#publicAuthStep").classList.remove("is-hidden"); $(".portal-card").classList.remove("expanded"); $("#publicFullRegistrationResult").innerHTML = "";
+  }
+
+  async function submitPublicFullRegistration(event) {
+    event.preventDefault(); if (!publicAuthSession) return resetPublicRegistrationStep();
+    const form = event.currentTarget; const result = $("#publicFullRegistrationResult"); const submit = form.querySelector('button[type="submit"]');
+    const details = Object.fromEntries(new FormData(form)); details.contactMobile = normalizePhone(details.contactMobile);
+    if (details.contactMobile.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的销售联系人手机号。</div>`; return; }
+    submit.disabled = true; submit.textContent = "正在保存…";
+    try {
+      const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"complete-registration",meeting:window.APP_CONFIG.eventSlug,...publicAuthSession,...details}) });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "提交失败");
+      result.innerHTML = `<div class="lookup-success"><strong>✓ 完整报名已保存</strong><br />${payload.needsApproval ? "行程异常已自动提交会务负责人审批。" : "可返回参会服务查询后续接送安排。"}</div>`;
+      form.querySelectorAll("input,select,textarea").forEach(input => input.disabled = true); submit.classList.add("is-hidden"); $("#backToPublicAuth").textContent = "完成并返回";
+    } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
+    finally { submit.disabled = false; if (!submit.classList.contains("is-hidden")) submit.textContent = "提交完整报名"; }
   }
 
   async function queryTransport(event) {
@@ -495,7 +526,7 @@
       const vehicle = staff ? "无需司机及车辆信息" : (t.vehicle || "待分配");
       return `<div class="result-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="result-route"><div><small>接送方式</small><strong>${escapeHtml(driver)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div><div><small>${label}时间</small><strong>${escapeHtml(displayTime(t.time || t.service_time))}</strong></div><div><small>集合点</small><strong>${escapeHtml(t.point || t.meeting_point || "待公布")}</strong></div></div></div>`;
     };
-    return `<div class="lookup-name">${escapeHtml(name)}，你的安排如下</div>${card("接机",outbound,pickup)}${card("送机",returnTrip,dropoff)}<button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">添加到手机日历并自动提醒</button><p class="calendar-hint">添加后，手机将在每次接送前 30 分钟提醒；无需短信或额外 App。</p>`;
+    return `<div class="lookup-name">${escapeHtml(name)}，你的安排如下</div>${card("接机",outbound,pickup)}${card("送机",returnTrip,dropoff)}<div class="calendar-action"><strong>还差一步：开启手机自动提醒</strong><span>受手机隐私规则限制，网页不能静默写入日历。请点击并在系统弹窗中确认“添加全部”。</span><button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">加入手机日历 · 接送前 30 分钟提醒</button></div>`;
   }
 
   function buildLookupSchedule(name, pickup = {}, dropoff = {}) {
@@ -510,7 +541,10 @@
     const stamp = icsDate(new Date().toISOString());
     const events = lastLookupSchedule.events.map((item,index) => { const start = icsDate(item.time); const endDate = new Date(String(item.time).replace(" ","T")); endDate.setMinutes(endDate.getMinutes()+30); return [`BEGIN:VEVENT`,`UID:${Date.now()}-${index}@journey-desk`,`DTSTAMP:${stamp}`,`DTSTART:${start}`,`DTEND:${icsDate(endDate.toISOString())}`,`SUMMARY:${escapeIcs(item.title)}`,`LOCATION:${escapeIcs(item.location)}`,`DESCRIPTION:${escapeIcs(item.description)}`,`BEGIN:VALARM`,`TRIGGER:-PT30M`,`ACTION:DISPLAY`,`DESCRIPTION:${escapeIcs(item.title)}`,`END:VALARM`,`END:VEVENT`].join("\r\n"); }).filter(item => !item.includes("DTSTART:\r\n"));
     const content = [`BEGIN:VCALENDAR`,`VERSION:2.0`,`PRODID:-//Journey Desk//HEMA SEM//CN`,`CALSCALE:GREGORIAN`,...events,`END:VCALENDAR`].join("\r\n");
-    const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([content],{type:"text/calendar;charset=utf-8"})); link.download = `HEMA-SEM-${lastLookupSchedule.name}-接送提醒.ics`; link.click(); URL.revokeObjectURL(link.href); toast("日历提醒已生成，请选择添加到手机日历");
+    const url = URL.createObjectURL(new Blob([content],{type:"text/calendar;charset=utf-8"}));
+    if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) location.href = url;
+    else { const link = document.createElement("a"); link.href = url; link.download = `HEMA-SEM-${lastLookupSchedule.name}-接送提醒.ics`; document.body.append(link); link.click(); link.remove(); }
+    setTimeout(() => URL.revokeObjectURL(url), 60000); toast("请在系统界面确认添加全部日历事项");
   }
 
   function saveSettings(event) {
@@ -536,7 +570,7 @@
 
   function exportExcel() {
     const headers = ["No.\n序号","Attendee Type\n参会者类别","Name\n客户姓名(姓/名)*","City\n城市","Hospital/Chain\n医院/连锁","Department/Store\n科室/门店","Title\n职称","会场\n（多城会议）","Sex\n性别","ID/Passpor No.*\n身份证号/护照号*","Mobile Phone #\n手机号","HCP ID*\n客户编号*","Accommodation\n住宿安排(Y/N)","Flight\n是否航空(Y/N)","Departure Date\n出发日期","Departure City 出发城市","Arrival City 到达城市","Flight/Train No.\n航班/车次号","Departure time 出发时间","Arrival time 到达时间","Return Date\n返回日期","Departure City 出发城市","Arrival City 到达城市","Flight/Train No.\n航班/车次号","Departure time 出发时间","Arrival time 到达时间","Region\n大区","Contact Name\n销售联系人姓名","Contact Mobile\n销售联系人手机","MSL医学部联系人","Remarks\n备注（本地客户/VIP异地用车备注）"];
-    const rows = visibleAttendees().map((a,i) => [i+1,a.attendeeType,a.name,a.city,a.hospital,a.department,a.title,a.venue,a.sex,a.idNumber,a.phone,a.hcpId,a.accommodation,a.flight,a.outDate,a.outFrom,a.outTo,a.outNo,a.outDeparture,a.outArrival,a.returnDate,a.returnFrom,a.returnTo,a.returnNo,a.returnDeparture,a.returnArrival,a.region,userName(a.ownerId),state.users.find(u=>u.id===a.ownerId)?.phone || "",a.mslContact,a.remarks]);
+    const rows = visibleAttendees().map((a,i) => [i+1,a.attendeeType,a.name,a.city,a.hospital,a.department,a.title,a.venue,a.sex,a.idNumber,a.phone,a.hcpId,a.accommodation,a.flight,a.outDate,a.outFrom,a.outTo,a.outNo,a.outDeparture,a.outArrival,a.returnDate,a.returnFrom,a.returnTo,a.returnNo,a.returnDeparture,a.returnArrival,a.region,a.contactName||userName(a.ownerId),a.contactMobile||state.users.find(u=>u.id===a.ownerId)?.phone||"",a.mslContact,a.remarks]);
     if (window.XLSX) { const ws = XLSX.utils.aoa_to_sheet([headers,...rows]); ws["!cols"] = headers.map((_,i) => ({ wch: i === 0 ? 7 : i >= 14 && i <= 25 ? 14 : 18 })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"报名表"); XLSX.writeFile(wb,`HEMA-SEM-报名表-${new Date().toISOString().slice(0,10)}.xlsx`); toast("Excel 已导出"); }
     else { const csv = [headers,...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n"); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob(["\ufeff",csv],{type:"text/csv"})); link.download = "HEMA-SEM-报名表.csv"; link.click(); toast("已导出兼容 Excel 的 CSV 文件"); }
   }

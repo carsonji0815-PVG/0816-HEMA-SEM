@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="无服务器行程报名、审批与接送机管理工具" />
+    <meta name="theme-color" content="#18231d" />
+    <title>行程台 · HEMA SEM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="config.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <section class="public-shell is-hidden" id="publicLookupView" aria-labelledby="lookupTitle">
+      <header class="public-header">
+        <a class="brand brand-dark" href="#dashboard" aria-label="返回管理端">
+          <span class="brand-mark">行</span>
+          <span><strong>行程台</strong><small>Journey Desk</small></span>
+        </a>
+        <a class="text-link" href="#dashboard">工作人员入口 →</a>
+      </header>
+      <main class="lookup-layout">
+        <div class="lookup-copy">
+          <span class="eyebrow">TRAVEL ASSISTANCE</span>
+          <h1 id="lookupTitle">你的接送安排，<br />一查就知道。</h1>
+          <p>输入报名时填写的手机号，查询接机司机、车辆及返程送机时间。我们仅展示本次出行需要的信息。</p>
+          <div class="privacy-note"><span>✓</span> 不展示证件号、医院或客户编号</div>
+        </div>
+        <div class="lookup-card glass-card">
+          <div class="lookup-card-head">
+            <span class="icon-badge">⌁</span>
+            <div><h2>查询接送机</h2><p>HEMA SEM · 大连 & 福州</p></div>
+          </div>
+          <form id="lookupForm" class="stack-form">
+            <label>报名手机号
+              <div class="phone-input"><span>+86</span><input id="lookupPhone" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="请输入 11 位手机号" required /></div>
+            </label>
+            <button class="button button-primary button-block" type="submit">查询我的行程 <span>→</span></button>
+          </form>
+          <p class="form-hint">演示号码：138 0000 5201</p>
+          <div id="lookupResult" class="lookup-result" aria-live="polite"></div>
+        </div>
+      </main>
+      <footer class="public-footer">会务服务台 · 工作时间 08:00–21:00</footer>
+    </section>
+
+    <div class="app-shell" id="adminApp">
+      <aside class="sidebar">
+        <a class="brand" href="#dashboard">
+          <span class="brand-mark">行</span>
+          <span><strong>行程台</strong><small>Journey Desk</small></span>
+        </a>
+        <div class="event-switcher">
+          <span class="event-dot"></span>
+          <div><small>当前会议</small><strong>HEMA SEM</strong><span>大连 & 福州</span></div>
+          <span class="chevron">⌄</span>
+        </div>
+        <nav class="side-nav" aria-label="主导航">
+          <p>工作台</p>
+          <a href="#dashboard" data-route="dashboard"><span>⌂</span>总览</a>
+          <a href="#registration" data-route="registration"><span>＋</span>新增报名</a>
+          <a href="#attendees" data-route="attendees"><span>◎</span>参会名单 <b id="navAttendeeCount">0</b></a>
+          <a href="#approvals" data-route="approvals"><span>△</span>行程审批 <b id="navApprovalCount" class="alert-count">0</b></a>
+          <a href="#transport" data-route="transport"><span>↗</span>接送机</a>
+          <p>管理</p>
+          <a href="#locks" data-route="locks"><span>▦</span>名单锁定</a>
+          <a href="#notifications" data-route="notifications"><span>◌</span>变更提醒 <b id="navNoticeCount" class="alert-count">0</b></a>
+          <a href="#settings" data-route="settings"><span>⚙</span>会议设置</a>
+        </nav>
+        <div class="sidebar-footer">
+          <a href="#lookup"><span>↗</span> 打开参会者查询端</a>
+          <div class="demo-badge">演示数据 · 浏览器本地保存</div>
+        </div>
+      </aside>
+
+      <div class="main-column">
+        <header class="topbar">
+          <button id="menuButton" class="icon-button mobile-only" aria-label="打开导航">☰</button>
+          <div class="topbar-event"><span class="live-dot"></span> 报名开放中 <small>· 截止 08月26日 18:00</small></div>
+          <div class="topbar-actions">
+            <button class="icon-button" id="notificationButton" aria-label="变更提醒">◌<span id="topNoticeCount">0</span></button>
+            <div class="user-switcher">
+              <div class="avatar" id="userAvatar">林</div>
+              <label><span>当前身份</span><select id="userSelect" aria-label="切换演示身份"></select></label>
+            </div>
+          </div>
+        </header>
+
+        <main class="page-content">
+          <section class="page" data-page="dashboard">
+            <div class="page-heading heading-with-action">
+              <div><span class="eyebrow">MEETING OPERATIONS</span><h1>早上好，<span id="greetingName">林悦</span></h1><p>这里是 HEMA SEM 的最新报名与行程动态。</p></div>
+              <div class="heading-actions"><button class="button button-secondary" id="copyRegistrationLink">复制报名链接</button><a class="button button-primary" href="#registration">＋ 新增报名</a></div>
+            </div>
+            <div class="metric-grid" id="metricGrid"></div>
+            <div class="dashboard-grid">
+              <article class="panel span-8">
+                <div class="panel-heading"><div><span class="kicker">ATTENDEES</span><h2>报名进度</h2></div><a href="#attendees">查看全部 →</a></div>
+                <div class="progress-summary"><strong id="progressCount">0</strong><span>/ 120 人</span><div class="progress-track"><i id="progressBar"></i></div><small id="progressPercent">0%</small></div>
+                <div class="city-bars" id="cityBars"></div>
+              </article>
+              <article class="panel span-4 qr-panel">
+                <div class="panel-heading"><div><span class="kicker">REGISTRATION</span><h2>扫码报名</h2></div></div>
+                <div id="qrCanvas" aria-label="报名二维码"></div>
+                <p>销售扫码后自动关联本人名下</p>
+                <button class="text-button" id="downloadQr">下载二维码</button>
+              </article>
+              <article class="panel span-7">
+                <div class="panel-heading"><div><span class="kicker">ATTENTION</span><h2>需要处理</h2></div><a href="#approvals">进入审批 →</a></div>
+                <div class="attention-list" id="attentionList"></div>
+              </article>
+              <article class="panel span-5">
+                <div class="panel-heading"><div><span class="kicker">ACTIVITY</span><h2>最近变更</h2></div><a href="#notifications">全部记录 →</a></div>
+                <div class="timeline" id="recentTimeline"></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="page" data-page="registration">
+            <div class="page-heading"><span class="eyebrow">NEW REGISTRATION</span><h1 id="registrationTitle">新增参会报名</h1><p>字段已按照《报名表模版》拆分为基本信息和往返行程。</p></div>
+            <form id="registrationForm" class="form-layout">
+              <div class="form-main">
+                <article class="panel form-section">
+                  <div class="section-number">01</div><div class="section-title"><h2>参会者信息</h2><p>带 * 的字段与模板必填项保持一致</p></div>
+                  <div class="field-grid">
+                    <label>参会者类别<input name="attendeeType" value="HCP" /></label>
+                    <label>客户姓名 *<input name="name" required placeholder="姓 / 名" /></label>
+                    <label>城市<input name="city" required placeholder="所在城市" /></label>
+                    <label>医院 / 连锁<input name="hospital" required /></label>
+                    <label>科室 / 门店<input name="department" required /></label>
+                    <label>职称<input name="title" /></label>
+                    <label>会场<select name="venue"><option>大连会场</option><option>福州会场</option></select></label>
+                    <label>性别<select name="sex"><option value="">请选择</option><option>男</option><option>女</option></select></label>
+                    <label class="span-2">身份证号 / 护照号 *<input name="idNumber" required autocomplete="off" /></label>
+                    <label>手机号 *<input name="phone" required inputmode="numeric" maxlength="11" /></label>
+                    <label>客户编号 HCP ID *<input name="hcpId" required /></label>
+                    <label>住宿安排<select name="accommodation"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
+                    <label>是否航空<select name="flight"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
+                    <label>大区<input name="region" /></label>
+                    <label>销售联系人<select name="ownerId" id="registrationOwner"></select></label>
+                    <label>MSL 医学部联系人<input name="mslContact" /></label>
+                    <label class="span-2">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>
+                  </div>
+                </article>
+                <article class="panel form-section trip-section">
+                  <div class="section-number">02</div><div class="section-title"><h2>去程信息</h2><p>系统将按会议规则自动检查异常</p></div>
+                  <div class="field-grid">
+                    <label>出发日期<input name="outDate" type="date" required /></label><label>出发城市<input name="outFrom" required /></label>
+                    <label>到达城市<input name="outTo" required /></label><label>航班 / 车次号<input name="outNo" required /></label>
+                    <label>出发时间<input name="outDeparture" type="time" required /></label><label>到达时间<input name="outArrival" type="time" required /></label>
+                  </div>
+                </article>
+                <article class="panel form-section trip-section">
+                  <div class="section-number">03</div><div class="section-title"><h2>返程信息</h2><p>返程到达城市不同将进入审批</p></div>
+                  <div class="field-grid">
+                    <label>返回日期<input name="returnDate" type="date" required /></label><label>出发城市<input name="returnFrom" required /></label>
+                    <label>到达城市<input name="returnTo" required /></label><label>航班 / 车次号<input name="returnNo" required /></label>
+                    <label>出发时间<input name="returnDeparture" type="time" required /></label><label>到达时间<input name="returnArrival" type="time" required /></label>
+                  </div>
+                </article>
+              </div>
+              <aside class="form-aside">
+                <div class="panel sticky-panel"><span class="kicker">SUBMISSION</span><h3>提交前检查</h3><ul><li>证件姓名与号码一致</li><li>航班/车次时间完整</li><li>异常行程将自动送审</li></ul><div id="liveRisk" class="risk-preview">填写行程后显示检查结果</div><button class="button button-primary button-block" type="submit">保存报名</button><button class="button button-ghost button-block" type="reset">清空表单</button></div>
+              </aside>
+            </form>
+          </section>
+
+          <section class="page" data-page="attendees">
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">ATTENDEE ROSTER</span><h1>参会名单</h1><p id="rosterScope">按当前账号权限展示名单。</p></div><div class="heading-actions"><button class="button button-secondary" id="exportExcel">导出 Excel</button><a class="button button-primary" href="#registration">＋ 新增报名</a></div></div>
+            <div class="panel table-panel">
+              <div class="table-toolbar"><div class="search-box">⌕ <input id="attendeeSearch" placeholder="搜索姓名、城市、医院或航班" /></div><select id="riskFilter"><option value="all">全部状态</option><option value="pending">待审批</option><option value="approved">已通过</option><option value="normal">行程正常</option></select><select id="venueFilter"><option value="all">全部会场</option><option>大连会场</option><option>福州会场</option></select></div>
+              <div class="table-wrap"><table><thead><tr><th>参会者</th><th>医院 / 科室</th><th>会场</th><th>去程</th><th>返程</th><th>负责人</th><th>状态</th><th></th></tr></thead><tbody id="attendeeTableBody"></tbody></table></div>
+              <div class="empty-state is-hidden" id="attendeeEmpty">没有符合条件的参会人员</div>
+            </div>
+          </section>
+
+          <section class="page" data-page="approvals">
+            <div class="page-heading"><span class="eyebrow">TRAVEL APPROVAL</span><h1>行程审批</h1><p>异常规则由会议设置统一管理，审批动作保留记录。</p></div>
+            <div class="approval-board" id="approvalBoard"></div>
+          </section>
+
+          <section class="page" data-page="transport">
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">GROUND TRANSPORT</span><h1>接送机调度</h1><p>维护司机、车辆、集合点与送机时间，参会者可从公开端查询。</p></div><a class="button button-secondary" href="#lookup">预览查询端</a></div>
+            <div class="panel table-panel"><div class="table-toolbar"><div class="segmented"><button class="active" data-transport-filter="all">全部</button><button data-transport-filter="pickup">接机</button><button data-transport-filter="dropoff">送机</button></div><div class="search-box">⌕ <input id="transportSearch" placeholder="搜索姓名或航班" /></div></div><div class="transport-grid" id="transportGrid"></div></div>
+          </section>
+
+          <section class="page" data-page="locks">
+            <div class="page-heading"><span class="eyebrow">DATA CONTROL</span><h1>名单锁定</h1><p>可以锁定整份名单、单个参会者，或指定字段。锁定后销售无法修改。</p></div>
+            <div class="lock-layout">
+              <article class="panel master-lock"><div class="lock-icon">▣</div><div><h2>全名单锁定</h2><p>适合出票或最终名单确认后使用</p></div><label class="switch"><input type="checkbox" id="masterLock"><span></span></label></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">COLUMN LOCKS</span><h2>按列锁定</h2></div></div><div class="lock-chips" id="columnLocks"></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">ROW LOCKS</span><h2>按参会者锁定</h2></div></div><div class="row-lock-list" id="rowLocks"></div></article>
+            </div>
+          </section>
+
+          <section class="page" data-page="notifications">
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">CHANGE LOG</span><h1>变更提醒</h1><p>报名新增、资料修改、审批和锁定操作均留痕。</p></div><button class="button button-secondary" id="markAllRead">全部标为已读</button></div>
+            <div class="panel"><div class="notification-list" id="notificationList"></div></div>
+          </section>
+
+          <section class="page" data-page="settings">
+            <div class="page-heading"><span class="eyebrow">MEETING SETTINGS</span><h1>会议设置</h1><p>配置报名时间、预设城市和自动审批规则。</p></div>
+            <form id="settingsForm" class="settings-grid">
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>会议信息</h2></div></div><div class="stack-form"><label>会议名称<input name="eventName" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>参会名额<input name="capacity" type="number" min="1" /></label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL RULES</span><h2>行程预警规则</h2></div></div><div class="stack-form"><label>允许的出发城市 <small>用顿号或逗号分隔</small><textarea name="allowedCities" rows="3"></textarea></label><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时提醒</label><label class="check-row"><input name="departureRule" type="checkbox" /> 出发城市不在允许范围时提醒</label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">ROLES</span><h2>管理员角色</h2></div></div><div class="role-list"><div><span class="role-dot ops"></span><p><strong>会务负责人</strong><small>全量名单、锁定、审批与调度</small></p></div><div><span class="role-dot client"></span><p><strong>会议负责人（客户）</strong><small>查看全部、审批异常行程</small></p></div><div><span class="role-dot sales"></span><p><strong>销售 / 负责人</strong><small>仅管理本人负责的参会者</small></p></div></div></article>
+              <div class="settings-actions"><button class="button button-primary" type="submit">保存会议设置</button><button class="button button-ghost" type="button" id="resetDemo">恢复演示数据</button></div>
+            </form>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <dialog id="attendeeDialog" class="detail-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div id="attendeeDetail"></div></dialog>
+    <dialog id="loginDialog" class="login-dialog">
+      <div class="login-brand"><span class="brand-mark">行</span><div><strong>行程台</strong><small>工作人员安全登录</small></div></div>
+      <form id="loginForm" class="stack-form">
+        <label>工作邮箱<input name="email" type="email" autocomplete="username" required placeholder="name@company.com" /></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>
+        <p id="loginError" class="login-error"></p>
+        <button class="button button-primary button-block" type="submit">登录管理端</button>
+      </form>
+      <p class="login-help">账号由会务负责人在 Supabase 中创建。参会者查询无需登录。</p>
+      <a class="text-link" href="#lookup">进入接送机查询 →</a>
+    </dialog>
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+    <div class="mobile-overlay" id="mobileOverlay"></div>
+  </body>
+</html>

@@ -7,9 +7,12 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
 await page.goto("http://127.0.0.1:4173/#portal", { waitUntil: "domcontentloaded" });
+await page.waitForFunction(() => document.querySelector("#projectSelect")?.options.length > 0);
 await page.evaluate(() => { location.hash = "dashboard"; });
-await page.waitForTimeout(150);
-await page.waitForSelector("#qrCanvas canvas");
+await page.waitForSelector('#adminApp:not(.is-hidden)');
+await page.waitForSelector('[data-page="dashboard"].active');
+await page.locator("#loginDialog").evaluate(dialog => { if (dialog.open) dialog.close(); });
+await page.waitForSelector("#qrCanvas canvas", {state:"attached"});
 const downloadPromise = page.waitForEvent("download");
 await page.click("#downloadQr");
 const download = await downloadPromise;

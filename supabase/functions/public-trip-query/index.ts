@@ -28,6 +28,9 @@ const registrationView = (row: Record<string, unknown>) => ({
   returnDate: row.return_date || "", returnFrom: row.return_from || "", returnTo: row.return_to || "", returnNo: row.return_no || "", returnDeparture: String(row.return_departure || "").slice(0, 5), returnArrival: String(row.return_arrival || "").slice(0, 5),
   region: row.region || "", contactName: row.contact_name || "", contactMobile: row.contact_mobile || "", mslContact: row.msl_contact || "", remarks: row.remarks === "公开报名认证，待填写完整信息" ? "" : row.remarks || "",
 });
+const projectView = (meeting: Record<string, unknown>) => ({
+  name: meeting.name || "参会服务", clientName: meeting.client_name || "", venues: meeting.venues || [], servicePhone: meeting.service_phone || "", brandColor: meeting.brand_color || "#205d43", fieldConfig: meeting.field_config || {}, flightLeadMinutes: meeting.flight_lead_minutes || 120, trainLeadMinutes: meeting.train_lead_minutes || 90,
+});
 
 export default {
 fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
@@ -53,7 +56,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   const slug = clean(payload.meeting, 100);
   if (!/^1\d{10}$/.test(phone) || !slug) return reply({ error: "请输入正确的手机号" }, 400);
 
-  const { data: meeting } = await db.from("meetings").select("id,name,deadline,master_locked,allowed_departure_cities,check_city_mismatch,check_departure_city").eq("slug", slug).maybeSingle();
+  const { data: meeting } = await db.from("meetings").select("id,name,client_name,venues,service_phone,brand_color,field_config,flight_lead_minutes,train_lead_minutes,deadline,master_locked,allowed_departure_cities,check_city_mismatch,check_departure_city").eq("slug", slug).maybeSingle();
   if (!meeting) return reply({ error: "未找到会议" }, 404);
 
   if (clean(payload.action) === "register") return reply({ error:"报名页面已更新，请刷新后重新填写" }, 426);
@@ -68,14 +71,14 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     if (existing) {
       if (clean(existing.name, 50) !== name || clean(existing.region, 50) !== region) return reply({ error: "大区、姓名或手机号不匹配，请核对后重试" }, 403);
       if (existing.row_locked) return reply({ error: "该报名已锁定，不能修改" }, 423);
-      return reply({ authenticated: true, existing: existing.id_number !== "待补充", attendee: registrationView(existing) });
+      return reply({ authenticated: true, existing: existing.id_number !== "待补充", attendee: registrationView(existing), project:projectView(meeting) });
     }
-    const { data: owner } = await db.from("profiles").select("user_id").eq("meeting_id", meeting.id).eq("role", "ops").order("created_at", { ascending: true }).limit(1).maybeSingle();
+    const { data: owner } = await db.from("meeting_members").select("user_id").eq("meeting_id", meeting.id).eq("role", "ops").order("created_at", { ascending: true }).limit(1).maybeSingle();
     if (!owner) return reply({ error: "会务负责人尚未配置，请稍后再试" }, 503);
     const reference = `WEB-${phone.slice(-4)}-${Date.now().toString(36).toUpperCase()}`;
     const { data: created, error: insertError } = await db.from("attendees").insert({ meeting_id:meeting.id, owner_id:owner.user_id, attendee_type:"HCP", name, region, phone, id_number:"待补充", hcp_id:reference, approval:"normal", risks:[], remarks:"公开报名认证，待填写完整信息" }).select("*").single();
     if (insertError || !created) return reply({ error: "身份验证失败，请稍后重试" }, 500);
-    return reply({ authenticated:true, existing:false, attendee:registrationView(created) });
+    return reply({ authenticated:true, existing:false, attendee:registrationView(created), project:projectView(meeting) });
   }
 
   if (clean(payload.action) === "complete-registration") {
@@ -92,7 +95,8 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       return_date:clean(payload.returnDate,10) || null, return_from:clean(payload.returnFrom,50), return_to:clean(payload.returnTo,50), return_no:clean(payload.returnNo,30), return_departure:clean(payload.returnDeparture,5) || null, return_arrival:clean(payload.returnArrival,5) || null,
       contact_name:clean(payload.contactName,50), contact_mobile:clean(payload.contactMobile,20).replace(/\D/g,""), msl_contact:clean(payload.mslContact,50), remarks:clean(payload.remarks,500),
     };
-    const required = [values.attendee_type,values.city,values.hospital,values.department,values.venue,values.sex,values.id_number,values.hcp_id,values.out_date,values.out_from,values.out_to,values.out_no,values.out_departure,values.out_arrival,values.return_date,values.return_from,values.return_to,values.return_no,values.return_departure,values.return_arrival,values.contact_name];
+    const required = [values.attendee_type,values.city,values.hospital,values.department,values.venue,values.sex,values.id_number,values.out_date,values.out_from,values.out_to,values.out_no,values.out_departure,values.out_arrival,values.return_date,values.return_from,values.return_to,values.return_no,values.return_departure,values.return_arrival,values.contact_name];
+    if ((meeting.field_config?.hcpId ?? true)) required.push(values.hcp_id);
     if (required.some(value => !value) || !/^1\d{10}$/.test(values.contact_mobile)) return reply({ error:"请完整填写报名表中的必填信息" }, 400);
     if (attendee.id_number !== "待补充") {
       const { data:locks } = await db.from("column_locks").select("field_group").eq("meeting_id",meeting.id).eq("locked",true);
@@ -105,7 +109,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     if (meeting.check_departure_city && values.out_from && !(meeting.allowed_departure_cities || []).includes(values.out_from)) risks.push(`出发城市“${values.out_from}”不在预设范围`);
     const { error:updateError } = await db.from("attendees").update({ ...values, approval:risks.length ? "pending" : "normal", risks }).eq("id",attendee.id);
     if (updateError) return reply({ error:updateError.message.includes("锁定") ? "报名已锁定，不能修改" : "报名保存失败，请稍后重试" }, 500);
-    return reply({ completed:true, needsApproval:risks.length > 0 });
+    return reply({ completed:true, needsApproval:risks.length > 0, project:projectView(meeting) });
   }
 
   const { data: attendee } = await db.from("attendees")
@@ -119,6 +123,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   return reply({
     found: true,
     meeting: meeting.name,
+    project: projectView(meeting),
     attendee: { name: `${attendee.name.slice(0, 1)}${"*".repeat(Math.max(attendee.name.length - 1, 1))}` },
     outbound: { date: attendee.out_date, from: attendee.out_from, to: attendee.out_to, number: attendee.out_no, departure: attendee.out_departure, arrival: attendee.out_arrival },
     returnTrip: { date: attendee.return_date, from: attendee.return_from, to: attendee.return_to, number: attendee.return_no, departure: attendee.return_departure, arrival: attendee.return_arrival },

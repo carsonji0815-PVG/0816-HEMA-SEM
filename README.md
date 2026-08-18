@@ -14,6 +14,7 @@
 - 接机司机、车辆、集合点及送机安排
 - 参会者输入手机号查询最小化的接送机信息，不使用短信验证码
 - GitHub Actions 自动发布 GitHub Pages
+- 多项目新建、复制与切换；各项目独立名单、角色、二维码、报名字段和接送规则
 
 ## 本地预览
 
@@ -30,7 +31,7 @@ python3 -m http.server 4173
 ### 1. 建立 Supabase 项目
 
 1. 在 Supabase 新建项目。
-2. 打开 SQL Editor，完整执行 `supabase/schema.sql`。
+2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再执行 `supabase/migrations/20260818_multi_project.sql`。已有项目只需执行后一个升级脚本。
 3. 在 Authentication 创建工作人员邮箱密码账号。
 4. 查询会议 ID：
 
@@ -47,6 +48,8 @@ values
   ('客户账号UUID', '会议UUID', '客户会议负责人姓名', '手机号', 'client'),
   ('销售账号UUID', '会议UUID', '销售姓名', '手机号', 'sales');
 ```
+
+首次执行多项目升级脚本会自动把上述账号复制到 `meeting_members`。之后会务负责人可在“项目管理”中新建或复制项目；每个二维码使用 `?event=项目编号#portal` 区分项目。
 
 ### 2. 部署公开查询函数
 
@@ -94,5 +97,6 @@ window.APP_CONFIG = {
 - `app.js`：报名、审批、锁定、接送机、查询和导出逻辑
 - `config.js`：演示/生产环境切换
 - `supabase/schema.sql`：表结构、RLS、锁定校验与审计触发器
+- `supabase/migrations/20260818_multi_project.sql`：多项目权限、配置和复制项目升级脚本
 - `supabase/functions/public-trip-query/index.ts`：无短信验证码的手机号查询接口
 - `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布

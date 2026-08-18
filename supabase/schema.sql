@@ -21,6 +21,16 @@ create table if not exists public.meetings (
   check_city_mismatch boolean not null default true,
   check_departure_city boolean not null default true,
   master_locked boolean not null default false,
+  client_name text,
+  start_date date,
+  end_date date,
+  venues text[] not null default '{}',
+  service_phone text,
+  brand_color text not null default '#205d43',
+  auth_mode text not null default 'region_name_phone',
+  flight_lead_minutes integer not null default 120,
+  train_lead_minutes integer not null default 90,
+  field_config jsonb not null default '{"title":true,"hcpId":true,"accommodation":true,"flight":true,"mslContact":true,"remarks":true}'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -31,6 +41,16 @@ create table if not exists public.profiles (
   phone text,
   role public.app_role not null default 'sales',
   created_at timestamptz not null default now()
+);
+
+create table if not exists public.meeting_members (
+  meeting_id uuid not null references public.meetings(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  display_name text not null,
+  phone text,
+  role public.app_role not null default 'sales',
+  created_at timestamptz not null default now(),
+  primary key (meeting_id, user_id)
 );
 
 create table if not exists public.attendees (

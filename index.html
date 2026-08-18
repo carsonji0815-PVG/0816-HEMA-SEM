@@ -68,19 +68,19 @@
                   <label>城市<input name="city" required /></label>
                   <label>医院 / 连锁<input name="hospital" required /></label>
                   <label>科室 / 门店<input name="department" required /></label>
-                  <label>职称<input name="title" /></label>
+                  <label data-config-field="title">职称<input name="title" /></label>
                   <label>会场<select name="venue" required><option value="">请选择</option><option>大连会场</option><option>福州会场</option></select></label>
                   <label>性别<select name="sex" required><option value="">请选择</option><option>男</option><option>女</option></select></label>
                   <label class="span-2">身份证号 / 护照号<input name="idNumber" autocomplete="off" required /></label>
                   <label>手机号<input name="phone" readonly required /></label>
-                  <label>客户编号 HCP ID<input name="hcpId" required /></label>
-                  <label>住宿安排<select name="accommodation"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
-                  <label>是否航空<select name="flight"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
+                  <label data-config-field="hcpId">客户编号 HCP ID<input name="hcpId" required /></label>
+                  <label data-config-field="accommodation">住宿安排<select name="accommodation"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
+                  <label data-config-field="flight">是否航空<select name="flight"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
                   <label>大区<input name="region" readonly required /></label>
                   <label>销售联系人姓名<input name="contactName" required /></label>
                   <label>销售联系人手机<input name="contactMobile" inputmode="numeric" maxlength="11" required /></label>
-                  <label>MSL 医学部联系人<input name="mslContact" /></label>
-                  <label class="span-2">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>
+                  <label data-config-field="mslContact">MSL 医学部联系人<input name="mslContact" /></label>
+                  <label class="span-2" data-config-field="remarks">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>
                 </div></section>
                 <section class="public-form-section"><h3>去程信息</h3><div class="public-field-grid">
                   <label>出发日期<input name="outDate" type="date" required /></label><label>出发城市<input name="outFrom" required /></label>
@@ -119,8 +119,8 @@
         </a>
         <div class="event-switcher">
           <span class="event-dot"></span>
-          <div><small>当前会议</small><strong>HEMA SEM</strong><span>大连 & 福州</span></div>
-          <span class="chevron">⌄</span>
+          <label><small>当前项目</small><select id="projectSelect" aria-label="切换项目"></select></label>
+          <a class="project-manage-link" href="#projects" aria-label="管理项目">⚙</a>
         </div>
         <nav class="side-nav" aria-label="主导航">
           <p>工作台</p>
@@ -130,6 +130,7 @@
           <a href="#approvals" data-route="approvals"><span>△</span>行程审批 <b id="navApprovalCount" class="alert-count">0</b></a>
           <a href="#transport" data-route="transport"><span>↗</span>接送机</a>
           <p>管理</p>
+          <a href="#projects" data-route="projects"><span>▤</span>项目管理</a>
           <a href="#locks" data-route="locks"><span>▦</span>名单锁定</a>
           <a href="#notifications" data-route="notifications"><span>◌</span>变更提醒 <b id="navNoticeCount" class="alert-count">0</b></a>
           <a href="#settings" data-route="settings"><span>⚙</span>会议设置</a>
@@ -154,6 +155,11 @@
         </header>
 
         <main class="page-content">
+          <section class="page" data-page="projects">
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">PROJECT CENTER</span><h1>项目管理</h1><p>新建或复制项目；每个项目拥有独立的报名入口、名单、权限和接送规则。</p></div><button class="button button-primary" id="newProjectButton">＋ 新建项目</button></div>
+            <div class="project-grid" id="projectGrid"></div>
+          </section>
+
           <section class="page" data-page="dashboard">
             <div class="page-heading heading-with-action">
               <div><span class="eyebrow">MEETING OPERATIONS</span><h1>早上好，<span id="greetingName">林悦</span></h1><p>这里是 HEMA SEM 的最新报名与行程动态。</p></div>
@@ -267,10 +273,11 @@
           </section>
 
           <section class="page" data-page="settings">
-            <div class="page-heading"><span class="eyebrow">MEETING SETTINGS</span><h1>会议设置</h1><p>配置报名时间、预设城市和自动审批规则。</p></div>
+            <div class="page-heading"><span class="eyebrow">PROJECT SETTINGS</span><h1>项目设置</h1><p>以下配置只作用于当前项目，不影响其他项目。</p></div>
             <form id="settingsForm" class="settings-grid">
-              <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>会议信息</h2></div></div><div class="stack-form"><label>会议名称<input name="eventName" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>参会名额<input name="capacity" type="number" min="1" /></label></div></article>
-              <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL RULES</span><h2>行程预警规则</h2></div></div><div class="stack-form"><label>允许的出发城市 <small>用顿号或逗号分隔</small><textarea name="allowedCities" rows="3"></textarea></label><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时提醒</label><label class="check-row"><input name="departureRule" type="checkbox" /> 出发城市不在允许范围时提醒</label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>参会名额<input name="capacity" type="number" min="1" /></label><label>会务联系电话<input name="servicePhone" /></label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL RULES</span><h2>行程与接送规则</h2></div></div><div class="stack-form"><label>允许的出发城市 <small>用顿号或逗号分隔</small><textarea name="allowedCities" rows="3"></textarea></label><div class="field-grid"><label>航班提前分钟<input name="flightLeadMinutes" type="number" min="0" step="10" /></label><label>高铁提前分钟<input name="trainLeadMinutes" type="number" min="0" step="10" /></label></div><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时提醒</label><label class="check-row"><input name="departureRule" type="checkbox" /> 出发城市不在允许范围时提醒</label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">FORM FIELDS</span><h2>报名字段</h2></div></div><div class="field-toggle-grid"><label class="check-row"><input name="fieldTitle" type="checkbox" /> 显示职称</label><label class="check-row"><input name="fieldHcpId" type="checkbox" /> 显示 HCP ID</label><label class="check-row"><input name="fieldAccommodation" type="checkbox" /> 显示住宿安排</label><label class="check-row"><input name="fieldFlight" type="checkbox" /> 显示是否航空</label><label class="check-row"><input name="fieldMslContact" type="checkbox" /> 显示 MSL 联系人</label><label class="check-row"><input name="fieldRemarks" type="checkbox" /> 显示备注</label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">ROLES</span><h2>管理员角色</h2></div></div><div class="role-list"><div><span class="role-dot ops"></span><p><strong>会务负责人</strong><small>全量名单、锁定、审批与调度</small></p></div><div><span class="role-dot client"></span><p><strong>会议负责人（客户）</strong><small>查看全部、审批异常行程</small></p></div><div><span class="role-dot sales"></span><p><strong>销售 / 负责人</strong><small>仅管理本人负责的参会者</small></p></div></div></article>
               <div class="settings-actions"><button class="button button-primary" type="submit">保存会议设置</button><button class="button button-ghost" type="button" id="resetDemo">恢复演示数据</button></div>
             </form>
@@ -280,6 +287,7 @@
     </div>
 
     <dialog id="attendeeDialog" class="detail-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div id="attendeeDetail"></div></dialog>
+    <dialog id="projectDialog" class="login-dialog project-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">项</span><div><strong>新建项目</strong><small>可空白创建或复制已有配置</small></div></div><form id="projectForm" class="stack-form"><label>项目名称<input name="name" required placeholder="例如：2026 血液高峰论坛" /></label><label>项目编号 / 链接标识<input name="slug" required pattern="[a-z0-9-]+" placeholder="例如：blood-forum-2026" /><small>仅使用小写字母、数字和短横线</small></label><label>复制配置<select name="sourceId" id="projectCopySource"><option value="">不复制，使用默认设置</option></select></label><p id="projectFormError" class="login-error"></p><button class="button button-primary button-block" type="submit">创建并进入项目</button></form></dialog>
     <dialog id="loginDialog" class="login-dialog">
       <div class="login-brand"><span class="brand-mark">行</span><div><strong>行程台</strong><small>工作人员安全登录</small></div></div>
       <form id="loginForm" class="stack-form">

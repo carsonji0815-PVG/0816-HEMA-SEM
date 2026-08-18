@@ -9,6 +9,7 @@ page.on("pageerror", error => errors.push(`pageerror: ${error.message}`));
 page.on("console", message => { if (message.type() === "error" && !message.text().includes("Failed to load resource")) errors.push(`console: ${message.text()}`); });
 
 await page.goto("http://127.0.0.1:4173", { waitUntil: "domcontentloaded" });
+await page.locator("#loginDialog").evaluate(dialog => { if (dialog.open) dialog.close(); });
 await page.waitForSelector('[data-page="dashboard"].active');
 await page.waitForTimeout(700);
 await page.screenshot({ path: ".tmp/browser/dashboard.png", fullPage: true });

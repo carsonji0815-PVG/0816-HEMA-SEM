@@ -74,6 +74,7 @@
   let backend = null;
   let backendMeetingId = null;
   let syncTimer = null;
+  let lastLookupSchedule = null;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -131,7 +132,7 @@
       backend = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
       const { data } = await backend.auth.getSession();
       if (data.session) await loadBackendState();
-      else if (!["lookup", "register"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
+      else if (!["portal", "lookup", "register"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
     }
     populateUsers(); bindNavigation(); bindForms(); bindControls(); route(); renderAll();
     window.addEventListener("hashchange", route);
@@ -221,13 +222,10 @@
   function closeMenu() { $(".sidebar").classList.remove("open"); $("#mobileOverlay").classList.remove("show"); }
   function route() {
     const target = (location.hash || "#dashboard").slice(1).split("?")[0];
-    const isPublicLookup = target === "lookup";
-    const isPublicRegistration = target === "register";
-    const isPublic = isPublicLookup || isPublicRegistration;
+    const isPublic = ["portal", "lookup", "register"].includes(target);
     $("#adminApp").classList.toggle("is-hidden", isPublic);
-    $("#publicLookupView").classList.toggle("is-hidden", !isPublicLookup);
-    $("#publicRegistrationView").classList.toggle("is-hidden", !isPublicRegistration);
-    if (isPublic) return;
+    $("#publicPortalView").classList.toggle("is-hidden", !isPublic);
+    if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : "register"); scrollTo({ top: 0, behavior: "instant" }); return; }
     const routeName = $( `[data-page="${target}"]`) ? target : "dashboard";
     $$(".page").forEach(page => page.classList.toggle("active", page.dataset.page === routeName));
     $$("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === routeName));
@@ -255,7 +253,17 @@
     $("#masterLock").addEventListener("change", event => { if (!canManage()) return deny(); state.locks.master = event.target.checked; addNotification("lock", `${currentUser().name}${event.target.checked ? "锁定" : "解锁"}了全部名单`); saveState(); renderAll(); });
     $("#copyRegistrationLink").addEventListener("click", copyRegistrationLink);
     $("#downloadQr").addEventListener("click", downloadQr);
+    $$('[data-portal-tab]').forEach(button => button.addEventListener("click", () => { location.hash = button.dataset.portalTab === "lookup" ? "lookup" : "portal"; }));
     $("#resetDemo").addEventListener("click", () => { if (!confirm("确认恢复全部演示数据？")) return; state = initialState(); saveState(); populateUsers(); renderAll(); toast("已恢复演示数据"); });
+  }
+
+  function setPortalTab(tab) {
+    $$('[data-portal-tab]').forEach(button => {
+      const active = button.dataset.portalTab === tab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    $$('[data-portal-panel]').forEach(panel => panel.classList.toggle("is-hidden", panel.dataset.portalPanel !== tab));
   }
 
   function renderAll() {
@@ -332,7 +340,11 @@
       ["pickup","dropoff"].forEach(type => {
         if (activeTransportFilter !== "all" && activeTransportFilter !== type) return;
         const item = a.transport?.[type] || {};
-        cards.push(`<article class="transport-card"><div class="transport-head"><div><h3>${escapeHtml(a.name)} · ${type === "pickup" ? "接机" : "送机"}</h3><p>${escapeHtml(type === "pickup" ? `${a.outNo} · ${a.outArrival} 到达` : `${a.returnNo} · ${a.returnDeparture} 出发`)}</p></div><span class="status ${item.driver === "待分配" ? "status-pending" : "status-normal"}">${item.driver === "待分配" ? "待分配" : "已安排"}</span></div><div class="transport-details"><div><small>司机 / 电话</small><strong>${escapeHtml(item.driver || "待分配")} · ${escapeHtml(item.phone || "—")}</strong></div><div><small>车辆</small><strong>${escapeHtml(item.vehicle || "待分配")}</strong></div><div><small>时间</small><strong>${escapeHtml(item.time || "待设置")}</strong></div><div><small>集合点</small><strong>${escapeHtml(item.point || "待设置")}</strong></div></div>${canManage() ? `<button class="transport-edit" data-edit-transport="${a.id}" data-type="${type}">编辑安排 →</button>` : ""}</article>`);
+        const staff = isStaffTransport(item);
+        const assigned = item.driver && item.driver !== "待分配";
+        const contact = staff ? "会务工作人员现场接待" : `${item.driver || "待分配"} · ${item.phone || "—"}`;
+        const vehicle = staff ? "无需录入司机 / 车辆" : (item.vehicle || "待分配");
+        cards.push(`<article class="transport-card"><div class="transport-head"><div><h3>${escapeHtml(a.name)} · ${type === "pickup" ? "接机" : "送机"}</h3><p>${escapeHtml(type === "pickup" ? `${a.outNo} · ${a.outArrival} 到达` : `${a.returnNo} · ${a.returnDeparture} 出发`)}</p></div><span class="status ${assigned ? "status-normal" : "status-pending"}">${assigned ? (staff ? "工作人员接待" : "独立司机") : "待分配"}</span></div><div class="transport-details"><div><small>接送方式</small><strong>${escapeHtml(contact)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div><div><small>时间</small><strong>${escapeHtml(item.time || "待设置")}</strong></div><div><small>集合点</small><strong>${escapeHtml(item.point || "待设置")}</strong></div></div>${type === "dropoff" ? `<div class="transport-rule">${isFlightReturn(a) ? "航班起飞前 2 小时" : "高铁出发前 1.5 小时"} · 建议 ${escapeHtml(recommendedDropoffTime(a) || "待补全返程时间")}</div>` : ""}${canManage() ? `<button class="transport-edit" data-edit-transport="${a.id}" data-type="${type}">编辑安排 →</button>` : ""}</article>`);
       });
     });
     $("#transportGrid").innerHTML = cards.join("") || `<div class="empty-state">暂无接送机记录</div>`; bindDynamicButtons();
@@ -388,9 +400,27 @@
   function deny() { toast("当前身份没有此操作权限", "error"); renderAll(); }
 
   function editTransport(id, type) {
-    const a = state.attendees.find(item => item.id === id); const t = a.transport[type]; const typeName = type === "pickup" ? "接机" : "送机";
-    $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">TRANSPORT</span><h2>${escapeHtml(a.name)} · ${typeName}</h2><p>更新后参会者可在公开查询端立即查看</p></div><form class="detail-body" id="transportEditForm"><div class="field-grid"><label>司机姓名<input name="driver" value="${escapeHtml(t.driver)}" required></label><label>司机电话<input name="phone" value="${escapeHtml(t.phone)}" required></label><label>车辆 / 车牌<input name="vehicle" value="${escapeHtml(t.vehicle)}" required></label><label>接送时间<input name="time" value="${escapeHtml(t.time)}" required></label><label class="span-2">集合点<input name="point" value="${escapeHtml(t.point)}" required></label></div><div class="detail-actions"><button class="button button-primary" type="submit">保存安排</button><button class="button button-secondary" type="button" id="cancelTransport">取消</button></div></form>`;
-    const dialog = $("#attendeeDialog"); dialog.showModal(); $("#cancelTransport").onclick = () => dialog.close(); $("#transportEditForm").onsubmit = event => { event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget)); a.transport[type] = values; addNotification("change", `${currentUser().name}更新了${a.name}的${typeName}安排`); saveState(); dialog.close(); renderAll(); toast(`${typeName}安排已更新`); };
+    const a = state.attendees.find(item => item.id === id); const t = a.transport[type] || {}; const typeName = type === "pickup" ? "接机" : "送机";
+    const suggested = type === "dropoff" ? recommendedDropoffTime(a) : "";
+    const savedTime = !t.time || ["待设置","待分配"].includes(t.time) ? suggested : t.time;
+    const currentMode = isStaffTransport(t) ? "staff" : "driver";
+    $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">TRANSPORT</span><h2>${escapeHtml(a.name)} · ${typeName}</h2><p>更新后参会者可在公开查询端立即查看</p></div><form class="detail-body" id="transportEditForm"><div class="field-grid"><label class="span-2">接送方式<select name="mode" id="transportMode"><option value="staff" ${currentMode === "staff" ? "selected" : ""}>机场 / 车站工作人员接待</option><option value="driver" ${currentMode === "driver" ? "selected" : ""}>独立司机接送</option></select></label><div class="span-2 driver-fields" id="driverFields"><div class="field-grid"><label>司机姓名<input name="driver" value="${escapeHtml(currentMode === "driver" ? t.driver || "" : "")}"></label><label>司机电话<input name="phone" value="${escapeHtml(currentMode === "driver" ? t.phone || "" : "")}"></label><label class="span-2">车辆 / 车牌<input name="vehicle" value="${escapeHtml(currentMode === "driver" ? t.vehicle || "" : "")}"></label></div></div><label>接送时间<input name="time" value="${escapeHtml(savedTime || "")}" placeholder="YYYY-MM-DD HH:mm" required></label><label>集合点<input name="point" value="${escapeHtml(t.point || "")}" required></label></div>${type === "dropoff" ? `<div class="risk-preview ok">✓ 自动建议：${isFlightReturn(a) ? "机场按航班起飞前 2 小时" : "高铁站按列车出发前 1.5 小时"}，当前建议 ${escapeHtml(suggested || "请先补全返程日期与时间")}；可按城市路况手动调整。</div>` : `<div class="risk-preview">工作人员接待时，无需录入司机、电话和车辆。</div>`}<div class="detail-actions"><button class="button button-primary" type="submit">保存安排</button><button class="button button-secondary" type="button" id="cancelTransport">取消</button></div></form>`;
+    const dialog = $("#attendeeDialog"); dialog.showModal();
+    const form = $("#transportEditForm"); const mode = $("#transportMode"); const driverFields = $("#driverFields");
+    const toggleDriverFields = () => { const show = mode.value === "driver"; driverFields.classList.toggle("is-hidden", !show); $$('input', driverFields).forEach(input => input.required = show); };
+    mode.onchange = toggleDriverFields; toggleDriverFields(); $("#cancelTransport").onclick = () => dialog.close();
+    form.onsubmit = event => { event.preventDefault(); const values = Object.fromEntries(new FormData(form)); a.transport[type] = values.mode === "staff" ? { driver:"会务工作人员", phone:"", vehicle:"", time:values.time, point:values.point } : { driver:values.driver, phone:values.phone, vehicle:values.vehicle, time:values.time, point:values.point }; addNotification("change", `${currentUser().name}更新了${a.name}的${typeName}安排`); saveState(); dialog.close(); renderAll(); toast(`${typeName}安排已更新`); };
+  }
+
+  function isStaffTransport(item = {}) { return item.driver === "会务工作人员"; }
+  function isFlightReturn(a) { return a.flight === "Y" && !/^[GDC]\d+/i.test(String(a.returnNo || "").trim()); }
+  function recommendedDropoffTime(a) {
+    if (!a.returnDate || !a.returnDeparture) return "";
+    const departure = new Date(`${a.returnDate}T${a.returnDeparture}:00`);
+    if (Number.isNaN(departure.getTime())) return "";
+    departure.setMinutes(departure.getMinutes() - (isFlightReturn(a) ? 120 : 90));
+    const pad = value => String(value).padStart(2,"0");
+    return `${departure.getFullYear()}-${pad(departure.getMonth()+1)}-${pad(departure.getDate())} ${pad(departure.getHours())}:${pad(departure.getMinutes())}`;
   }
 
   function updateLiveRisk() {
@@ -401,7 +431,7 @@
     event.preventDefault(); if (state.locks.master) return toast("全名单已锁定，不能新增报名", "error");
     const data = Object.fromEntries(new FormData(event.currentTarget)); data.phone = normalizePhone(data.phone); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");
     if (state.attendees.some(a => a.phone === data.phone)) return toast("该手机号已存在报名记录", "error");
-    data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); data.risks = evaluateRisks(data); data.approval = data.risks.length ? "pending" : "normal"; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.returnDate} ${data.returnDeparture}`, point: "会议酒店大堂" } };
+    data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); data.risks = evaluateRisks(data); data.approval = data.risks.length ? "pending" : "normal"; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point: "会议酒店大堂" } };
     state.attendees.unshift(data); addNotification("create", `${currentUser().name}新增报名：${data.name} · ${data.venue}${data.risks.length ? "（行程待审批）" : ""}`); saveState(); event.currentTarget.reset(); renderAll(); toast(data.risks.length ? "报名已保存，异常行程已提交审批" : "报名已保存"); location.hash = "attendees";
   }
 
@@ -432,41 +462,74 @@
   async function queryTransport(event) {
     event.preventDefault(); const phone = normalizePhone($("#lookupPhone").value); const result = $("#lookupResult");
     if (phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的 11 位手机号</div>`; return; }
+    lastLookupSchedule = null;
     if (window.APP_CONFIG?.mode === "production" && window.APP_CONFIG.supabaseUrl) {
       try {
         const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({phone,meeting:window.APP_CONFIG.eventSlug}) });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "查询失败");
         if (!payload.found) { result.innerHTML = `<div class="lookup-error">未查询到该手机号的行程，请确认号码或联系会务服务台。</div>`; return; }
-        const transport = direction => payload.transports?.find(item => item.direction === direction) || {};
-        const card = (label,trip,t) => `<div class="result-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="result-route"><div><small>司机与电话</small><strong>${escapeHtml(t.driver||"待分配")} · ${escapeHtml(t.phone||"—")}</strong></div><div><small>车辆</small><strong>${escapeHtml(t.vehicle||"待分配")}</strong></div><div><small>${label}时间</small><strong>${escapeHtml(t.time ? new Date(t.time).toLocaleString("zh-CN",{hour12:false}) : "待公布")}</strong></div><div><small>集合点</small><strong>${escapeHtml(t.point||"待公布")}</strong></div></div></div>`;
-        result.innerHTML = `<div style="margin-top:16px;font-size:11px;font-weight:700">${escapeHtml(payload.attendee.name)}，你的安排如下</div>${card("接机",payload.outbound,transport("pickup"))}${card("送机",payload.returnTrip,transport("dropoff"))}`;
+        const pickup = payload.transports?.find(item => item.direction === "pickup") || {};
+        const dropoff = payload.transports?.find(item => item.direction === "dropoff") || {};
+        result.innerHTML = renderLookupResult(payload.attendee.name, payload.outbound, payload.returnTrip, pickup, dropoff);
+        lastLookupSchedule = buildLookupSchedule(payload.attendee.name, pickup, dropoff);
+        $("#addCalendarButton")?.addEventListener("click", downloadCalendar);
       } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
       return;
     }
     const a = state.attendees.find(item => normalizePhone(item.phone) === phone);
     if (!a) { result.innerHTML = `<div class="lookup-error">未查询到该手机号的行程，请确认号码或联系会务服务台。</div>`; return; }
-    const card = (type,label,trip) => { const t = a.transport?.[type] || {}; return `<div class="result-card"><h3>${label} · ${escapeHtml(trip.no)}</h3><p>${escapeHtml(trip.route)} · ${escapeHtml(trip.time)}</p><div class="result-route"><div><small>司机与电话</small><strong>${escapeHtml(t.driver || "待分配")} · ${escapeHtml(t.phone || "—")}</strong></div><div><small>车辆</small><strong>${escapeHtml(t.vehicle || "待分配")}</strong></div><div><small>${label}时间</small><strong>${escapeHtml(t.time || "待公布")}</strong></div><div><small>集合点</small><strong>${escapeHtml(t.point || "待公布")}</strong></div></div></div>`; };
-    result.innerHTML = `<div style="margin-top:16px;font-size:11px;font-weight:700">${escapeHtml(maskName(a.name))}，你的安排如下</div>${card("pickup","接机",{no:a.outNo,route:`${a.outFrom} → ${a.outTo}`,time:`${fmtDate(a.outDate)} ${a.outArrival}到达`})}${card("dropoff","送机",{no:a.returnNo,route:`${a.returnFrom} → ${a.returnTo}`,time:`${fmtDate(a.returnDate)} ${a.returnDeparture}出发`})}`;
+    const outbound = { number:a.outNo, from:a.outFrom, to:a.outTo, date:`${a.outDate} ${a.outArrival} 到达` };
+    const returnTrip = { number:a.returnNo, from:a.returnFrom, to:a.returnTo, date:`${a.returnDate} ${a.returnDeparture} 出发` };
+    const pickup = a.transport?.pickup || {}; const dropoff = a.transport?.dropoff || {};
+    result.innerHTML = renderLookupResult(maskName(a.name), outbound, returnTrip, pickup, dropoff);
+    lastLookupSchedule = buildLookupSchedule(a.name, pickup, dropoff);
+    $("#addCalendarButton")?.addEventListener("click", downloadCalendar);
+  }
+
+  function renderLookupResult(name, outbound = {}, returnTrip = {}, pickup = {}, dropoff = {}) {
+    const displayTime = value => { if (!value) return "待公布"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("zh-CN",{hour12:false}); };
+    const card = (label, trip, t) => {
+      const staff = isStaffTransport({driver:t.driver || t.driver_name});
+      const driver = staff ? "会务工作人员现场接待" : `${t.driver || t.driver_name || "待分配"} · ${t.phone || t.driver_phone || "—"}`;
+      const vehicle = staff ? "无需司机及车辆信息" : (t.vehicle || "待分配");
+      return `<div class="result-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="result-route"><div><small>接送方式</small><strong>${escapeHtml(driver)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div><div><small>${label}时间</small><strong>${escapeHtml(displayTime(t.time || t.service_time))}</strong></div><div><small>集合点</small><strong>${escapeHtml(t.point || t.meeting_point || "待公布")}</strong></div></div></div>`;
+    };
+    return `<div class="lookup-name">${escapeHtml(name)}，你的安排如下</div>${card("接机",outbound,pickup)}${card("送机",returnTrip,dropoff)}<button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">添加到手机日历并自动提醒</button><p class="calendar-hint">添加后，手机将在每次接送前 30 分钟提醒；无需短信或额外 App。</p>`;
+  }
+
+  function buildLookupSchedule(name, pickup = {}, dropoff = {}) {
+    const event = (label, t) => ({ title:`HEMA SEM ${label}提醒`, time:t.time || t.service_time || "", location:t.point || t.meeting_point || "", description:isStaffTransport({driver:t.driver || t.driver_name}) ? "会务工作人员现场接待" : `司机：${t.driver || t.driver_name || "待分配"}；电话：${t.phone || t.driver_phone || "—"}；车辆：${t.vehicle || "待分配"}` });
+    return { name, events:[event("接机",pickup),event("送机",dropoff)].filter(item => item.time && !["待设置","待公布","待分配"].includes(item.time)) };
+  }
+
+  function downloadCalendar() {
+    if (!lastLookupSchedule?.events.length) return toast("接送时间尚未公布，暂时无法添加提醒", "error");
+    const icsDate = value => { const date = new Date(String(value).replace(" ","T")); if (Number.isNaN(date.getTime())) return ""; return `${date.getUTCFullYear()}${String(date.getUTCMonth()+1).padStart(2,"0")}${String(date.getUTCDate()).padStart(2,"0")}T${String(date.getUTCHours()).padStart(2,"0")}${String(date.getUTCMinutes()).padStart(2,"0")}00Z`; };
+    const escapeIcs = value => String(value || "").replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/,/g,"\\,").replace(/;/g,"\\;");
+    const stamp = icsDate(new Date().toISOString());
+    const events = lastLookupSchedule.events.map((item,index) => { const start = icsDate(item.time); const endDate = new Date(String(item.time).replace(" ","T")); endDate.setMinutes(endDate.getMinutes()+30); return [`BEGIN:VEVENT`,`UID:${Date.now()}-${index}@journey-desk`,`DTSTAMP:${stamp}`,`DTSTART:${start}`,`DTEND:${icsDate(endDate.toISOString())}`,`SUMMARY:${escapeIcs(item.title)}`,`LOCATION:${escapeIcs(item.location)}`,`DESCRIPTION:${escapeIcs(item.description)}`,`BEGIN:VALARM`,`TRIGGER:-PT30M`,`ACTION:DISPLAY`,`DESCRIPTION:${escapeIcs(item.title)}`,`END:VALARM`,`END:VEVENT`].join("\r\n"); }).filter(item => !item.includes("DTSTART:\r\n"));
+    const content = [`BEGIN:VCALENDAR`,`VERSION:2.0`,`PRODID:-//Journey Desk//HEMA SEM//CN`,`CALSCALE:GREGORIAN`,...events,`END:VCALENDAR`].join("\r\n");
+    const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([content],{type:"text/calendar;charset=utf-8"})); link.download = `HEMA-SEM-${lastLookupSchedule.name}-接送提醒.ics`; link.click(); URL.revokeObjectURL(link.href); toast("日历提醒已生成，请选择添加到手机日历");
   }
 
   function saveSettings(event) {
     event.preventDefault(); if (!canManage()) return deny(); const data = Object.fromEntries(new FormData(event.currentTarget)); state.settings.eventName = data.eventName; state.settings.deadline = data.deadline; state.settings.capacity = Number(data.capacity) || 120; state.settings.allowedCities = data.allowedCities.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean); state.settings.mismatchRule = !!data.mismatchRule; state.settings.departureRule = !!data.departureRule; addNotification("change", `${currentUser().name}更新了会议和行程预警设置`); saveState(); renderAll(); toast("会议设置已保存");
   }
 
-  function copyRegistrationLink() { const url = `${location.origin}${location.pathname}#register`; navigator.clipboard?.writeText(url).then(() => toast("报名链接已复制")).catch(() => toast(url)); }
-  function renderQr() { const box = $("#qrCanvas"); if (!box) return; const url = `${location.origin}${location.pathname}?source=qr#register`; box.innerHTML = ""; if (window.QRCode) new QRCode(box, { text:url, width:160, height:160, colorDark:"#000000", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.H }); else box.innerHTML = `<button class="text-button" type="button">复制报名链接</button>`; box.querySelector("button")?.addEventListener("click",copyRegistrationLink); }
+  function copyRegistrationLink() { const url = `${location.origin}${location.pathname}#portal`; navigator.clipboard?.writeText(url).then(() => toast("参会服务链接已复制")).catch(() => toast(url)); }
+  function renderQr() { const box = $("#qrCanvas"); if (!box) return; const url = `${location.origin}${location.pathname}#portal`; box.innerHTML = ""; if (window.QRCode) new QRCode(box, { text:url, width:256, height:256, colorDark:"#000000", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.M }); else box.innerHTML = `<button class="text-button" type="button">复制参会服务链接</button>`; box.querySelector("button")?.addEventListener("click",copyRegistrationLink); }
   function downloadQr() {
     const source = $("#qrCanvas canvas") || $("#qrCanvas img");
     if (!source) return copyRegistrationLink();
     const output = document.createElement("canvas");
-    output.width = 240; output.height = 240;
+    output.width = 320; output.height = 320;
     const context = output.getContext("2d");
-    context.fillStyle = "#ffffff"; context.fillRect(0,0,240,240);
+    context.fillStyle = "#ffffff"; context.fillRect(0,0,320,320);
     context.imageSmoothingEnabled = false;
-    context.drawImage(source,20,20,200,200);
+    context.drawImage(source,32,32,256,256);
     const link = document.createElement("a");
-    link.download = "HEMA-SEM-报名二维码.png";
+    link.download = "HEMA-SEM-参会服务二维码.png";
     link.href = output.toDataURL("image/png");
     link.click();
   }

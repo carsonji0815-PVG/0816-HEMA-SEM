@@ -27,69 +27,46 @@
     <div class="ambient ambient-one"></div>
     <div class="ambient ambient-two"></div>
 
-    <section class="public-shell is-hidden" id="publicRegistrationView" aria-labelledby="publicRegistrationTitle">
+    <section class="public-shell is-hidden" id="publicPortalView" aria-labelledby="publicPortalTitle">
       <header class="public-header">
-        <a class="brand brand-dark" href="#register" aria-label="公开报名入口">
+        <a class="brand brand-dark" href="#portal" aria-label="参会服务入口">
           <span class="brand-mark">行</span>
           <span><strong>行程台</strong><small>Journey Desk</small></span>
         </a>
         <a class="text-link" href="#dashboard">工作人员入口 →</a>
       </header>
-      <main class="lookup-layout">
+      <main class="lookup-layout portal-layout">
         <div class="lookup-copy">
-          <span class="eyebrow">OPEN REGISTRATION</span>
-          <h1 id="publicRegistrationTitle">三项信息，<br />完成参会登记。</h1>
-          <p>填写大区、姓名和手机号即可提交。会务负责人将在管理端补充并确认后续行程信息。</p>
-          <div class="privacy-note"><span>✓</span> 无需邮箱、密码或短信验证码</div>
+          <span class="eyebrow">ATTENDEE SERVICE</span>
+          <h1 id="publicPortalTitle">报名与接送，<br />一个入口完成。</h1>
+          <p>首次参会请填写报名信息；已报名参会者可用手机号查询接机与送机安排，并添加到手机日历自动提醒。</p>
+          <div class="privacy-note"><span>✓</span> 无需登录、密码或短信验证码</div>
         </div>
-        <div class="lookup-card glass-card">
-          <div class="lookup-card-head">
-            <span class="icon-badge">＋</span>
-            <div><h2>参会报名</h2><p>HEMA SEM · 大连 & 福州</p></div>
+        <div class="lookup-card glass-card portal-card">
+          <div class="portal-tabs" role="tablist" aria-label="参会服务">
+            <button class="portal-tab active" type="button" role="tab" aria-selected="true" data-portal-tab="register"><span>＋</span> 我要报名</button>
+            <button class="portal-tab" type="button" role="tab" aria-selected="false" data-portal-tab="lookup"><span>⌁</span> 查询接送机</button>
           </div>
-          <form id="publicRegistrationForm" class="stack-form">
-            <label>大区<input name="region" maxlength="50" placeholder="例如：华东大区" required /></label>
-            <label>姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入参会者姓名" required /></label>
-            <label>手机号
-              <div class="phone-input"><span>+86</span><input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="请输入 11 位手机号" required /></div>
-            </label>
-            <button class="button button-primary button-block" type="submit">提交报名 <span>→</span></button>
-          </form>
-          <p class="form-hint">提交即表示同意会务团队仅为本次会议使用上述信息。</p>
-          <div id="publicRegistrationResult" class="lookup-result" aria-live="polite"></div>
-        </div>
-      </main>
-      <footer class="public-footer">会务服务台 · 工作时间 08:00–21:00</footer>
-    </section>
-
-    <section class="public-shell is-hidden" id="publicLookupView" aria-labelledby="lookupTitle">
-      <header class="public-header">
-        <a class="brand brand-dark" href="#dashboard" aria-label="返回管理端">
-          <span class="brand-mark">行</span>
-          <span><strong>行程台</strong><small>Journey Desk</small></span>
-        </a>
-        <a class="text-link" href="#dashboard">工作人员入口 →</a>
-      </header>
-      <main class="lookup-layout">
-        <div class="lookup-copy">
-          <span class="eyebrow">TRAVEL ASSISTANCE</span>
-          <h1 id="lookupTitle">你的接送安排，<br />一查就知道。</h1>
-          <p>输入报名时填写的手机号，查询接机司机、车辆及返程送机时间。我们仅展示本次出行需要的信息。</p>
-          <div class="privacy-note"><span>✓</span> 不展示证件号、医院或客户编号</div>
-        </div>
-        <div class="lookup-card glass-card">
-          <div class="lookup-card-head">
-            <span class="icon-badge">⌁</span>
-            <div><h2>查询接送机</h2><p>HEMA SEM · 大连 & 福州</p></div>
+          <div class="portal-panel" data-portal-panel="register">
+            <div class="lookup-card-head"><span class="icon-badge">＋</span><div><h2>参会报名</h2><p>填写三项信息即可提交</p></div></div>
+            <form id="publicRegistrationForm" class="stack-form">
+              <label>大区<input name="region" maxlength="50" placeholder="例如：华东大区" required /></label>
+              <label>姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入参会者姓名" required /></label>
+              <label>手机号<div class="phone-input"><span>+86</span><input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="请输入 11 位手机号" required /></div></label>
+              <button class="button button-primary button-block" type="submit">提交报名 <span>→</span></button>
+            </form>
+            <p class="form-hint">会务团队仅为本次会议使用上述信息。</p>
+            <div id="publicRegistrationResult" class="lookup-result" aria-live="polite"></div>
           </div>
-          <form id="lookupForm" class="stack-form">
-            <label>报名手机号
-              <div class="phone-input"><span>+86</span><input id="lookupPhone" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="请输入 11 位手机号" required /></div>
-            </label>
-            <button class="button button-primary button-block" type="submit">查询我的行程 <span>→</span></button>
-          </form>
-          <p class="form-hint">演示号码：138 0000 5201</p>
-          <div id="lookupResult" class="lookup-result" aria-live="polite"></div>
+          <div class="portal-panel is-hidden" data-portal-panel="lookup">
+            <div class="lookup-card-head"><span class="icon-badge">⌁</span><div><h2>查询接送机</h2><p>输入报名手机号，无需登录</p></div></div>
+            <form id="lookupForm" class="stack-form">
+              <label>报名手机号<div class="phone-input"><span>+86</span><input id="lookupPhone" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="请输入 11 位手机号" required /></div></label>
+              <button class="button button-primary button-block" type="submit">查询我的行程 <span>→</span></button>
+            </form>
+            <p class="form-hint">查询后可一键添加到手机日历，自动提醒接送时间。</p>
+            <div id="lookupResult" class="lookup-result" aria-live="polite"></div>
+          </div>
         </div>
       </main>
       <footer class="public-footer">会务服务台 · 工作时间 08:00–21:00</footer>
@@ -155,7 +132,7 @@
                 <div id="qrCanvas" aria-label="报名二维码"></div>
                 <p>销售扫码后自动关联本人名下</p>
                 <button class="text-button" id="downloadQr">下载二维码</button>
-                <a class="text-link qr-direct-link" href="#register" target="_blank" rel="noopener">扫码无反应？点此打开报名</a>
+                <a class="text-link qr-direct-link" href="#portal" target="_blank" rel="noopener">扫码无反应？点此打开参会服务</a>
               </article>
               <article class="panel span-7">
                 <div class="panel-heading"><div><span class="kicker">ATTENTION</span><h2>需要处理</h2></div><a href="#approvals">进入审批 →</a></div>
@@ -232,7 +209,7 @@
           </section>
 
           <section class="page" data-page="transport">
-            <div class="page-heading heading-with-action"><div><span class="eyebrow">GROUND TRANSPORT</span><h1>接送机调度</h1><p>维护司机、车辆、集合点与送机时间，参会者可从公开端查询。</p></div><a class="button button-secondary" href="#lookup">预览查询端</a></div>
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">GROUND TRANSPORT</span><h1>接送机调度</h1><p>工作人员接机无需司机资料；独立司机接送可单独录入，送机时间按航班 / 高铁规则自动建议。</p></div><a class="button button-secondary" href="#lookup">预览参会服务</a></div>
             <div class="panel table-panel"><div class="table-toolbar"><div class="segmented"><button class="active" data-transport-filter="all">全部</button><button data-transport-filter="pickup">接机</button><button data-transport-filter="dropoff">送机</button></div><div class="search-box">⌕ <input id="transportSearch" placeholder="搜索姓名或航班" /></div></div><div class="transport-grid" id="transportGrid"></div></div>
           </section>
 
@@ -273,7 +250,7 @@
         <button class="button button-primary button-block" type="submit">登录管理端</button>
       </form>
       <p class="login-help">账号由会务负责人在 Supabase 中创建。参会者查询无需登录。</p>
-      <a class="text-link" href="#lookup">进入接送机查询 →</a>
+      <a class="text-link" href="#portal">进入参会服务 →</a>
     </dialog>
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <div class="mobile-overlay" id="mobileOverlay"></div>

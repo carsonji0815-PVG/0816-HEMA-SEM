@@ -185,6 +185,8 @@ tbody tr { transition: background .15s; } tbody tr:hover { background: #fafbf8; 
 .login-dialog { width: min(410px,calc(100vw - 28px)); border: 0; border-radius: 20px; padding: 31px; background: #fbfcf8; box-shadow: 0 30px 100px rgba(18,30,23,.28); }.login-dialog::backdrop { background: rgba(15,27,20,.78); backdrop-filter: blur(8px); }.login-brand { display:flex; align-items:center; gap:12px; padding-bottom:21px; border-bottom:1px solid var(--line); }.login-brand strong,.login-brand small { display:block; }.login-brand strong { font-size:16px; }.login-brand small { margin-top:3px; color:var(--ink-soft); font-size:9px; }.login-error { min-height:14px; margin:0; color:#a34b3a; font-size:9px; }.login-help { margin:17px 0 10px; color:var(--ink-soft); font-size:9px; line-height:1.6; }
 .mobile-only, .mobile-overlay { display: none; }
 
+.lookup-success { padding: 14px; border-radius: 9px; color: var(--green); background: var(--mint); font-size: 10px; line-height: 1.7; }
+
 @media (max-width: 1050px) {
   .metric-grid { grid-template-columns: repeat(2,1fr); }.span-8,.span-7,.span-5,.span-4 { grid-column: span 12; }.form-layout { grid-template-columns: 1fr; }.form-aside { order: -1; }.sticky-panel { position: static; }.approval-board { grid-template-columns: repeat(2,1fr); }
 }

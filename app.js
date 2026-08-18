@@ -131,7 +131,7 @@
       backend = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
       const { data } = await backend.auth.getSession();
       if (data.session) await loadBackendState();
-      else if ((location.hash || "#dashboard") !== "#lookup") $("#loginDialog").showModal();
+      else if (!["lookup", "register"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
     }
     populateUsers(); bindNavigation(); bindForms(); bindControls(); route(); renderAll();
     window.addEventListener("hashchange", route);
@@ -221,9 +221,12 @@
   function closeMenu() { $(".sidebar").classList.remove("open"); $("#mobileOverlay").classList.remove("show"); }
   function route() {
     const target = (location.hash || "#dashboard").slice(1).split("?")[0];
-    const isPublic = target === "lookup";
+    const isPublicLookup = target === "lookup";
+    const isPublicRegistration = target === "register";
+    const isPublic = isPublicLookup || isPublicRegistration;
     $("#adminApp").classList.toggle("is-hidden", isPublic);
-    $("#publicLookupView").classList.toggle("is-hidden", !isPublic);
+    $("#publicLookupView").classList.toggle("is-hidden", !isPublicLookup);
+    $("#publicRegistrationView").classList.toggle("is-hidden", !isPublicRegistration);
     if (isPublic) return;
     const routeName = $( `[data-page="${target}"]`) ? target : "dashboard";
     $$(".page").forEach(page => page.classList.toggle("active", page.dataset.page === routeName));
@@ -235,6 +238,7 @@
   function bindForms() {
     $("#registrationForm").addEventListener("input", updateLiveRisk);
     $("#registrationForm").addEventListener("submit", submitRegistration);
+    $("#publicRegistrationForm").addEventListener("submit", submitPublicRegistration);
     $("#lookupForm").addEventListener("submit", queryTransport);
     $("#settingsForm").addEventListener("submit", saveSettings);
   }
@@ -401,6 +405,30 @@
     state.attendees.unshift(data); addNotification("create", `${currentUser().name}新增报名：${data.name} · ${data.venue}${data.risks.length ? "（行程待审批）" : ""}`); saveState(); event.currentTarget.reset(); renderAll(); toast(data.risks.length ? "报名已保存，异常行程已提交审批" : "报名已保存"); location.hash = "attendees";
   }
 
+  async function submitPublicRegistration(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const result = $("#publicRegistrationResult");
+    const submit = form.querySelector('button[type="submit"]');
+    const data = Object.fromEntries(new FormData(form));
+    const phone = normalizePhone(data.phone);
+    if (phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的 11 位手机号。</div>`; return; }
+    if (!window.APP_CONFIG?.supabaseUrl) { result.innerHTML = `<div class="lookup-error">报名服务暂不可用，请联系会务负责人。</div>`; return; }
+    submit.disabled = true; submit.textContent = "正在提交…";
+    try {
+      const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey},
+        body:JSON.stringify({action:"register",meeting:window.APP_CONFIG.eventSlug,region:data.region,name:data.name,phone}),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "提交失败");
+      result.innerHTML = `<div class="lookup-success"><strong>✓ 报名已提交</strong><br />会务负责人将通过手机号与你确认后续行程。</div>`;
+      form.reset();
+    } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
+    finally { submit.disabled = false; submit.innerHTML = `提交报名 <span>→</span>`; }
+  }
+
   async function queryTransport(event) {
     event.preventDefault(); const phone = normalizePhone($("#lookupPhone").value); const result = $("#lookupResult");
     if (phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的 11 位手机号</div>`; return; }
@@ -426,8 +454,8 @@
     event.preventDefault(); if (!canManage()) return deny(); const data = Object.fromEntries(new FormData(event.currentTarget)); state.settings.eventName = data.eventName; state.settings.deadline = data.deadline; state.settings.capacity = Number(data.capacity) || 120; state.settings.allowedCities = data.allowedCities.split(/[、,，\s]+/).map(v => v.trim()).filter(Boolean); state.settings.mismatchRule = !!data.mismatchRule; state.settings.departureRule = !!data.departureRule; addNotification("change", `${currentUser().name}更新了会议和行程预警设置`); saveState(); renderAll(); toast("会议设置已保存");
   }
 
-  function copyRegistrationLink() { const url = `${location.origin}${location.pathname}#registration`; navigator.clipboard?.writeText(url).then(() => toast("报名链接已复制")).catch(() => toast(url)); }
-  function renderQr() { const box = $("#qrCanvas"); if (!box) return; const url = `${location.origin}${location.pathname}#registration`; box.innerHTML = ""; if (window.QRCode) new QRCode(box, { text:url, width:134, height:134, colorDark:"#18231d", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.M }); else box.innerHTML = `<button class="text-button" type="button">复制报名链接</button>`; box.querySelector("button")?.addEventListener("click",copyRegistrationLink); }
+  function copyRegistrationLink() { const url = `${location.origin}${location.pathname}#register`; navigator.clipboard?.writeText(url).then(() => toast("报名链接已复制")).catch(() => toast(url)); }
+  function renderQr() { const box = $("#qrCanvas"); if (!box) return; const url = `${location.origin}${location.pathname}#register`; box.innerHTML = ""; if (window.QRCode) new QRCode(box, { text:url, width:134, height:134, colorDark:"#18231d", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.M }); else box.innerHTML = `<button class="text-button" type="button">复制报名链接</button>`; box.querySelector("button")?.addEventListener("click",copyRegistrationLink); }
   function downloadQr() { const source = $("#qrCanvas canvas") || $("#qrCanvas img"); if (!source) return copyRegistrationLink(); const link = document.createElement("a"); link.download = "HEMA-SEM-报名二维码.png"; link.href = source.tagName === "CANVAS" ? source.toDataURL("image/png") : source.src; link.click(); }
 
   function exportExcel() {

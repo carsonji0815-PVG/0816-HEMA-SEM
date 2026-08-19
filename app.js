@@ -10,7 +10,7 @@
   const initialState = () => ({
     currentUserId: "u-ops",
     activeProjectId: "demo-hema",
-    projects: [{ id:"demo-hema", slug:"hema-sem-2026", name:"HEMA SEM · 大连 & 福州", clientName:"礼来", role:"ops", attendeeCount:5, startDate:"2026-09-04", endDate:"2026-09-12", brandColor:"#205d43" }],
+    projects: [{ id:"demo-hema", slug:"hema-sem-2026", name:"HEMA SEM · 大连 & 福州", clientName:"礼来", role:"ops", attendeeCount:5, startDate:"2026-09-04", endDate:"2026-09-12", brandColor:"#5267d9" }],
     users: [
       { id: "u-ops", name: "林悦", role: "ops", label: "会务负责人" },
       { id: "u-client", name: "周宁", role: "client", label: "会议负责人（客户）" },
@@ -30,7 +30,7 @@
       endDate: "2026-09-12",
       venues: ["大连会场", "福州会场"],
       servicePhone: "",
-      brandColor: "#205d43",
+      brandColor: "#5267d9",
       flightLeadMinutes: 120,
       trainLeadMinutes: 90,
       fieldConfig: { title:true, hcpId:true, accommodation:true, flight:true, mslContact:true, remarks:true },
@@ -90,6 +90,7 @@
   let publicAuthSession = null;
   let publicProjectConfig = null;
   let projectMemberships = [];
+  let pendingImportRows = [];
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -107,6 +108,12 @@
     url.searchParams.set("event", currentProject().slug || state.settings.slug || currentEventSlug());
     url.hash = hash;
     return url.toString();
+  };
+  const projectVisual = project => {
+    const icons = ["✦","◈","✚","◎","⌁","◇","✺","⬡"];
+    const colors = ["#5267d9","#b665d6","#e47a52","#d49a28","#3e8fc6","#d45672","#7b68c8","#516f9b"];
+    const seed = [...String(project?.slug || project?.name || "project")].reduce((sum,char)=>sum+char.charCodeAt(0),0);
+    return { icon:icons[seed%icons.length], color:colors[seed%colors.length] };
   };
 
   function loadState() {
@@ -187,7 +194,7 @@
         const project = state.projects.find(item => item.id === projectId);
         if (!project) return;
         state.activeProjectId = projectId;
-        state.settings = { ...state.settings, eventName:project.name, slug:project.slug, clientName:project.clientName||"", startDate:project.startDate||"", endDate:project.endDate||"", brandColor:project.brandColor||"#205d43" };
+        state.settings = { ...state.settings, eventName:project.name, slug:project.slug, clientName:project.clientName||"", startDate:project.startDate||"", endDate:project.endDate||"", brandColor:project.brandColor||"#5267d9" };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       }
       populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast(`已切换至${state.settings.eventName}`);
@@ -209,7 +216,7 @@
         if (state.projects.some(project => project.slug === slug)) throw new Error("项目编号已存在");
         projectId = `demo-${Date.now()}`;
         const source = state.projects.find(project => project.id === data.sourceId);
-        state.projects.push({ id:projectId, slug, name, clientName:source?.clientName||"", role:"ops", attendeeCount:0, startDate:source?.startDate||"", endDate:source?.endDate||"", brandColor:source?.brandColor||"#205d43" });
+        state.projects.push({ id:projectId, slug, name, clientName:source?.clientName||"", role:"ops", attendeeCount:0, startDate:source?.startDate||"", endDate:source?.endDate||"", brandColor:source?.brandColor||"#5267d9" });
         state.activeProjectId = projectId; state.settings = { ...initialState().settings, ...(source ? state.settings : {}), eventName:name, slug };
         state.attendees = []; state.notifications = []; state.locks = {master:false,columns:[],rows:[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
       }
@@ -253,9 +260,9 @@
     state = {
       currentUserId: authData.user.id,
       activeProjectId: backendMeetingId,
-      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, clientName:m.client_name||"", role:item.role, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#205d43" }; }),
+      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, clientName:m.client_name||"", role:item.role, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
       users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
-      settings: { eventName:meeting.name, slug:meeting.slug, clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#205d43", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})} },
+      settings: { eventName:meeting.name, slug:meeting.slug, clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})} },
       locks: { master: meeting.master_locked, columns: locksRes.data.filter(l => l.locked).map(l => l.field_group), rows: attendeesRes.data.filter(a => a.row_locked).map(a => a.id) },
       attendees: attendeesRes.data.map(fromDbAttendee),
       notifications: noticesRes.data.map(n => ({ id: n.id, type: n.type, text: n.message, time: n.created_at, read: !!n.read_at })),
@@ -333,6 +340,14 @@
     $("#transportSearch").addEventListener("input", renderTransport);
     $$('[data-transport-filter]').forEach(button => button.addEventListener("click", () => { activeTransportFilter = button.dataset.transportFilter; $$('[data-transport-filter]').forEach(b => b.classList.toggle("active", b === button)); renderTransport(); }));
     $("#exportExcel").addEventListener("click", exportExcel);
+    $("#importRoster").addEventListener("click", openRosterImport);
+    $("#rosterFile").addEventListener("change", event => readRosterFile(event.target.files[0]));
+    $("#confirmImport").addEventListener("click", confirmRosterImport);
+    $("#cancelImport").addEventListener("click", () => $("#importDialog").close());
+    const dropzone=$("#importDropzone");
+    ["dragenter","dragover"].forEach(type=>dropzone.addEventListener(type,event=>{event.preventDefault();dropzone.classList.add("dragging");}));
+    ["dragleave","drop"].forEach(type=>dropzone.addEventListener(type,event=>{event.preventDefault();dropzone.classList.remove("dragging");}));
+    dropzone.addEventListener("drop",event=>readRosterFile(event.dataTransfer.files[0]));
     $("#markAllRead").addEventListener("click", async () => { state.notifications.forEach(n => n.read = true); localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); if (backend && backendMeetingId) await backend.from("notifications").update({read_at:new Date().toISOString()}).eq("meeting_id",backendMeetingId).is("read_at",null); renderNotifications(); renderCounts(); });
     $("#masterLock").addEventListener("change", event => { if (!canManage()) return deny(); state.locks.master = event.target.checked; addNotification("lock", `${currentUser().name}${event.target.checked ? "锁定" : "解锁"}了全部名单`); saveState(); renderAll(); });
     $("#copyRegistrationLink").addEventListener("click", copyRegistrationLink);
@@ -355,13 +370,14 @@
     const user = currentUser();
     $("#greetingName").textContent = user.name;
     $("#userAvatar").textContent = user.name.slice(0, 1);
+    const visual=projectVisual(currentProject()); $("#activeProjectIcon").textContent=visual.icon; $("#activeProjectIcon").style.setProperty("--project-accent",visual.color); document.documentElement.style.setProperty("--project-accent",visual.color);
     renderRegistrationOwner(); renderCounts(); renderDashboard(); renderAttendeeTable(); renderApprovals(); renderTransport(); renderLocks(); renderNotifications(); renderSettings(); renderProjects(); renderQr();
   }
 
   function renderProjects() {
     $("#projectGrid").innerHTML = state.projects.map(project => {
-      const active = project.id === state.activeProjectId; const role = ({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售 / 负责人"})[project.role] || "项目成员";
-      return `<article class="panel project-card ${active ? "active" : ""}"><div class="project-card-top"><span class="project-color" style="--project-color:${escapeHtml(project.brandColor||"#205d43")}"></span><span class="status ${active ? "status-normal" : ""}">${active ? "当前项目" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.clientName||"未设置客户")} · ${escapeHtml(project.startDate||"日期待定")}${project.endDate ? ` 至 ${escapeHtml(project.endDate)}` : ""}</p><small>公开入口：?event=${escapeHtml(project.slug)}</small><div class="project-actions"><button class="button button-primary" data-switch-project="${project.id}" ${active ? "disabled" : ""}>${active ? "正在使用" : "进入项目"}</button><button class="button button-secondary" data-copy-project="${project.id}">复制项目</button><button class="text-button" data-copy-project-link="${project.id}">复制入口</button></div></article>`;
+      const active = project.id === state.activeProjectId; const role = ({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售 / 负责人"})[project.role] || "项目成员"; const visual=projectVisual(project);
+      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前项目" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.clientName||"未设置客户")} · ${escapeHtml(project.startDate||"日期待定")}${project.endDate ? ` 至 ${escapeHtml(project.endDate)}` : ""}</p><small>公开入口：?event=${escapeHtml(project.slug)}</small><div class="project-actions"><button class="button button-primary" data-switch-project="${project.id}" ${active ? "disabled" : ""}>${active ? "正在使用" : "进入项目"}</button><button class="button button-secondary" data-copy-project="${project.id}">复制项目</button><button class="text-button" data-copy-project-link="${project.id}">复制入口</button></div></article>`;
     }).join("");
     $$('[data-switch-project]').forEach(button => button.onclick = () => switchProject(button.dataset.switchProject));
     $$('[data-copy-project]').forEach(button => button.onclick = () => { const project=state.projects.find(item=>item.id===button.dataset.copyProject); const form=$("#projectForm"); form.reset(); form.elements.name.value=`${project.name}（复制）`; form.elements.sourceId.value=project.id; form.elements.slug.value=`${project.slug}-copy-${String(Date.now()).slice(-4)}`; form.elements.slug.dataset.edited="1"; $("#projectDialog").showModal(); });
@@ -390,7 +406,7 @@
     const list = visibleAttendees(); const pending = list.filter(a => a.approval === "pending").length;
     const assigned = list.filter(a => a.transport?.pickup?.driver && a.transport.pickup.driver !== "待分配").length;
     const metrics = [
-      ["已报名人数", list.length, `名额 ${state.settings.capacity} 人`, "◎", "#dff1e5"],
+      ["已报名人数", list.length, `名额 ${state.settings.capacity} 人`, "♟", "#e4e9ff"],
       ["待审批行程", pending, pending ? "需要及时处理" : "全部处理完成", "△", "#fae3d8"],
       ["住宿需求", list.filter(a => a.accommodation === "Y").length, "已选择住宿", "⌂", "#e9e6f6"],
       ["已安排接送", assigned, `共 ${list.length} 位参会者`, "↗", "#f3e8c8"],
@@ -399,7 +415,7 @@
     $("#progressCount").textContent = list.length; const percent = Math.min(100, Math.round(list.length / state.settings.capacity * 100));
     $("#progressBar").style.width = `${percent}%`; $("#progressPercent").textContent = `${percent}%`;
     const cityCounts = Object.entries(list.reduce((acc,a) => (acc[a.city] = (acc[a.city] || 0) + 1, acc), {})).sort((a,b) => b[1] - a[1]).slice(0,4);
-    const max = Math.max(...cityCounts.map(([,v]) => v), 1); const colors = ["#2e7757", "#779c7b", "#c79645", "#8b83ad"];
+    const max = Math.max(...cityCounts.map(([,v]) => v), 1); const colors = ["#5267d9", "#3e8fc6", "#d49a28", "#b665d6"];
     $("#cityBars").innerHTML = cityCounts.map(([city,count],i) => `<div class="city-bar"><span>${escapeHtml(city)}</span><div><i style="width:${count/max*100}%;--bar-color:${colors[i]}"></i></div><strong>${count}</strong></div>`).join("") || `<div class="empty-state">暂无报名</div>`;
     const risks = list.filter(a => a.approval === "pending").slice(0,3);
     $("#attentionList").innerHTML = risks.length ? risks.map(a => `<div class="attention-item"><span class="attention-icon">△</span><div><strong>${escapeHtml(a.name)} · ${escapeHtml(a.risks[0] || "异常行程")}</strong><small>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)} / ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</small></div><button data-open-attendee="${a.id}">处理 →</button></div>`).join("") : `<div class="empty-state">暂无待处理事项</div>`;
@@ -417,6 +433,7 @@
   function renderAttendeeTable() {
     const list = getFilteredAttendees();
     $("#rosterScope").textContent = currentUser().role === "sales" ? `仅显示 ${currentUser().name} 负责的参会者。` : "显示本会议全部参会者。";
+    $("#importRoster").classList.toggle("is-hidden", currentUser().role !== "ops");
     $("#attendeeTableBody").innerHTML = list.map(a => `<tr><td><div class="person-cell"><span class="person-avatar">${escapeHtml(a.name[0])}</span><div><span class="cell-primary">${escapeHtml(a.name)}</span><span class="cell-secondary">${escapeHtml(a.phone.slice(0,3))}****${escapeHtml(a.phone.slice(-4))}</span></div></div></td><td><span class="cell-primary">${escapeHtml(a.hospital)}</span><span class="cell-secondary">${escapeHtml(a.department)} · ${escapeHtml(a.title)}</span></td><td>${escapeHtml(a.venue)}</td><td><span class="cell-primary">${escapeHtml(a.outNo)}</span><span class="cell-secondary">${fmtDate(a.outDate)} ${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</span></td><td><span class="cell-primary">${escapeHtml(a.returnNo)}</span><span class="cell-secondary">${fmtDate(a.returnDate)} ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</span></td><td>${escapeHtml(userName(a.ownerId))}</td><td><span class="status status-${isLocked(a) ? "locked" : a.approval}">${isLocked(a) ? "已锁定" : approvalLabel(a.approval)}</span></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`).join("");
     $("#attendeeEmpty").classList.toggle("is-hidden", !!list.length); bindDynamicButtons();
   }
@@ -682,6 +699,76 @@
     link.download = `${state.settings.slug||"journey"}-参会服务二维码.png`;
     link.href = output.toDataURL("image/png");
     link.click();
+  }
+
+  function openRosterImport() {
+    if (currentUser().role !== "ops") return toast("仅会务负责人可以导入线下名单", "error");
+    if (state.locks.master) return toast("全名单已锁定，请先解锁再导入", "error");
+    pendingImportRows=[]; $("#rosterFile").value=""; $("#confirmImport").disabled=true;
+    $("#importPreview").innerHTML=`<div class="empty-state">选择文件后将在此显示校验结果</div>`; $("#importDialog").showModal();
+  }
+
+  const cleanCell = value => String(value ?? "").trim();
+  function excelDate(value) {
+    if (!value) return "";
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0,10);
+    if (typeof value === "number" && window.XLSX?.SSF) { const d=XLSX.SSF.parse_date_code(value); if (d) return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`; }
+    const text=cleanCell(value).replace(/[年/.]/g,"-").replace(/月/g,"-").replace(/日/g,""); const match=text.match(/(20\d{2})-(\d{1,2})-(\d{1,2})/);
+    return match ? `${match[1]}-${match[2].padStart(2,"0")}-${match[3].padStart(2,"0")}` : text;
+  }
+  function excelTime(value) {
+    if (value === "" || value == null) return "";
+    if (typeof value === "number") { const minutes=Math.round((value%1)*1440)%1440; return `${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}`; }
+    if (value instanceof Date) return `${String(value.getHours()).padStart(2,"0")}:${String(value.getMinutes()).padStart(2,"0")}`;
+    const match=cleanCell(value).match(/(\d{1,2}):(\d{2})/); return match ? `${match[1].padStart(2,"0")}:${match[2]}` : cleanCell(value);
+  }
+  function yesNo(value, fallback="N") { const text=cleanCell(value).toUpperCase(); return ["Y","YES","是","TRUE","1"].includes(text) ? "Y" : ["N","NO","否","FALSE","0"].includes(text) ? "N" : fallback; }
+
+  async function readRosterFile(file) {
+    const preview=$("#importPreview"); pendingImportRows=[]; $("#confirmImport").disabled=true;
+    if (!file) return;
+    if (!/\.(xlsx|xls|csv)$/i.test(file.name)) return preview.innerHTML=`<div class="lookup-error">请选择 .xlsx、.xls 或 .csv 文件。</div>`;
+    if (!window.XLSX) return preview.innerHTML=`<div class="lookup-error">Excel 组件尚未加载，请刷新页面后重试。</div>`;
+    preview.innerHTML=`<div class="import-reading"><span></span>正在读取 ${escapeHtml(file.name)}…</div>`;
+    try {
+      const workbook=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true}); const sheet=workbook.Sheets[workbook.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:true});
+      const headerIndex=rows.findIndex(row=>row.some(cell=>cleanCell(cell).includes("客户姓名"))&&row.some(cell=>cleanCell(cell).includes("手机号")));
+      if (headerIndex<0 || (rows[headerIndex]||[]).length<20) throw new Error("没有识别到报名模板表头，请使用31列报名表模板");
+      const seen=new Set();
+      pendingImportRows=rows.slice(headerIndex+1).filter(row=>row.slice(1).some(value=>cleanCell(value))).map((row,index)=>buildImportRow(row,headerIndex+index+2,seen));
+      if (!pendingImportRows.length) throw new Error("名单中没有可读取的参会者数据");
+      renderImportPreview(file.name);
+    } catch (error) { preview.innerHTML=`<div class="lookup-error">${escapeHtml(error.message||"文件读取失败")}</div>`; }
+  }
+
+  function buildImportRow(row, sheetRow, seen) {
+    const phone=normalizePhone(row[10]); const contactMobile=normalizePhone(row[28]); const existing=state.attendees.find(item=>normalizePhone(item.phone)===phone);
+    const matchedOwner=state.users.find(user=>user.role==="sales"&&contactMobile&&normalizePhone(user.phone)===contactMobile) || state.users.find(user=>user.role==="sales"&&cleanCell(row[27])&&user.name===cleanCell(row[27]));
+    const attendee={
+      id:existing?.id || (backend ? crypto.randomUUID() : `a-${Date.now()}-${sheetRow}`), ownerId:matchedOwner?.id || existing?.ownerId || currentUser().id,
+      attendeeType:cleanCell(row[1])||"HCP", name:cleanCell(row[2]), city:cleanCell(row[3]), hospital:cleanCell(row[4]), department:cleanCell(row[5]), title:cleanCell(row[6]), venue:cleanCell(row[7]), sex:cleanCell(row[8]), idNumber:cleanCell(row[9]), phone, hcpId:cleanCell(row[11]), accommodation:yesNo(row[12]), flight:yesNo(row[13],/^[GDC]\d+/i.test(cleanCell(row[17]))?"N":"Y"),
+      outDate:excelDate(row[14]),outFrom:cleanCell(row[15]),outTo:cleanCell(row[16]),outNo:cleanCell(row[17]),outDeparture:excelTime(row[18]),outArrival:excelTime(row[19]),returnDate:excelDate(row[20]),returnFrom:cleanCell(row[21]),returnTo:cleanCell(row[22]),returnNo:cleanCell(row[23]),returnDeparture:excelTime(row[24]),returnArrival:excelTime(row[25]),region:cleanCell(row[26]),contactName:cleanCell(row[27]),contactMobile,mslContact:cleanCell(row[29]),remarks:cleanCell(row[30]),createdAt:existing?.createdAt||new Date().toISOString(),transport:existing?.transport||{pickup:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"待设置"},dropoff:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"会议酒店大堂"}},
+    };
+    const errors=[];
+    if (!attendee.name) errors.push("缺少姓名"); if (phone.length!==11) errors.push("手机号格式错误"); if (!attendee.idNumber) errors.push("缺少证件号"); if (!attendee.hcpId) errors.push("缺少HCP ID");
+    if (phone&&seen.has(phone)) errors.push("文件内手机号重复"); if (phone) seen.add(phone); if (existing&&isLocked(existing)) errors.push("已有记录已锁定");
+    attendee.risks=evaluateRisks(attendee); attendee.approval=attendee.risks.length?"pending":"normal";
+    if (!existing) { attendee.transport.pickup.time=attendee.outDate&&attendee.outArrival?`${attendee.outDate} ${attendee.outArrival}`:"待设置"; attendee.transport.pickup.point=attendee.outTo?`${attendee.outTo}到达口`:"待设置"; attendee.transport.dropoff.time=recommendedDropoffTime(attendee)||"待设置"; }
+    return {attendee,sheetRow,status:errors.length?"error":existing?"update":"new",errors};
+  }
+
+  function renderImportPreview(fileName) {
+    const valid=pendingImportRows.filter(row=>row.status!=="error"); const added=valid.filter(row=>row.status==="new").length; const updated=valid.length-added; const errors=pendingImportRows.length-valid.length;
+    $("#importPreview").innerHTML=`<div class="import-summary"><div class="import-file-name"><span>XL</span><p><strong>${escapeHtml(fileName)}</strong><small>共读取 ${pendingImportRows.length} 行</small></p></div><div class="import-stats"><div class="stat-new"><strong>${added}</strong><small>新增</small></div><div class="stat-update"><strong>${updated}</strong><small>更新</small></div><div class="stat-error"><strong>${errors}</strong><small>错误</small></div></div></div><div class="import-table-wrap"><table class="import-table"><thead><tr><th>Excel行</th><th>参会者</th><th>城市 / 会场</th><th>负责人</th><th>状态</th></tr></thead><tbody>${pendingImportRows.slice(0,100).map(item=>`<tr><td>${item.sheetRow}</td><td><strong>${escapeHtml(item.attendee.name||"未填写")}</strong><small>${escapeHtml(item.attendee.phone||"无手机号")}</small></td><td>${escapeHtml(item.attendee.city||"—")}<small>${escapeHtml(item.attendee.venue||"—")}</small></td><td>${escapeHtml(userName(item.attendee.ownerId))}</td><td><span class="import-status ${item.status}">${item.status==="new"?"新增":item.status==="update"?"更新":escapeHtml(item.errors.join("、"))}</span></td></tr>`).join("")}</tbody></table></div>${pendingImportRows.length>100?`<p class="import-more">仅预览前100行，确认后将处理全部有效记录。</p>`:""}`;
+    $("#confirmImport").disabled=!valid.length; $("#confirmImport").textContent=`确认导入 ${valid.length} 条有效名单`;
+  }
+
+  function confirmRosterImport() {
+    if (currentUser().role!=="ops"||state.locks.master) return toast("当前不能导入名单", "error");
+    const valid=pendingImportRows.filter(row=>row.status!=="error"); if (!valid.length) return;
+    valid.forEach(({attendee,status})=>{ const index=state.attendees.findIndex(item=>item.id===attendee.id); if (index>=0) state.attendees[index]=attendee; else state.attendees.unshift(attendee); });
+    const added=valid.filter(row=>row.status==="new").length; const updated=valid.length-added; addNotification("create",`${currentUser().name}导入线下名单：新增${added}人，更新${updated}人`); saveState(); $("#importDialog").close(); renderAll(); toast(`已导入 ${valid.length} 条名单${pendingImportRows.some(row=>row.status==="error")?"，错误行未导入":""}`); pendingImportRows=[];
   }
 
   function exportExcel() {

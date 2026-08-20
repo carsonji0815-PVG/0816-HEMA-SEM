@@ -31,6 +31,8 @@ create table if not exists public.meetings (
   flight_lead_minutes integer not null default 120,
   train_lead_minutes integer not null default 90,
   field_config jsonb not null default '{"title":true,"hcpId":true,"accommodation":true,"flight":true,"mslContact":true,"remarks":true}'::jsonb,
+  template_name text,
+  registration_template jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -87,6 +89,9 @@ create table if not exists public.attendees (
   contact_mobile text,
   msl_contact text,
   remarks text,
+  custom_fields jsonb not null default '{}'::jsonb,
+  privacy_letter_status text not null default 'pending',
+  ticket_status text not null default 'pending',
   approval public.approval_status not null default 'normal',
   risks text[] not null default '{}',
   row_locked boolean not null default false,
@@ -110,6 +115,15 @@ create table if not exists public.transports (
   vehicle text,
   service_time timestamptz,
   meeting_point text,
+  staff_name text,
+  service_mode text,
+  batch_id uuid,
+  batch_name text,
+  terminal text,
+  placard text,
+  capacity integer,
+  notes text,
+  time_strategy text,
   updated_at timestamptz not null default now(),
   unique (attendee_id, direction)
 );

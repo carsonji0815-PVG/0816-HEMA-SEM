@@ -6,6 +6,11 @@
     ["identity", "身份与证件"], ["contact", "手机号"], ["outbound", "去程"],
     ["return", "返程"], ["accommodation", "住宿"], ["transport", "接送机"], ["remarks", "备注"],
   ];
+  const STANDARD_TEMPLATE_HEADERS = ["No.\n序号","Attendee Type\n参会者类别","Name\n客户姓名(姓/名)*","City\n城市","Hospital/Chain\n医院/连锁","Department/Store\n科室/门店","Title\n职称","会场\n（多城会议）","Sex\n性别","ID/Passpor No.*\n身份证号/护照号*","Mobile Phone #\n手机号","HCP ID*\n客户编号*","Accommodation\n住宿安排(Y/N)","Flight\n是否航空(Y/N)","Departure Date\n出发日期","Departure City 出发城市","Arrival City 到达城市","Flight/Train No.\n航班/车次号","Departure time 出发时间","Arrival time 到达时间","Return Date\n返回日期","Departure City 出发城市","Arrival City 到达城市","Flight/Train No.\n航班/车次号","Departure time 出发时间","Arrival time 到达时间","Region\n大区","Contact Name\n销售联系人姓名","Contact Mobile\n销售联系人手机","MSL医学部联系人","Remarks\n备注（本地客户/VIP异地用车备注）"];
+  const STANDARD_TEMPLATE_KEYS = ["sequence","attendeeType","name","city","hospital","department","title","venue","sex","idNumber","phone","hcpId","accommodation","flight","outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival","region","contactName","contactMobile","mslContact","remarks"];
+  const CORE_AUTH_FIELDS = new Set(["name","phone","region"]);
+  const FIELD_LABELS = {outFrom:"去程出发城市",outTo:"去程到达城市",outNo:"去程航班/车次",outDeparture:"去程出发时间",returnFrom:"返程出发城市",returnTo:"返程到达城市",returnNo:"返程航班/车次",returnDeparture:"返程出发时间",privacyLetterStatus:"隐私沟通函",ticketStatus:"出票状态"};
+  const standardTemplate = () => ({ version:1, columns:STANDARD_TEMPLATE_HEADERS.map((header,index) => ({ header, key:STANDARD_TEMPLATE_KEYS[index], required:/\*/.test(header) || ["name","phone","region"].includes(STANDARD_TEMPLATE_KEYS[index]) })) });
 
   const initialState = () => ({
     currentUserId: "u-ops",
@@ -34,6 +39,8 @@
       flightLeadMinutes: 120,
       trainLeadMinutes: 90,
       fieldConfig: { title:true, hcpId:true, accommodation:true, flight:true, mslContact:true, remarks:true },
+      templateName: "标准31列报名模板",
+      registrationTemplate: standardTemplate(),
     },
     locks: { master: false, columns: ["identity"], rows: ["a-104"] },
     attendees: [
@@ -262,7 +269,7 @@
       activeProjectId: backendMeetingId,
       projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, clientName:m.client_name||"", role:item.role, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
       users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
-      settings: { eventName:meeting.name, slug:meeting.slug, clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})} },
+      settings: { eventName:meeting.name, slug:meeting.slug, clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, templateName:meeting.template_name||"标准31列报名模板", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : standardTemplate() },
       locks: { master: meeting.master_locked, columns: locksRes.data.filter(l => l.locked).map(l => l.field_group), rows: attendeesRes.data.filter(a => a.row_locked).map(a => a.id) },
       attendees: attendeesRes.data.map(fromDbAttendee),
       notifications: noticesRes.data.map(n => ({ id: n.id, type: n.type, text: n.message, time: n.created_at, read: !!n.read_at })),
@@ -274,23 +281,23 @@
   function fromDbAttendee(row) {
     const trip = direction => {
       const t = row.transports?.find(item => item.direction === direction) || {};
-      return { driver: t.driver_name || "待分配", phone: t.driver_phone || "—", vehicle: t.vehicle || "待分配", time: t.service_time ? new Date(t.service_time).toLocaleString("zh-CN", { hour12: false }).replaceAll("/", "-") : "待设置", point: t.meeting_point || "待设置" };
+      return { driver: t.driver_name || "待分配", staffName:t.staff_name||"", phone: t.driver_phone || "—", vehicle: t.vehicle || "待分配", time: t.service_time ? new Date(t.service_time).toLocaleString("zh-CN", { hour12: false }).replaceAll("/", "-") : "待设置", point: t.meeting_point || "待设置", mode:t.service_mode||"", batchId:t.batch_id||"", batchName:t.batch_name||"", terminal:t.terminal||"", placard:t.placard||"", capacity:t.capacity||null, notes:t.notes||"", timeStrategy:t.time_strategy||"fixed" };
     };
-    return { id:row.id, attendeeType:row.attendee_type||"", name:row.name, city:row.city||"", hospital:row.hospital||"", department:row.department||"", title:row.title||"", venue:row.venue||"", sex:row.sex||"", idNumber:row.id_number, phone:row.phone, hcpId:row.hcp_id, accommodation:row.accommodation?"Y":"N", flight:row.is_flight?"Y":"N", region:row.region||"", contactName:row.contact_name||"", contactMobile:row.contact_mobile||"", mslContact:row.msl_contact||"", remarks:row.remarks||"", ownerId:row.owner_id, outDate:row.out_date||"", outFrom:row.out_from||"", outTo:row.out_to||"", outNo:row.out_no||"", outDeparture:(row.out_departure||"").slice(0,5), outArrival:(row.out_arrival||"").slice(0,5), returnDate:row.return_date||"", returnFrom:row.return_from||"", returnTo:row.return_to||"", returnNo:row.return_no||"", returnDeparture:(row.return_departure||"").slice(0,5), returnArrival:(row.return_arrival||"").slice(0,5), approval:row.approval, risks:row.risks||[], createdAt:row.created_at, transport:{pickup:trip("pickup"),dropoff:trip("dropoff")} };
+    return { id:row.id, attendeeType:row.attendee_type||"", name:row.name, city:row.city||"", hospital:row.hospital||"", department:row.department||"", title:row.title||"", venue:row.venue||"", sex:row.sex||"", idNumber:row.id_number, phone:row.phone, hcpId:row.hcp_id, accommodation:row.accommodation?"Y":"N", flight:row.is_flight?"Y":"N", region:row.region||"", contactName:row.contact_name||"", contactMobile:row.contact_mobile||"", mslContact:row.msl_contact||"", remarks:row.remarks||"", customFields:row.custom_fields||{}, privacyLetterStatus:row.privacy_letter_status||"pending", ticketStatus:row.ticket_status||"pending", ownerId:row.owner_id, outDate:row.out_date||"", outFrom:row.out_from||"", outTo:row.out_to||"", outNo:row.out_no||"", outDeparture:(row.out_departure||"").slice(0,5), outArrival:(row.out_arrival||"").slice(0,5), returnDate:row.return_date||"", returnFrom:row.return_from||"", returnTo:row.return_to||"", returnNo:row.return_no||"", returnDeparture:(row.return_departure||"").slice(0,5), returnArrival:(row.return_arrival||"").slice(0,5), approval:row.approval, risks:row.risks||[], createdAt:row.created_at, transport:{pickup:trip("pickup"),dropoff:trip("dropoff")} };
   }
 
   function toDbAttendee(a) {
-    return { id:a.id, meeting_id:backendMeetingId, owner_id:a.ownerId, attendee_type:a.attendeeType||null, name:a.name, city:a.city||null, hospital:a.hospital||null, department:a.department||null, title:a.title||null, venue:a.venue||null, sex:a.sex||null, id_number:a.idNumber, phone:a.phone, hcp_id:a.hcpId, accommodation:a.accommodation==="Y", is_flight:a.flight==="Y", out_date:a.outDate||null, out_from:a.outFrom||null, out_to:a.outTo||null, out_no:a.outNo||null, out_departure:a.outDeparture||null, out_arrival:a.outArrival||null, return_date:a.returnDate||null, return_from:a.returnFrom||null, return_to:a.returnTo||null, return_no:a.returnNo||null, return_departure:a.returnDeparture||null, return_arrival:a.returnArrival||null, region:a.region||null, contact_name:a.contactName||null, contact_mobile:a.contactMobile||null, msl_contact:a.mslContact||null, remarks:a.remarks||null, approval:a.approval, risks:a.risks||[], row_locked:state.locks.rows.includes(a.id) };
+    return { id:a.id, meeting_id:backendMeetingId, owner_id:a.ownerId, attendee_type:a.attendeeType||null, name:a.name, city:a.city||null, hospital:a.hospital||null, department:a.department||null, title:a.title||null, venue:a.venue||null, sex:a.sex||null, id_number:a.idNumber, phone:a.phone, hcp_id:a.hcpId, accommodation:a.accommodation==="Y", is_flight:a.flight==="Y", out_date:a.outDate||null, out_from:a.outFrom||null, out_to:a.outTo||null, out_no:a.outNo||null, out_departure:a.outDeparture||null, out_arrival:a.outArrival||null, return_date:a.returnDate||null, return_from:a.returnFrom||null, return_to:a.returnTo||null, return_no:a.returnNo||null, return_departure:a.returnDeparture||null, return_arrival:a.returnArrival||null, region:a.region||null, contact_name:a.contactName||null, contact_mobile:a.contactMobile||null, msl_contact:a.mslContact||null, remarks:a.remarks||null, custom_fields:a.customFields||{}, privacy_letter_status:a.privacyLetterStatus||"pending", ticket_status:a.ticketStatus||"pending", approval:a.approval, risks:a.risks||[], row_locked:state.locks.rows.includes(a.id) };
   }
 
   async function syncBackend() {
     if (!backend || !backendMeetingId) return;
     const attendeeRows = state.attendees.map(toDbAttendee);
     if (attendeeRows.length) { const { error } = await backend.from("attendees").upsert(attendeeRows); if (error) throw error; }
-    const transportRows = state.attendees.flatMap(a => ["pickup","dropoff"].map(direction => { const t = a.transport?.[direction] || {}; return { attendee_id:a.id, direction, driver_name:t.driver||null, driver_phone:t.phone||null, vehicle:t.vehicle||null, service_time:parseServiceTime(t.time), meeting_point:t.point||null }; }));
+    const transportRows = state.attendees.flatMap(a => ["pickup","dropoff"].map(direction => { const t = a.transport?.[direction] || {}; return { attendee_id:a.id, direction, driver_name:t.driver||null, staff_name:t.staffName||null, driver_phone:t.phone||null, vehicle:t.vehicle||null, service_time:parseServiceTime(t.time), meeting_point:t.point||null, service_mode:t.mode||null, batch_id:t.batchId||null, batch_name:t.batchName||null, terminal:t.terminal||null, placard:t.placard||null, capacity:t.capacity||null, notes:t.notes||null, time_strategy:t.timeStrategy||null }; }));
     if (transportRows.length) { const { error } = await backend.from("transports").upsert(transportRows,{onConflict:"attendee_id,direction"}); if (error) throw error; }
     if (canManage()) {
-      const { error } = await backend.from("meetings").update({ name:state.settings.eventName, client_name:state.settings.clientName||null, start_date:state.settings.startDate||null, end_date:state.settings.endDate||null, venues:state.settings.venues, service_phone:state.settings.servicePhone||null, brand_color:state.settings.brandColor, deadline:state.settings.deadline||null, capacity:state.settings.capacity, allowed_departure_cities:state.settings.allowedCities, check_city_mismatch:state.settings.mismatchRule, check_departure_city:state.settings.departureRule, flight_lead_minutes:state.settings.flightLeadMinutes, train_lead_minutes:state.settings.trainLeadMinutes, field_config:state.settings.fieldConfig, master_locked:state.locks.master }).eq("id",backendMeetingId); if (error) throw error;
+      const { error } = await backend.from("meetings").update({ name:state.settings.eventName, client_name:state.settings.clientName||null, start_date:state.settings.startDate||null, end_date:state.settings.endDate||null, venues:state.settings.venues, service_phone:state.settings.servicePhone||null, brand_color:state.settings.brandColor, deadline:state.settings.deadline||null, capacity:state.settings.capacity, allowed_departure_cities:state.settings.allowedCities, check_city_mismatch:state.settings.mismatchRule, check_departure_city:state.settings.departureRule, flight_lead_minutes:state.settings.flightLeadMinutes, train_lead_minutes:state.settings.trainLeadMinutes, field_config:state.settings.fieldConfig, template_name:state.settings.templateName||null, registration_template:state.settings.registrationTemplate||standardTemplate(), master_locked:state.locks.master }).eq("id",backendMeetingId); if (error) throw error;
       const lockRows = COLUMN_LOCKS.map(([field]) => ({ meeting_id:backendMeetingId, field_group:field, locked:state.locks.columns.includes(field), updated_by:state.currentUserId }));
       const lockResult = await backend.from("column_locks").upsert(lockRows); if (lockResult.error) throw lockResult.error;
     }
@@ -326,6 +333,7 @@
     $("#lookupForm").addEventListener("submit", queryTransport);
     $("#settingsForm").addEventListener("submit", saveSettings);
     $("#projectForm").addEventListener("submit", createProject);
+    $("#transportBatchForm").addEventListener("submit", saveTransportBatch);
   }
 
   function bindControls() {
@@ -338,10 +346,19 @@
     $("#riskFilter").addEventListener("change", renderAttendeeTable);
     $("#venueFilter").addEventListener("change", renderAttendeeTable);
     $("#transportSearch").addEventListener("input", renderTransport);
+    $("#newPickupBatch").addEventListener("click", () => openTransportBatch("pickup"));
+    $("#newDropoffBatch").addEventListener("click", () => openTransportBatch("dropoff"));
+    $("#cancelTransportBatch").addEventListener("click", () => $("#transportBatchDialog").close());
+    ["serviceDate","terminal","timeStrategy"].forEach(name => $("#transportBatchForm").elements[name].addEventListener("input", renderBatchCandidates));
+    $("#transportBatchForm").elements.capacity.addEventListener("input",updateBatchCapacityNotice);
+    $("#batchTransportMode").addEventListener("change", toggleBatchModeFields);
+    $("#selectAllBatchAttendees").addEventListener("change", event => { $$('[name="batchAttendee"]',$("#batchAttendeeList")).forEach(input=>input.checked=event.target.checked); updateBatchCapacityNotice(); });
     $$('[data-transport-filter]').forEach(button => button.addEventListener("click", () => { activeTransportFilter = button.dataset.transportFilter; $$('[data-transport-filter]').forEach(b => b.classList.toggle("active", b === button)); renderTransport(); }));
     $("#exportExcel").addEventListener("click", exportExcel);
     $("#importRoster").addEventListener("click", openRosterImport);
     $("#rosterFile").addEventListener("change", event => readRosterFile(event.target.files[0]));
+    $("#projectTemplateFile").addEventListener("change", event => readProjectTemplate(event.target.files[0]));
+    $("#resetProjectTemplate").addEventListener("click", resetProjectTemplate);
     $("#confirmImport").addEventListener("click", confirmRosterImport);
     $("#cancelImport").addEventListener("click", () => $("#importDialog").close());
     const dropzone=$("#importDropzone");
@@ -434,8 +451,18 @@
     const list = getFilteredAttendees();
     $("#rosterScope").textContent = currentUser().role === "sales" ? `仅显示 ${currentUser().name} 负责的参会者。` : "显示本会议全部参会者。";
     $("#importRoster").classList.toggle("is-hidden", currentUser().role !== "ops");
-    $("#attendeeTableBody").innerHTML = list.map(a => `<tr><td><div class="person-cell"><span class="person-avatar">${escapeHtml(a.name[0])}</span><div><span class="cell-primary">${escapeHtml(a.name)}</span><span class="cell-secondary">${escapeHtml(a.phone.slice(0,3))}****${escapeHtml(a.phone.slice(-4))}</span></div></div></td><td><span class="cell-primary">${escapeHtml(a.hospital)}</span><span class="cell-secondary">${escapeHtml(a.department)} · ${escapeHtml(a.title)}</span></td><td>${escapeHtml(a.venue)}</td><td><span class="cell-primary">${escapeHtml(a.outNo)}</span><span class="cell-secondary">${fmtDate(a.outDate)} ${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</span></td><td><span class="cell-primary">${escapeHtml(a.returnNo)}</span><span class="cell-secondary">${fmtDate(a.returnDate)} ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</span></td><td>${escapeHtml(userName(a.ownerId))}</td><td><span class="status status-${isLocked(a) ? "locked" : a.approval}">${isLocked(a) ? "已锁定" : approvalLabel(a.approval)}</span></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`).join("");
+    const progressSelect=(a,field,options)=>`<select class="progress-select ${a[field]==="complete"||a[field]==="ticketed"?"done":""}" data-progress-field="${field}" data-attendee-id="${a.id}" ${isLocked(a)?"disabled":""}>${options.map(([value,label])=>`<option value="${value}" ${a[field]===value?"selected":""}>${label}</option>`).join("")}</select>`;
+    $("#attendeeTableBody").innerHTML = list.map(a => `<tr><td><div class="person-cell"><span class="person-avatar">${escapeHtml(a.name[0])}</span><div><span class="cell-primary">${escapeHtml(a.name)}</span><span class="cell-secondary">${escapeHtml(a.phone.slice(0,3))}****${escapeHtml(a.phone.slice(-4))}</span></div></div></td><td><span class="cell-primary">${escapeHtml(a.hospital)}</span><span class="cell-secondary">${escapeHtml(a.department)} · ${escapeHtml(a.title)}</span></td><td>${escapeHtml(a.venue)}</td><td><span class="cell-primary">${escapeHtml(a.outNo)}</span><span class="cell-secondary">${fmtDate(a.outDate)} ${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</span></td><td><span class="cell-primary">${escapeHtml(a.returnNo)}</span><span class="cell-secondary">${fmtDate(a.returnDate)} ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</span></td><td>${progressSelect(a,"privacyLetterStatus",[["pending","待沟通"],["sent","已发送"],["complete","已完成"]])}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><span class="status status-${isLocked(a) ? "locked" : a.approval}">${isLocked(a) ? "已锁定" : approvalLabel(a.approval)}</span></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`).join("");
+    $$('[data-progress-field]').forEach(select=>select.onchange=()=>updateProgressField(select));
     $("#attendeeEmpty").classList.toggle("is-hidden", !!list.length); bindDynamicButtons();
+  }
+
+  function updateProgressField(select) {
+    const a=state.attendees.find(item=>item.id===select.dataset.attendeeId); if(!a||isLocked(a)) return renderAttendeeTable();
+    if(currentUser().role==="sales"&&a.ownerId!==currentUser().id) return deny();
+    const field=select.dataset.progressField; const previous=a[field]||"pending"; const next=select.value; if(previous===next)return;
+    const labels={pending:"待处理",sent:"已发送",complete:"已完成",processing:"出票中",ticketed:"已出票",changed:"改签",refunded:"已退票"};
+    a[field]=next; addNotification("change",`${currentUser().name}变更了${a.name}的${FIELD_LABELS[field]}：${labels[previous]||previous} → ${labels[next]||next}`); saveState(); renderAll(); toast(`${a.name}的${FIELD_LABELS[field]}已更新`);
   }
 
   function renderApprovals() {
@@ -446,20 +473,84 @@
 
   function renderTransport() {
     const query = $("#transportSearch").value.trim().toLowerCase();
-    const list = visibleAttendees().filter(a => !query || [a.name,a.outNo,a.returnNo].join(" ").toLowerCase().includes(query));
+    const list = visibleAttendees().filter(a => !query || [a.name,a.outNo,a.returnNo,a.transport?.pickup?.batchName,a.transport?.dropoff?.batchName].join(" ").toLowerCase().includes(query));
+    renderTransportBatches(list);
+    $("#newPickupBatch").classList.toggle("is-hidden",!canManage()); $("#newDropoffBatch").classList.toggle("is-hidden",!canManage());
     const cards = [];
     list.forEach(a => {
       ["pickup","dropoff"].forEach(type => {
         if (activeTransportFilter !== "all" && activeTransportFilter !== type) return;
         const item = a.transport?.[type] || {};
         const staff = isStaffTransport(item);
-        const assigned = item.driver && item.driver !== "待分配";
-        const contact = staff ? "会务工作人员现场接待" : `${item.driver || "待分配"} · ${item.phone || "—"}`;
+        const assigned = staff || (item.driver && item.driver !== "待分配");
+        const contact = staff ? `${item.staffName || "会务工作人员"} · ${item.phone || "—"}` : `${item.driver || "待分配"} · ${item.phone || "—"}`;
         const vehicle = staff ? "无需录入司机 / 车辆" : (item.vehicle || "待分配");
-        cards.push(`<article class="transport-card"><div class="transport-head"><div><h3>${escapeHtml(a.name)} · ${type === "pickup" ? "接机" : "送机"}</h3><p>${escapeHtml(type === "pickup" ? `${a.outNo} · ${a.outArrival} 到达` : `${a.returnNo} · ${a.returnDeparture} 出发`)}</p></div><span class="status ${assigned ? "status-normal" : "status-pending"}">${assigned ? (staff ? "工作人员接待" : "独立司机") : "待分配"}</span></div><div class="transport-details"><div><small>接送方式</small><strong>${escapeHtml(contact)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div><div><small>时间</small><strong>${escapeHtml(item.time || "待设置")}</strong></div><div><small>集合点</small><strong>${escapeHtml(item.point || "待设置")}</strong></div></div>${type === "dropoff" ? `<div class="transport-rule">${isFlightReturn(a) ? `航班起飞前 ${state.settings.flightLeadMinutes} 分钟` : `高铁出发前 ${state.settings.trainLeadMinutes} 分钟`} · 建议 ${escapeHtml(recommendedDropoffTime(a) || "待补全返程时间")}</div>` : ""}${canManage() ? `<button class="transport-edit" data-edit-transport="${a.id}" data-type="${type}">编辑安排 →</button>` : ""}</article>`);
+        cards.push(`<article class="transport-card"><div class="transport-head"><div><h3>${escapeHtml(a.name)} · ${type === "pickup" ? "接机" : "送机"}</h3><p>${escapeHtml(type === "pickup" ? `${a.outNo} · ${a.outArrival} 到达` : `${a.returnNo} · ${a.returnDeparture} 出发`)}</p>${item.batchName?`<span class="transport-batch-tag">⌘ ${escapeHtml(item.batchName)}</span>`:""}</div><span class="status ${assigned ? "status-normal" : "status-pending"}">${assigned ? (staff ? "工作人员接待" : "独立司机") : "待分配"}</span></div><div class="transport-details"><div><small>接送方式</small><strong>${escapeHtml(contact)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div><div><small>时间</small><strong>${escapeHtml(item.time || "待设置")}</strong></div><div><small>集合点</small><strong>${escapeHtml(item.point || "待设置")}</strong></div></div>${item.terminal?`<div class="transport-rule">目的地：${escapeHtml(item.terminal)}${item.placard?` · 接机牌：${escapeHtml(item.placard)}`:""}</div>`:type === "dropoff" ? `<div class="transport-rule">${isFlightReturn(a) ? `航班起飞前 ${state.settings.flightLeadMinutes} 分钟` : `高铁出发前 ${state.settings.trainLeadMinutes} 分钟`} · 建议 ${escapeHtml(recommendedDropoffTime(a) || "待补全返程时间")}</div>` : ""}${canManage() ? `<button class="transport-edit" data-edit-transport="${a.id}" data-type="${type}">编辑安排 →</button>` : ""}</article>`);
       });
     });
     $("#transportGrid").innerHTML = cards.join("") || `<div class="empty-state">暂无接送机记录</div>`; bindDynamicButtons();
+  }
+
+  function transportBatchGroups(list=visibleAttendees()) {
+    const groups=new Map();
+    list.forEach(attendee=>["pickup","dropoff"].forEach(direction=>{ const item=attendee.transport?.[direction]; if(!item?.batchId)return; if(!groups.has(item.batchId))groups.set(item.batchId,{id:item.batchId,direction,item,members:[]}); groups.get(item.batchId).members.push(attendee); }));
+    return [...groups.values()];
+  }
+
+  function renderTransportBatches(list) {
+    const groups=transportBatchGroups(list).filter(group=>activeTransportFilter==="all"||group.direction===activeTransportFilter);
+    $("#transportBatchList").innerHTML=groups.map(group=>{ const {item,members,direction}=group; const staff=isStaffTransport(item); const capacity=Number(item.capacity)||members.length; return `<article class="batch-summary-card" style="--batch-color:${direction==="pickup"?"#9b62b4":"#5267d9"}"><div class="batch-summary-head"><span class="batch-summary-icon">${direction==="pickup"?"⌁":"↗"}</span><span class="status status-normal">${direction==="pickup"?"接机批次":"送机批次"}</span></div><h3>${escapeHtml(item.batchName||"未命名批次")}</h3><p>${escapeHtml(item.terminal||"地点待设置")} · ${staff?escapeHtml(item.staffName||"工作人员"):escapeHtml(item.vehicle||"车辆待定")}</p><div class="batch-summary-meta"><div><small>统一时间</small><strong>${escapeHtml(item.timeStrategy==="arrival"?"按抵达时间":item.time||"待设置")}</strong></div><div><small>已安排人数</small><strong>${members.length} / ${capacity}</strong></div></div><div class="batch-summary-actions"><button class="button button-secondary" data-edit-batch="${group.id}" ${canManage()?"":"disabled"}>编辑批次</button></div></article>`; }).join("");
+    $$('[data-edit-batch]').forEach(button=>button.onclick=()=>openTransportBatch(null,button.dataset.editBatch));
+  }
+
+  function transportIsAssigned(item={}) { return isStaffTransport(item)||(item.driver&&item.driver!=="待分配"); }
+  function batchRouteValue(attendee,direction,key) { if(key==="date")return direction==="pickup"?attendee.outDate:attendee.returnDate; if(key==="city")return direction==="pickup"?attendee.outTo:attendee.returnFrom; return ""; }
+
+  function openTransportBatch(direction,batchId="") {
+    if(!canManage())return deny(); if(state.locks.master)return toast("全名单已锁定，不能调整接送批次","error");
+    const form=$("#transportBatchForm"); form.reset(); form.elements.batchId.value=batchId;
+    const group=batchId?transportBatchGroups(state.attendees).find(item=>item.id===batchId):null; direction=direction||group?.direction||"pickup"; form.elements.direction.value=direction;
+    $("#batchDialogTitle").textContent=direction==="pickup"?"批量接机 / 接站":"批量送机 / 送站";
+    const strategy=form.elements.timeStrategy; strategy.options[0].textContent=direction==="pickup"?"按每人航班 / 车次抵达时间":"按每人建议送机 / 送站时间"; strategy.value=direction==="pickup"?"arrival":"fixed";
+    const cities=[...new Set(state.attendees.map(a=>batchRouteValue(a,direction,"city")).filter(Boolean))]; $("#transportTerminals").innerHTML=cities.map(city=>`<option value="${escapeHtml(city)}"></option>`).join("");
+    if(group){ const item=group.item; const first=group.members[0]; Object.entries({batchName:item.batchName,serviceDate:batchRouteValue(first,direction,"date"),terminal:item.terminal,timeStrategy:item.timeStrategy||"fixed",serviceClock:String(item.time||"").match(/(\d{2}:\d{2})/)?.[1]||"",mode:item.mode|| (isStaffTransport(item)?"staff":"driver"),staffName:item.staffName,staffPhone:isStaffTransport(item)?item.phone:"",placard:item.placard,driver:!isStaffTransport(item)?item.driver:"",driverPhone:!isStaffTransport(item)?item.phone:"",vehicle:item.vehicle,point:item.point,capacity:item.capacity||group.members.length,notes:item.notes}).forEach(([name,value])=>{if(form.elements[name])form.elements[name].value=value??"";}); }
+    else { const first=state.attendees[0]; form.elements.serviceDate.value=batchRouteValue(first||{},direction,"date")||""; form.elements.capacity.value=direction==="pickup"?50:7; form.elements.mode.value="staff"; }
+    toggleBatchModeFields(); renderBatchCandidates(); $("#transportBatchDialog").showModal();
+  }
+
+  function toggleBatchModeFields() {
+    const form=$("#transportBatchForm"); const staff=form.elements.mode.value==="staff"; $("#batchStaffFields").classList.toggle("is-hidden",!staff); $("#batchDriverFields").classList.toggle("is-hidden",staff);
+    [form.elements.staffName,form.elements.staffPhone].forEach(input=>input.required=staff); [form.elements.driver,form.elements.driverPhone,form.elements.vehicle].forEach(input=>input.required=!staff);
+    const fixed=form.elements.timeStrategy.value==="fixed"; $("#batchClockField").classList.toggle("is-hidden",!fixed); form.elements.serviceClock.required=fixed;
+  }
+
+  function renderBatchCandidates() {
+    const form=$("#transportBatchForm"); const direction=form.elements.direction.value||"pickup"; const date=form.elements.serviceDate.value; const terminal=form.elements.terminal.value.trim(); const editingId=form.elements.batchId.value;
+    toggleBatchModeFields();
+    if(!date){ $("#batchAttendeeList").innerHTML=`<div class="batch-empty">请先选择日期</div>`; return updateBatchCapacityNotice(); }
+    const matches=state.attendees.filter(attendee=>{ const city=batchRouteValue(attendee,direction,"city"); const terminalMatch=!terminal||terminal.includes(city)||city.includes(terminal); return batchRouteValue(attendee,direction,"date")===date&&terminalMatch; });
+    $("#batchAttendeeList").innerHTML=matches.length?matches.map(attendee=>{ const item=attendee.transport?.[direction]||{}; const conflict=transportIsAssigned(item)&&item.batchId!==editingId; const checked=item.batchId===editingId; const locked=isLocked(attendee); const trip=direction==="pickup"?`${attendee.outNo} · ${attendee.outArrival}抵达`:`${attendee.returnNo} · ${attendee.returnDeparture}出发`; return `<label class="batch-attendee-option"><input type="checkbox" name="batchAttendee" value="${attendee.id}" ${checked?"checked":""} ${locked?"disabled":""}/><p><strong>${escapeHtml(attendee.name)}</strong><small>${escapeHtml(trip)} · ${escapeHtml(batchRouteValue(attendee,direction,"city"))}</small></p><span class="${conflict?"assigned-warning":""}">${locked?"已锁定":conflict?`已有${direction==="pickup"?"接机":"送机"}安排`:checked?"本批次":"可加入"}</span></label>`; }).join(""):`<div class="batch-empty">没有符合该日期和地点的参会者</div>`;
+    $$('[name="batchAttendee"]',$("#batchAttendeeList")).forEach(input=>input.addEventListener("change",updateBatchCapacityNotice)); $("#selectAllBatchAttendees").checked=false; updateBatchCapacityNotice();
+  }
+
+  function updateBatchCapacityNotice() {
+    const selected=$$('[name="batchAttendee"]:checked',$("#batchAttendeeList")).length; const capacity=Number($("#transportBatchForm").elements.capacity.value)||0; const notice=$("#batchCapacityNotice"); notice.classList.toggle("warning",selected>capacity); notice.textContent=selected>capacity?`已选择 ${selected} 人，超过人数上限 ${capacity} 人，请减少人员或调整车辆容量。`:`已选择 ${selected} 人 · 剩余容量 ${Math.max(0,capacity-selected)} 人`;
+  }
+
+  function resetTransportAssignment(attendee,direction) {
+    attendee.transport[direction]=direction==="pickup"?{driver:"待分配",phone:"—",vehicle:"待分配",time:attendee.outDate&&attendee.outArrival?`${attendee.outDate} ${attendee.outArrival}`:"待设置",point:attendee.outTo?`${attendee.outTo}到达口`:"待设置"}:{driver:"待分配",phone:"—",vehicle:"待分配",time:recommendedDropoffTime(attendee)||"待设置",point:"会议酒店大堂"};
+  }
+
+  function saveTransportBatch(event) {
+    event.preventDefault(); if(!canManage()||state.locks.master)return toast("当前不能调整接送批次","error");
+    const form=event.currentTarget; const data=Object.fromEntries(new FormData(form)); const selectedIds=$$('[name="batchAttendee"]:checked',$("#batchAttendeeList")).map(input=>input.value); const capacity=Number(data.capacity)||0;
+    if(!selectedIds.length)return toast("请至少选择一位参会者","error"); if(selectedIds.length>capacity)return toast("选择人数超过批次人数上限","error");
+    const direction=data.direction; const conflicts=selectedIds.map(id=>state.attendees.find(a=>a.id===id)).filter(a=>{const item=a?.transport?.[direction]||{};return transportIsAssigned(item)&&item.batchId!==data.batchId;});
+    if(conflicts.length&&!confirm(`${conflicts.length} 位参会者已有安排，确认覆盖并加入新批次吗？`))return;
+    const batchId=data.batchId||crypto.randomUUID();
+    if(data.batchId) transportBatchGroups(state.attendees).find(group=>group.id===data.batchId)?.members.filter(member=>!selectedIds.includes(member.id)).forEach(member=>resetTransportAssignment(member,direction));
+    selectedIds.forEach(id=>{ const attendee=state.attendees.find(item=>item.id===id); const time=data.timeStrategy==="fixed"?`${data.serviceDate} ${data.serviceClock}`:direction==="pickup"?`${attendee.outDate} ${attendee.outArrival}`:recommendedDropoffTime(attendee); attendee.transport[direction]={batchId,batchName:data.batchName,mode:data.mode,staffName:data.mode==="staff"?data.staffName:"",driver:data.mode==="staff"?"会务工作人员":data.driver,phone:data.mode==="staff"?data.staffPhone:data.driverPhone,vehicle:data.mode==="staff"?"":data.vehicle,time:time||"待设置",point:data.point,terminal:data.terminal,placard:data.mode==="staff"?data.placard:"",capacity,notes:data.notes,timeStrategy:data.timeStrategy}; });
+    addNotification("change",`${currentUser().name}${data.batchId?"更新":"创建"}了${data.batchName}，共安排${selectedIds.length}人`); saveState(); $("#transportBatchDialog").close(); renderAll(); toast(`接送批次已保存，共 ${selectedIds.length} 人`);
   }
 
   function renderLocks() {
@@ -485,7 +576,12 @@
     form.elements.mismatchRule.checked = state.settings.mismatchRule; form.elements.departureRule.checked = state.settings.departureRule;
     const fieldNames = {fieldTitle:"title",fieldHcpId:"hcpId",fieldAccommodation:"accommodation",fieldFlight:"flight",fieldMslContact:"mslContact",fieldRemarks:"remarks"};
     Object.entries(fieldNames).forEach(([name,key]) => form.elements[name].checked = state.settings.fieldConfig[key] !== false);
+    const template=state.settings.registrationTemplate?.columns?.length ? state.settings.registrationTemplate : standardTemplate();
+    const customCount=template.columns.filter(column=>column.custom).length;
+    $("#templateStatus").innerHTML=`<strong>${escapeHtml(state.settings.templateName||"标准31列报名模板")}</strong><small>${template.columns.filter(column=>column.key!=="sequence").length} 个报名字段${customCount?` · ${customCount} 个自定义字段`:""}</small>`;
+    $("#templateColumns").innerHTML=template.columns.filter(column=>column.key!=="sequence").map(column=>`<span class="${column.custom?"custom":""}">${escapeHtml(column.header.replace(/\s+/g," "))}${column.required?" *":""}</span>`).join("");
     $$('input,textarea,select,button[type="submit"]', form).forEach(input => input.disabled = !canManage() && input.id !== "resetDemo");
+    $("#projectTemplateFile").disabled=!canManage(); $("#resetProjectTemplate").disabled=!canManage();
     $("#resetDemo").classList.toggle("is-hidden", !!backend);
   }
 
@@ -507,7 +603,7 @@
     $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">EDIT TRAVEL</span><h2>修改 ${escapeHtml(a.name)} 的行程</h2><p>保存后会生成变更提醒并重新检查审批规则</p></div><form class="detail-body" id="tripEditForm"><div class="field-grid"><label>去程出发城市<input name="outFrom" value="${escapeHtml(a.outFrom)}" required></label><label>去程到达城市<input name="outTo" value="${escapeHtml(a.outTo)}" required></label><label>去程航班 / 车次<input name="outNo" value="${escapeHtml(a.outNo)}" required></label><label>去程出发时间<input name="outDeparture" type="time" value="${escapeHtml(a.outDeparture)}" required></label><label>返程出发城市<input name="returnFrom" value="${escapeHtml(a.returnFrom)}" required></label><label>返程到达城市<input name="returnTo" value="${escapeHtml(a.returnTo)}" required></label><label>返程航班 / 车次<input name="returnNo" value="${escapeHtml(a.returnNo)}" required></label><label>返程出发时间<input name="returnDeparture" type="time" value="${escapeHtml(a.returnDeparture)}" required></label></div><div class="detail-actions"><button class="button button-primary" type="submit">保存变更</button><button class="button button-secondary" type="button" id="cancelEdit">取消</button></div></form>`;
     $("#cancelEdit").onclick = () => openAttendee(a.id);
     $("#tripEditForm").onsubmit = event => {
-      event.preventDefault(); const fd = new FormData(event.currentTarget); const changes = []; ["outFrom","outTo","outNo","outDeparture","returnFrom","returnTo","returnNo","returnDeparture"].forEach(key => { const next = fd.get(key); if (next !== a[key]) { changes.push(`${key}: ${a[key]} → ${next}`); a[key] = next; } });
+      event.preventDefault(); const fd = new FormData(event.currentTarget); const changes = []; ["outFrom","outTo","outNo","outDeparture","returnFrom","returnTo","returnNo","returnDeparture"].forEach(key => { const next = fd.get(key); if (next !== a[key]) { changes.push(`${FIELD_LABELS[key]}：${a[key]||"空"} → ${next||"空"}`); a[key] = next; } });
       a.risks = evaluateRisks(a); a.approval = a.risks.length ? "pending" : "normal"; addNotification("change", `${currentUser().name}修改了${a.name}的行程：${changes.join("；")}`); saveState(); $("#attendeeDialog").close(); renderAll(); toast("行程已更新，会务负责人已收到变更提醒");
     };
   }
@@ -521,15 +617,15 @@
     const suggested = type === "dropoff" ? recommendedDropoffTime(a) : "";
     const savedTime = !t.time || ["待设置","待分配"].includes(t.time) ? suggested : t.time;
     const currentMode = isStaffTransport(t) ? "staff" : "driver";
-    $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">TRANSPORT</span><h2>${escapeHtml(a.name)} · ${typeName}</h2><p>更新后参会者可在公开查询端立即查看</p></div><form class="detail-body" id="transportEditForm"><div class="field-grid"><label class="span-2">接送方式<select name="mode" id="transportMode"><option value="staff" ${currentMode === "staff" ? "selected" : ""}>机场 / 车站工作人员接待</option><option value="driver" ${currentMode === "driver" ? "selected" : ""}>独立司机接送</option></select></label><div class="span-2 driver-fields" id="driverFields"><div class="field-grid"><label>司机姓名<input name="driver" value="${escapeHtml(currentMode === "driver" ? t.driver || "" : "")}"></label><label>司机电话<input name="phone" value="${escapeHtml(currentMode === "driver" ? t.phone || "" : "")}"></label><label class="span-2">车辆 / 车牌<input name="vehicle" value="${escapeHtml(currentMode === "driver" ? t.vehicle || "" : "")}"></label></div></div><label>接送时间<input name="time" value="${escapeHtml(savedTime || "")}" placeholder="YYYY-MM-DD HH:mm" required></label><label>集合点<input name="point" value="${escapeHtml(t.point || "")}" required></label></div>${type === "dropoff" ? `<div class="risk-preview ok">✓ 自动建议：${isFlightReturn(a) ? `机场按航班起飞前 ${state.settings.flightLeadMinutes} 分钟` : `高铁站按列车出发前 ${state.settings.trainLeadMinutes} 分钟`}，当前建议 ${escapeHtml(suggested || "请先补全返程日期与时间")}；可按城市路况手动调整。</div>` : `<div class="risk-preview">工作人员接待时，无需录入司机、电话和车辆。</div>`}<div class="detail-actions"><button class="button button-primary" type="submit">保存安排</button><button class="button button-secondary" type="button" id="cancelTransport">取消</button></div></form>`;
+    $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#e9d8f2">TRANSPORT</span><h2>${escapeHtml(a.name)} · ${typeName}</h2><p>单独修改后将退出原接送批次</p></div><form class="detail-body" id="transportEditForm"><div class="field-grid"><label class="span-2">接送方式<select name="mode" id="transportMode"><option value="staff" ${currentMode === "staff" ? "selected" : ""}>机场 / 车站工作人员接待</option><option value="driver" ${currentMode === "driver" ? "selected" : ""}>独立司机接送</option></select></label><div class="span-2 driver-fields" id="staffFields"><div class="field-grid"><label>工作人员姓名<input name="staffName" value="${escapeHtml(t.staffName||"")}"></label><label>工作人员电话<input name="staffPhone" value="${escapeHtml(currentMode==="staff"?t.phone||"":"")}"></label><label class="span-2">接机牌文字<input name="placard" value="${escapeHtml(t.placard||"")}"></label></div></div><div class="span-2 driver-fields" id="driverFields"><div class="field-grid"><label>司机姓名<input name="driver" value="${escapeHtml(currentMode === "driver" ? t.driver || "" : "")}"></label><label>司机电话<input name="driverPhone" value="${escapeHtml(currentMode === "driver" ? t.phone || "" : "")}"></label><label class="span-2">车辆 / 车牌<input name="vehicle" value="${escapeHtml(currentMode === "driver" ? t.vehicle || "" : "")}"></label></div></div><label>接送时间<input name="time" value="${escapeHtml(savedTime || "")}" placeholder="YYYY-MM-DD HH:mm" required></label><label>集合点<input name="point" value="${escapeHtml(t.point || "")}" required></label><label class="span-2">机场 / 高铁站<input name="terminal" value="${escapeHtml(t.terminal||"")}"></label></div>${type === "dropoff" ? `<div class="risk-preview ok">✓ 自动建议：${isFlightReturn(a) ? `机场按航班起飞前 ${state.settings.flightLeadMinutes} 分钟` : `高铁站按列车出发前 ${state.settings.trainLeadMinutes} 分钟`}，当前建议 ${escapeHtml(suggested || "请先补全返程日期与时间")}；可按城市路况手动调整。</div>` : `<div class="risk-preview">工作人员接待可填写姓名、电话和接机牌，无需车辆信息。</div>`}<div class="detail-actions"><button class="button button-primary" type="submit">保存安排</button><button class="button button-secondary" type="button" id="cancelTransport">取消</button></div></form>`;
     const dialog = $("#attendeeDialog"); dialog.showModal();
-    const form = $("#transportEditForm"); const mode = $("#transportMode"); const driverFields = $("#driverFields");
-    const toggleDriverFields = () => { const show = mode.value === "driver"; driverFields.classList.toggle("is-hidden", !show); $$('input', driverFields).forEach(input => input.required = show); };
+    const form = $("#transportEditForm"); const mode = $("#transportMode"); const driverFields = $("#driverFields"); const staffFields=$("#staffFields");
+    const toggleDriverFields = () => { const show = mode.value === "driver"; driverFields.classList.toggle("is-hidden", !show); staffFields.classList.toggle("is-hidden",show); $$('input', driverFields).forEach(input => input.required = show); $$('input',staffFields).forEach(input=>input.required=false); };
     mode.onchange = toggleDriverFields; toggleDriverFields(); $("#cancelTransport").onclick = () => dialog.close();
-    form.onsubmit = event => { event.preventDefault(); const values = Object.fromEntries(new FormData(form)); a.transport[type] = values.mode === "staff" ? { driver:"会务工作人员", phone:"", vehicle:"", time:values.time, point:values.point } : { driver:values.driver, phone:values.phone, vehicle:values.vehicle, time:values.time, point:values.point }; addNotification("change", `${currentUser().name}更新了${a.name}的${typeName}安排`); saveState(); dialog.close(); renderAll(); toast(`${typeName}安排已更新`); };
+    form.onsubmit = event => { event.preventDefault(); if(t.batchId&&!confirm("单独修改后该参会者将退出原接送批次，是否继续？"))return; const values = Object.fromEntries(new FormData(form)); a.transport[type] = values.mode === "staff" ? { mode:"staff",staffName:values.staffName,driver:"会务工作人员",phone:values.staffPhone,vehicle:"",placard:values.placard,time:values.time,point:values.point,terminal:values.terminal } : { mode:"driver",driver:values.driver,phone:values.driverPhone,vehicle:values.vehicle,time:values.time,point:values.point,terminal:values.terminal }; addNotification("change", `${currentUser().name}更新了${a.name}的${typeName}安排`); saveState(); dialog.close(); renderAll(); toast(`${typeName}安排已更新`); };
   }
 
-  function isStaffTransport(item = {}) { return item.driver === "会务工作人员"; }
+  function isStaffTransport(item = {}) { return item.mode === "staff" || item.service_mode === "staff" || item.driver === "会务工作人员" || item.driver_name === "会务工作人员"; }
   function isFlightReturn(a) { return a.flight === "Y" && !/^[GDC]\d+/i.test(String(a.returnNo || "").trim()); }
   function recommendedDropoffTime(a) {
     if (!a.returnDate || !a.returnDeparture) return "";
@@ -548,7 +644,7 @@
     event.preventDefault(); if (state.locks.master) return toast("全名单已锁定，不能新增报名", "error");
     const data = Object.fromEntries(new FormData(event.currentTarget)); data.phone = normalizePhone(data.phone); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");
     if (state.attendees.some(a => a.phone === data.phone)) return toast("该手机号已存在报名记录", "error");
-    data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); data.risks = evaluateRisks(data); data.approval = data.risks.length ? "pending" : "normal"; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point: "会议酒店大堂" } };
+    data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); data.risks = evaluateRisks(data); data.approval = data.risks.length ? "pending" : "normal"; data.privacyLetterStatus="pending"; data.ticketStatus="pending"; data.customFields={}; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point: "会议酒店大堂" } };
     state.attendees.unshift(data); addNotification("create", `${currentUser().name}新增报名：${data.name} · ${data.venue}${data.risks.length ? "（行程待审批）" : ""}`); saveState(); event.currentTarget.reset(); renderAll(); toast(data.risks.length ? "报名已保存，异常行程已提交审批" : "报名已保存"); location.hash = "attendees";
   }
 
@@ -581,6 +677,7 @@
     const aliases = { attendeeType:"attendeeType", name:"name", city:"city", hospital:"hospital", department:"department", title:"title", venue:"venue", sex:"sex", idNumber:"idNumber", phone:"phone", hcpId:"hcpId", accommodation:"accommodation", flight:"flight", region:"region", contactName:"contactName", contactMobile:"contactMobile", mslContact:"mslContact", remarks:"remarks", outDate:"outDate", outFrom:"outFrom", outTo:"outTo", outNo:"outNo", outDeparture:"outDeparture", outArrival:"outArrival", returnDate:"returnDate", returnFrom:"returnFrom", returnTo:"returnTo", returnNo:"returnNo", returnDeparture:"returnDeparture", returnArrival:"returnArrival" };
     Object.entries(aliases).forEach(([field,key]) => { if (form.elements[field]) form.elements[field].value = attendee[key] ?? publicAuthSession?.[key] ?? (field === "attendeeType" ? "HCP" : ""); });
     form.elements.name.value = publicAuthSession.name; form.elements.phone.value = publicAuthSession.phone; form.elements.region.value = publicAuthSession.region;
+    applyPublicTemplate(publicProjectConfig?.registrationTemplate, publicProjectConfig?.templateName, attendee.customFields||{});
     applyPublicFieldConfig(publicProjectConfig?.fieldConfig || {});
     $("#publicRegistrationResult").innerHTML = ""; $("#publicAuthStep").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.remove("is-hidden"); $(".portal-card").classList.add("expanded");
     scrollTo({top:0,behavior:"smooth"});
@@ -592,6 +689,24 @@
     const footer=$(".public-footer"); if (footer) footer.textContent = project.servicePhone ? `会务服务台 ${project.servicePhone} · 工作时间 08:00–21:00` : "会务服务台 · 工作时间 08:00–21:00";
     const venueSelect=$("#publicFullRegistrationForm").elements.venue;
     if (venueSelect && project.venues?.length) { const selected=venueSelect.value; venueSelect.innerHTML=`<option value="">请选择</option>${project.venues.map(venue=>`<option>${escapeHtml(venue)}</option>`).join("")}`; venueSelect.value=project.venues.includes(selected) ? selected : ""; }
+    applyPublicTemplate(project.registrationTemplate,project.templateName,{});
+  }
+
+  function applyPublicTemplate(template,name,customValues={}) {
+    const form=$("#publicFullRegistrationForm"); if (!form) return;
+    const columns=template?.columns?.length ? template.columns : standardTemplate().columns;
+    const included=new Map(columns.filter(column=>!column.custom).map(column=>[column.key,column]));
+    CORE_AUTH_FIELDS.forEach(key=>{ if(!included.has(key)) included.set(key,{key,required:true}); });
+    $$('[data-template-field]',form).forEach(label=>{
+      const column=included.get(label.dataset.templateField); const visible=!!column;
+      label.classList.toggle("is-hidden",!visible);
+      $$('input,select,textarea',label).forEach(input=>{ input.required=visible && (CORE_AUTH_FIELDS.has(label.dataset.templateField)||!!column?.required); if(!visible&&!input.readOnly) input.value=""; });
+    });
+    $$('.public-form-section',form).forEach(section=>{ if(section.id!=="publicCustomFieldsSection") section.classList.toggle("is-hidden",!section.querySelector('[data-template-field]:not(.is-hidden)')); });
+    const custom=columns.filter(column=>column.custom);
+    $("#publicCustomFieldsSection").classList.toggle("is-hidden",!custom.length);
+    $("#publicCustomFields").innerHTML=custom.map(column=>`<label>${escapeHtml(column.header)}${column.required?" *":""}<input name="custom__${escapeHtml(column.key)}" value="${escapeHtml(customValues[column.key]||"")}" ${column.required?"required":""} /></label>`).join("");
+    $("#publicTemplateHint").textContent=name ? `当前项目模板：${name}` : "字段与当前项目报名模板一致";
   }
 
   function applyPublicFieldConfig(config = {}) {
@@ -608,8 +723,10 @@
   async function submitPublicFullRegistration(event) {
     event.preventDefault(); if (!publicAuthSession) return resetPublicRegistrationStep();
     const form = event.currentTarget; const result = $("#publicFullRegistrationResult"); const submit = form.querySelector('button[type="submit"]');
-    const details = Object.fromEntries(new FormData(form)); details.contactMobile = normalizePhone(details.contactMobile);
-    if (details.contactMobile.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的销售联系人手机号。</div>`; return; }
+    const details = Object.fromEntries(new FormData(form));
+    details.customFields={}; Object.keys(details).filter(key=>key.startsWith("custom__")).forEach(key=>{ details.customFields[key.slice(8)]=details[key]; delete details[key]; });
+    details.contactMobile = normalizePhone(details.contactMobile);
+    if (form.elements.contactMobile?.required && details.contactMobile.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的销售联系人手机号。</div>`; return; }
     submit.disabled = true; submit.textContent = "正在保存…";
     try {
       const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"complete-registration",meeting:currentEventSlug(),...publicAuthSession,...details}) });
@@ -651,16 +768,16 @@
   function renderLookupResult(name, outbound = {}, returnTrip = {}, pickup = {}, dropoff = {}) {
     const displayTime = value => { if (!value) return "待公布"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("zh-CN",{hour12:false}); };
     const card = (label, trip, t) => {
-      const staff = isStaffTransport({driver:t.driver || t.driver_name});
-      const driver = staff ? "会务工作人员现场接待" : `${t.driver || t.driver_name || "待分配"} · ${t.phone || t.driver_phone || "—"}`;
+      const staff = isStaffTransport({...t,driver:t.driver || t.driver_name});
+      const driver = staff ? `${t.staffName || t.staff_name || "会务工作人员现场接待"}${t.phone || t.driver_phone ? ` · ${t.phone || t.driver_phone}` : ""}` : `${t.driver || t.driver_name || "待分配"} · ${t.phone || t.driver_phone || "—"}`;
       const vehicle = staff ? "无需司机及车辆信息" : (t.vehicle || "待分配");
-      return `<div class="result-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="result-route"><div><small>接送方式</small><strong>${escapeHtml(driver)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div><div><small>${label}时间</small><strong>${escapeHtml(displayTime(t.time || t.service_time))}</strong></div><div><small>集合点</small><strong>${escapeHtml(t.point || t.meeting_point || "待公布")}</strong></div></div></div>`;
+      return `<div class="result-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="result-route"><div><small>工作人员 / 司机</small><strong>${escapeHtml(driver)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div><div><small>${label}时间</small><strong>${escapeHtml(displayTime(t.time || t.service_time))}</strong></div><div><small>集合点</small><strong>${escapeHtml(t.point || t.meeting_point || "待公布")}</strong></div>${t.terminal?`<div><small>机场 / 高铁站</small><strong>${escapeHtml(t.terminal)}</strong></div>`:""}${t.placard?`<div><small>接机牌</small><strong>${escapeHtml(t.placard)}</strong></div>`:""}</div></div>`;
     };
     return `<div class="lookup-name">${escapeHtml(name)}，你的安排如下</div>${card("接机",outbound,pickup)}${card("送机",returnTrip,dropoff)}<div class="calendar-action"><strong>还差一步：开启手机自动提醒</strong><span>受手机隐私规则限制，网页不能静默写入日历。请点击并在系统弹窗中确认“添加全部”。</span><button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">加入手机日历 · 接送前 30 分钟提醒</button></div>`;
   }
 
   function buildLookupSchedule(name, pickup = {}, dropoff = {}) {
-    const event = (label, t) => ({ title:`HEMA SEM ${label}提醒`, time:t.time || t.service_time || "", location:t.point || t.meeting_point || "", description:isStaffTransport({driver:t.driver || t.driver_name}) ? "会务工作人员现场接待" : `司机：${t.driver || t.driver_name || "待分配"}；电话：${t.phone || t.driver_phone || "—"}；车辆：${t.vehicle || "待分配"}` });
+    const event = (label, t) => ({ title:`HEMA SEM ${label}提醒`, time:t.time || t.service_time || "", location:t.point || t.meeting_point || "", description:isStaffTransport({...t,driver:t.driver || t.driver_name}) ? `工作人员：${t.staffName||t.staff_name||"会务工作人员"}；电话：${t.phone||t.driver_phone||"—"}${t.placard?`；接机牌：${t.placard}`:""}` : `司机：${t.driver || t.driver_name || "待分配"}；电话：${t.phone || t.driver_phone || "—"}；车辆：${t.vehicle || "待分配"}` });
     return { name, events:[event("接机",pickup),event("送机",dropoff)].filter(item => item.time && !["待设置","待公布","待分配"].includes(item.time)) };
   }
 
@@ -709,6 +826,54 @@
   }
 
   const cleanCell = value => String(value ?? "").trim();
+  const normalizeHeader = value => cleanCell(value).toLowerCase().replace(/[\s\n\r*#()（）/._-]/g,"");
+  function inferTemplateKey(header,index,total) {
+    const text=normalizeHeader(header);
+    if (/^(no|序号)$/.test(text)) return "sequence";
+    const direct = [
+      [/参会者类别|attendeetype/,"attendeeType"],[/销售联系人手机|contactmobile/,"contactMobile"],[/销售联系人姓名|contactname/,"contactName"],[/客户编号|hcpid/,"hcpId"],[/身份证|护照|passport|idpassport/,"idNumber"],[/手机号|mobilephone/,"phone"],[/客户姓名|姓名|name/,"name"],[/医院|连锁|hospital|chain/,"hospital"],[/科室|门店|department|store/,"department"],[/职称|title/,"title"],[/会场|venue/,"venue"],[/性别|sex/,"sex"],[/住宿|accommodation/,"accommodation"],[/是否航空|flightyn/,"flight"],[/返回日期|returndate/,"returnDate"],[/大区|region/,"region"],[/msl/,"mslContact"],[/备注|remarks?/,"remarks"],
+    ];
+    for (const [pattern,key] of direct) if (pattern.test(text)) return key;
+    const isReturn=/返程|返回|return/.test(text) || index > Math.floor(total*.62);
+    if (/出发日期|departuredate/.test(text)) return isReturn?"returnDate":"outDate";
+    if (/出发城市|departurecity/.test(text)) return isReturn?"returnFrom":"outFrom";
+    if (/到达城市|arrivalcity/.test(text)) return isReturn?"returnTo":"outTo";
+    if (/航班|车次|flighttrainno/.test(text)) return isReturn?"returnNo":"outNo";
+    if (/出发时间|departuretime/.test(text)) return isReturn?"returnDeparture":"outDeparture";
+    if (/到达时间|arrivaltime/.test(text)) return isReturn?"returnArrival":"outArrival";
+    if (/城市|city/.test(text)) return "city";
+    return "";
+  }
+  function templateFromHeaders(headers) {
+    const standardLike=headers.length>=30 && headers.some(value=>normalizeHeader(value).includes("客户姓名")) && headers.some(value=>normalizeHeader(value).includes("销售联系人手机"));
+    const used=new Set();
+    return {version:1,columns:headers.map((raw,index)=>{
+      const header=cleanCell(raw)||`未命名字段 ${index+1}`;
+      let key=standardLike && index<STANDARD_TEMPLATE_KEYS.length ? STANDARD_TEMPLATE_KEYS[index] : inferTemplateKey(header,index,headers.length);
+      if (key && key!=="sequence" && used.has(key)) key="";
+      if (key) used.add(key);
+      const custom=!key; if (custom) key=`custom_${index}_${normalizeHeader(header).slice(0,18)||"field"}`;
+      return {header,key,required:/\*/.test(header),custom};
+    })};
+  }
+  async function readProjectTemplate(file) {
+    if (!file || !canManage()) return;
+    if (!/\.(xlsx|xls|csv)$/i.test(file.name)) return toast("请选择 Excel 或 CSV 模板", "error");
+    if (!window.XLSX) return toast("Excel 组件尚未加载，请刷新后重试", "error");
+    try {
+      const workbook=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true}); const sheet=workbook.Sheets[workbook.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false});
+      const headers=(rows.find(row=>row.filter(value=>cleanCell(value)).length>=2)||[]).map(cleanCell);
+      if (headers.length<2) throw new Error("没有识别到模板表头");
+      state.settings.templateName=file.name; state.settings.registrationTemplate=templateFromHeaders(headers);
+      addNotification("change",`${currentUser().name}为当前项目启用了报名模板：${file.name}`); saveState(); renderSettings(); toast(`模板已启用，共识别 ${headers.length} 列`);
+    } catch(error) { toast(error.message||"模板读取失败","error"); }
+    finally { $("#projectTemplateFile").value=""; }
+  }
+  function resetProjectTemplate() {
+    if (!canManage() || !confirm("恢复当前项目的标准31列报名模板？")) return;
+    state.settings.templateName="标准31列报名模板"; state.settings.registrationTemplate=standardTemplate(); saveState(); renderSettings(); toast("已恢复标准报名模板");
+  }
   function excelDate(value) {
     if (!value) return "";
     if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0,10);
@@ -748,7 +913,7 @@
     const attendee={
       id:existing?.id || (backend ? crypto.randomUUID() : `a-${Date.now()}-${sheetRow}`), ownerId:matchedOwner?.id || existing?.ownerId || currentUser().id,
       attendeeType:cleanCell(row[1])||"HCP", name:cleanCell(row[2]), city:cleanCell(row[3]), hospital:cleanCell(row[4]), department:cleanCell(row[5]), title:cleanCell(row[6]), venue:cleanCell(row[7]), sex:cleanCell(row[8]), idNumber:cleanCell(row[9]), phone, hcpId:cleanCell(row[11]), accommodation:yesNo(row[12]), flight:yesNo(row[13],/^[GDC]\d+/i.test(cleanCell(row[17]))?"N":"Y"),
-      outDate:excelDate(row[14]),outFrom:cleanCell(row[15]),outTo:cleanCell(row[16]),outNo:cleanCell(row[17]),outDeparture:excelTime(row[18]),outArrival:excelTime(row[19]),returnDate:excelDate(row[20]),returnFrom:cleanCell(row[21]),returnTo:cleanCell(row[22]),returnNo:cleanCell(row[23]),returnDeparture:excelTime(row[24]),returnArrival:excelTime(row[25]),region:cleanCell(row[26]),contactName:cleanCell(row[27]),contactMobile,mslContact:cleanCell(row[29]),remarks:cleanCell(row[30]),createdAt:existing?.createdAt||new Date().toISOString(),transport:existing?.transport||{pickup:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"待设置"},dropoff:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"会议酒店大堂"}},
+      outDate:excelDate(row[14]),outFrom:cleanCell(row[15]),outTo:cleanCell(row[16]),outNo:cleanCell(row[17]),outDeparture:excelTime(row[18]),outArrival:excelTime(row[19]),returnDate:excelDate(row[20]),returnFrom:cleanCell(row[21]),returnTo:cleanCell(row[22]),returnNo:cleanCell(row[23]),returnDeparture:excelTime(row[24]),returnArrival:excelTime(row[25]),region:cleanCell(row[26]),contactName:cleanCell(row[27]),contactMobile,mslContact:cleanCell(row[29]),remarks:cleanCell(row[30]),customFields:existing?.customFields||{},privacyLetterStatus:existing?.privacyLetterStatus||"pending",ticketStatus:existing?.ticketStatus||"pending",createdAt:existing?.createdAt||new Date().toISOString(),transport:existing?.transport||{pickup:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"待设置"},dropoff:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"会议酒店大堂"}},
     };
     const errors=[];
     if (!attendee.name) errors.push("缺少姓名"); if (phone.length!==11) errors.push("手机号格式错误"); if (!attendee.idNumber) errors.push("缺少证件号"); if (!attendee.hcpId) errors.push("缺少HCP ID");
@@ -772,9 +937,16 @@
   }
 
   function exportExcel() {
-    const headers = ["No.\n序号","Attendee Type\n参会者类别","Name\n客户姓名(姓/名)*","City\n城市","Hospital/Chain\n医院/连锁","Department/Store\n科室/门店","Title\n职称","会场\n（多城会议）","Sex\n性别","ID/Passpor No.*\n身份证号/护照号*","Mobile Phone #\n手机号","HCP ID*\n客户编号*","Accommodation\n住宿安排(Y/N)","Flight\n是否航空(Y/N)","Departure Date\n出发日期","Departure City 出发城市","Arrival City 到达城市","Flight/Train No.\n航班/车次号","Departure time 出发时间","Arrival time 到达时间","Return Date\n返回日期","Departure City 出发城市","Arrival City 到达城市","Flight/Train No.\n航班/车次号","Departure time 出发时间","Arrival time 到达时间","Region\n大区","Contact Name\n销售联系人姓名","Contact Mobile\n销售联系人手机","MSL医学部联系人","Remarks\n备注（本地客户/VIP异地用车备注）"];
-    const rows = visibleAttendees().map((a,i) => [i+1,a.attendeeType,a.name,a.city,a.hospital,a.department,a.title,a.venue,a.sex,a.idNumber,a.phone,a.hcpId,a.accommodation,a.flight,a.outDate,a.outFrom,a.outTo,a.outNo,a.outDeparture,a.outArrival,a.returnDate,a.returnFrom,a.returnTo,a.returnNo,a.returnDeparture,a.returnArrival,a.region,a.contactName||userName(a.ownerId),a.contactMobile||state.users.find(u=>u.id===a.ownerId)?.phone||"",a.mslContact,a.remarks]);
-    if (window.XLSX) { const ws = XLSX.utils.aoa_to_sheet([headers,...rows]); ws["!cols"] = headers.map((_,i) => ({ wch: i === 0 ? 7 : i >= 14 && i <= 25 ? 14 : 18 })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"报名表"); XLSX.writeFile(wb,`HEMA-SEM-报名表-${new Date().toISOString().slice(0,10)}.xlsx`); toast("Excel 已导出"); }
+    const columns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns;
+    const headers=[...columns.map(column=>column.header),"隐私沟通函状态","出票状态"];
+    const progressLabels={pending:"待处理",sent:"已发送",complete:"已完成",processing:"出票中",ticketed:"已出票",changed:"改签",refunded:"已退票"};
+    const rows=visibleAttendees().map((a,i)=>[...columns.map(column=>{
+      if(column.key==="sequence") return i+1;
+      if(column.key==="contactName") return a.contactName||userName(a.ownerId);
+      if(column.key==="contactMobile") return a.contactMobile||state.users.find(u=>u.id===a.ownerId)?.phone||"";
+      return column.custom ? a.customFields?.[column.key]||"" : a[column.key]||"";
+    }),progressLabels[a.privacyLetterStatus||"pending"],progressLabels[a.ticketStatus||"pending"]]);
+    if (window.XLSX) { const ws = XLSX.utils.aoa_to_sheet([headers,...rows]); ws["!cols"] = headers.map((_,i) => ({ wch: i === 0 ? 7 : 18 })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"报名表"); XLSX.writeFile(wb,`${state.settings.slug||"项目"}-报名表-${new Date().toISOString().slice(0,10)}.xlsx`); toast("Excel 已按当前项目模板导出"); }
     else { const csv = [headers,...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n"); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob(["\ufeff",csv],{type:"text/csv"})); link.download = "HEMA-SEM-报名表.csv"; link.click(); toast("已导出兼容 Excel 的 CSV 文件"); }
   }
 

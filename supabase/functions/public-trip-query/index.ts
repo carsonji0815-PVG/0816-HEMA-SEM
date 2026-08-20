@@ -112,12 +112,18 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       const lockedChange = (locks || []).find(lock => (groups[lock.field_group] || []).some(key => String(attendee[key] ?? "") !== String(values[key as keyof typeof values] ?? "")));
       if (lockedChange) return reply({ error:`${lockedChange.field_group} 相关字段已锁定，不能修改` }, 423);
     }
-    const risks: string[] = [];
-    if (meeting.check_city_mismatch && values.out_from !== values.return_to) risks.push("去程出发城市与返程到达城市不一致");
-    if (meeting.check_departure_city && values.out_from && !(meeting.allowed_departure_cities || []).includes(values.out_from)) risks.push(`出发城市“${values.out_from}”不在预设范围`);
-    const { error:updateError } = await db.from("attendees").update({ ...values, approval:risks.length ? "pending" : "normal", risks }).eq("id",attendee.id);
+    const outboundRisks:string[]=[]; const returnRisks:string[]=[];
+    if (meeting.check_city_mismatch && values.out_from !== values.return_to) returnRisks.push("去程出发城市与返程到达城市不一致");
+    if (meeting.check_departure_city && values.out_from && !(meeting.allowed_departure_cities || []).includes(values.out_from)) outboundRisks.push(`出发城市“${values.out_from}”不在预设范围`);
+    const risks=[...outboundRisks,...returnRisks];
+    const outboundChanged=["out_date","out_from","out_to","out_no","out_departure","out_arrival"].some(key=>String(attendee[key]??"")!==String(values[key as keyof typeof values]??""));
+    const returnChanged=["return_date","return_from","return_to","return_no","return_departure","return_arrival"].some(key=>String(attendee[key]??"")!==String(values[key as keyof typeof values]??""));
+    const outboundApproval=outboundRisks.length?(outboundChanged?"pending":attendee.outbound_approval_status||"pending"):"normal";
+    const returnApproval=returnRisks.length?(returnChanged?"pending":attendee.return_approval_status||"pending"):"normal";
+    const aggregateApproval=[outboundApproval,returnApproval].some(status=>["pending","rejected"].includes(status))?"pending":[outboundApproval,returnApproval].some(status=>status==="approved")?"approved":"normal";
+    const { error:updateError } = await db.from("attendees").update({ ...values, outbound_approval_status:outboundApproval, return_approval_status:returnApproval, approval:aggregateApproval, risks }).eq("id",attendee.id);
     if (updateError) return reply({ error:updateError.message.includes("锁定") ? "报名已锁定，不能修改" : "报名保存失败，请稍后重试" }, 500);
-    return reply({ completed:true, needsApproval:risks.length > 0, project:projectView(meeting) });
+    return reply({ completed:true, needsApproval:aggregateApproval==="pending", project:projectView(meeting) });
   }
 
   const { data: attendee } = await db.from("attendees")

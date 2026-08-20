@@ -20,6 +20,7 @@
 - 每个项目可上传独立 Excel / CSV 名单模板，公开报名页按模板字段动态生成，自定义列随名单保存和导出
 - 同机场/高铁站、同工作人员或车辆的接送机可批量安排，并校验人数上限和已有批次冲突
 - 名单显示隐私沟通函与出票进度；变更提醒明确记录参会者、字段及原值 → 新值
+- 去程与返程独立审批；需要审批的行程只有通过后才能进入出票中、已出票或改签状态
 
 ## 本地预览
 
@@ -36,7 +37,7 @@ python3 -m http.server 4173
 ### 1. 建立 Supabase 项目
 
 1. 在 Supabase 新建项目。
-2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按顺序执行 `supabase/migrations/20260818_multi_project.sql`、`supabase/migrations/20260818_public_registration_fields.sql` 和 `supabase/migrations/20260820_project_templates_transport_batches.sql`。已有项目至少需要执行尚未运行的升级脚本。
+2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按文件名顺序执行 `supabase/migrations/` 内的升级脚本，包括 `20260820_project_templates_transport_batches.sql` 和 `20260820_segment_approval_ticket_guard.sql`。已有项目至少需要执行尚未运行的升级脚本。
 3. 在 Authentication 创建工作人员邮箱密码账号。
 4. 查询会议 ID：
 
@@ -104,5 +105,6 @@ window.APP_CONFIG = {
 - `supabase/schema.sql`：表结构、RLS、锁定校验与审计触发器
 - `supabase/migrations/20260818_multi_project.sql`：多项目权限、配置和复制项目升级脚本
 - `supabase/migrations/20260820_project_templates_transport_batches.sql`：项目报名模板、批量接送、名单进度与详细变更记录升级脚本
+- `supabase/migrations/20260820_segment_approval_ticket_guard.sql`：去程/返程分段审批与出票前数据库强制校验
 - `supabase/functions/public-trip-query/index.ts`：无短信验证码的手机号查询接口
 - `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布

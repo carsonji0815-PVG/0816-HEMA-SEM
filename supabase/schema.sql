@@ -92,6 +92,8 @@ create table if not exists public.attendees (
   custom_fields jsonb not null default '{}'::jsonb,
   privacy_letter_status text not null default 'pending',
   ticket_status text not null default 'pending',
+  outbound_approval_status text not null default 'normal',
+  return_approval_status text not null default 'normal',
   approval public.approval_status not null default 'normal',
   risks text[] not null default '{}',
   row_locked boolean not null default false,

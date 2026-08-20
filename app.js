@@ -157,12 +157,28 @@
   function maskName(name) { return name.length > 1 ? `${name[0]}${"*".repeat(name.length - 1)}` : name; }
   function approvalLabel(value) { return ({ pending: "待审批", approved: "已通过", normal: "行程正常" })[value] || value; }
 
-  function evaluateRisks(data) {
-    const risks = [];
-    if (state.settings.mismatchRule && data.outFrom && data.returnTo && data.outFrom.trim() !== data.returnTo.trim()) risks.push("去程出发城市与返程到达城市不一致");
-    if (state.settings.departureRule && data.outFrom && !state.settings.allowedCities.includes(data.outFrom.trim())) risks.push(`出发城市“${data.outFrom.trim()}”不在预设范围`);
-    return risks;
+  function evaluateSegmentRisks(data) {
+    const result={outbound:[],return:[]};
+    if (state.settings.mismatchRule && data.outFrom && data.returnTo && data.outFrom.trim() !== data.returnTo.trim()) result.return.push("去程出发城市与返程到达城市不一致");
+    if (state.settings.departureRule && data.outFrom && !state.settings.allowedCities.includes(data.outFrom.trim())) result.outbound.push(`出发城市“${data.outFrom.trim()}”不在预设范围`);
+    return result;
   }
+  const evaluateRisks = data => { const risks=evaluateSegmentRisks(data); return [...risks.outbound,...risks.return]; };
+  function segmentApproval(a,segment) {
+    const key=segment==="outbound"?"outboundApproval":"returnApproval"; if(a[key])return a[key];
+    const hasRisk=evaluateSegmentRisks(a)[segment].length>0; return hasRisk?(a.approval==="approved"?"approved":"pending"):"normal";
+  }
+  function syncAggregateApproval(a) {
+    const statuses=[segmentApproval(a,"outbound"),segmentApproval(a,"return")];
+    a.approval=statuses.some(value=>["pending","rejected"].includes(value))?"pending":statuses.some(value=>value==="approved")?"approved":"normal";
+  }
+  function refreshTravelApprovals(a,changedSegments=null) {
+    const previous={outbound:segmentApproval(a,"outbound"),return:segmentApproval(a,"return")}; const risks=evaluateSegmentRisks(a); a.risks=[...risks.outbound,...risks.return];
+    a.outboundApproval=risks.outbound.length?(changedSegments&&!changedSegments.has("outbound")?previous.outbound:"pending"):"normal";
+    a.returnApproval=risks.return.length?(changedSegments&&!changedSegments.has("return")?previous.return:"pending"):"normal"; syncAggregateApproval(a);
+  }
+  const approvalRequired = (a,segment) => evaluateSegmentRisks(a)[segment].length>0;
+  function ticketApprovalBlockers(a) { return ["outbound","return"].filter(segment=>approvalRequired(a,segment)&&segmentApproval(a,segment)!=="approved"); }
 
   async function init() {
     bindLogin();
@@ -283,11 +299,11 @@
       const t = row.transports?.find(item => item.direction === direction) || {};
       return { driver: t.driver_name || "待分配", staffName:t.staff_name||"", phone: t.driver_phone || "—", vehicle: t.vehicle || "待分配", time: t.service_time ? new Date(t.service_time).toLocaleString("zh-CN", { hour12: false }).replaceAll("/", "-") : "待设置", point: t.meeting_point || "待设置", mode:t.service_mode||"", batchId:t.batch_id||"", batchName:t.batch_name||"", terminal:t.terminal||"", placard:t.placard||"", capacity:t.capacity||null, notes:t.notes||"", timeStrategy:t.time_strategy||"fixed" };
     };
-    return { id:row.id, attendeeType:row.attendee_type||"", name:row.name, city:row.city||"", hospital:row.hospital||"", department:row.department||"", title:row.title||"", venue:row.venue||"", sex:row.sex||"", idNumber:row.id_number, phone:row.phone, hcpId:row.hcp_id, accommodation:row.accommodation?"Y":"N", flight:row.is_flight?"Y":"N", region:row.region||"", contactName:row.contact_name||"", contactMobile:row.contact_mobile||"", mslContact:row.msl_contact||"", remarks:row.remarks||"", customFields:row.custom_fields||{}, privacyLetterStatus:row.privacy_letter_status||"pending", ticketStatus:row.ticket_status||"pending", ownerId:row.owner_id, outDate:row.out_date||"", outFrom:row.out_from||"", outTo:row.out_to||"", outNo:row.out_no||"", outDeparture:(row.out_departure||"").slice(0,5), outArrival:(row.out_arrival||"").slice(0,5), returnDate:row.return_date||"", returnFrom:row.return_from||"", returnTo:row.return_to||"", returnNo:row.return_no||"", returnDeparture:(row.return_departure||"").slice(0,5), returnArrival:(row.return_arrival||"").slice(0,5), approval:row.approval, risks:row.risks||[], createdAt:row.created_at, transport:{pickup:trip("pickup"),dropoff:trip("dropoff")} };
+    return { id:row.id, attendeeType:row.attendee_type||"", name:row.name, city:row.city||"", hospital:row.hospital||"", department:row.department||"", title:row.title||"", venue:row.venue||"", sex:row.sex||"", idNumber:row.id_number, phone:row.phone, hcpId:row.hcp_id, accommodation:row.accommodation?"Y":"N", flight:row.is_flight?"Y":"N", region:row.region||"", contactName:row.contact_name||"", contactMobile:row.contact_mobile||"", mslContact:row.msl_contact||"", remarks:row.remarks||"", customFields:row.custom_fields||{}, privacyLetterStatus:row.privacy_letter_status||"pending", ticketStatus:row.ticket_status||"pending", outboundApproval:row.outbound_approval_status||"", returnApproval:row.return_approval_status||"", ownerId:row.owner_id, outDate:row.out_date||"", outFrom:row.out_from||"", outTo:row.out_to||"", outNo:row.out_no||"", outDeparture:(row.out_departure||"").slice(0,5), outArrival:(row.out_arrival||"").slice(0,5), returnDate:row.return_date||"", returnFrom:row.return_from||"", returnTo:row.return_to||"", returnNo:row.return_no||"", returnDeparture:(row.return_departure||"").slice(0,5), returnArrival:(row.return_arrival||"").slice(0,5), approval:row.approval, risks:row.risks||[], createdAt:row.created_at, transport:{pickup:trip("pickup"),dropoff:trip("dropoff")} };
   }
 
   function toDbAttendee(a) {
-    return { id:a.id, meeting_id:backendMeetingId, owner_id:a.ownerId, attendee_type:a.attendeeType||null, name:a.name, city:a.city||null, hospital:a.hospital||null, department:a.department||null, title:a.title||null, venue:a.venue||null, sex:a.sex||null, id_number:a.idNumber, phone:a.phone, hcp_id:a.hcpId, accommodation:a.accommodation==="Y", is_flight:a.flight==="Y", out_date:a.outDate||null, out_from:a.outFrom||null, out_to:a.outTo||null, out_no:a.outNo||null, out_departure:a.outDeparture||null, out_arrival:a.outArrival||null, return_date:a.returnDate||null, return_from:a.returnFrom||null, return_to:a.returnTo||null, return_no:a.returnNo||null, return_departure:a.returnDeparture||null, return_arrival:a.returnArrival||null, region:a.region||null, contact_name:a.contactName||null, contact_mobile:a.contactMobile||null, msl_contact:a.mslContact||null, remarks:a.remarks||null, custom_fields:a.customFields||{}, privacy_letter_status:a.privacyLetterStatus||"pending", ticket_status:a.ticketStatus||"pending", approval:a.approval, risks:a.risks||[], row_locked:state.locks.rows.includes(a.id) };
+    return { id:a.id, meeting_id:backendMeetingId, owner_id:a.ownerId, attendee_type:a.attendeeType||null, name:a.name, city:a.city||null, hospital:a.hospital||null, department:a.department||null, title:a.title||null, venue:a.venue||null, sex:a.sex||null, id_number:a.idNumber, phone:a.phone, hcp_id:a.hcpId, accommodation:a.accommodation==="Y", is_flight:a.flight==="Y", out_date:a.outDate||null, out_from:a.outFrom||null, out_to:a.outTo||null, out_no:a.outNo||null, out_departure:a.outDeparture||null, out_arrival:a.outArrival||null, return_date:a.returnDate||null, return_from:a.returnFrom||null, return_to:a.returnTo||null, return_no:a.returnNo||null, return_departure:a.returnDeparture||null, return_arrival:a.returnArrival||null, region:a.region||null, contact_name:a.contactName||null, contact_mobile:a.contactMobile||null, msl_contact:a.mslContact||null, remarks:a.remarks||null, custom_fields:a.customFields||{}, privacy_letter_status:a.privacyLetterStatus||"pending", ticket_status:a.ticketStatus||"pending", outbound_approval_status:segmentApproval(a,"outbound"), return_approval_status:segmentApproval(a,"return"), approval:a.approval, risks:a.risks||[], row_locked:state.locks.rows.includes(a.id) };
   }
 
   async function syncBackend() {
@@ -452,7 +468,8 @@
     $("#rosterScope").textContent = currentUser().role === "sales" ? `仅显示 ${currentUser().name} 负责的参会者。` : "显示本会议全部参会者。";
     $("#importRoster").classList.toggle("is-hidden", currentUser().role !== "ops");
     const progressSelect=(a,field,options)=>`<select class="progress-select ${a[field]==="complete"||a[field]==="ticketed"?"done":""}" data-progress-field="${field}" data-attendee-id="${a.id}" ${isLocked(a)?"disabled":""}>${options.map(([value,label])=>`<option value="${value}" ${a[field]===value?"selected":""}>${label}</option>`).join("")}</select>`;
-    $("#attendeeTableBody").innerHTML = list.map(a => `<tr><td><div class="person-cell"><span class="person-avatar">${escapeHtml(a.name[0])}</span><div><span class="cell-primary">${escapeHtml(a.name)}</span><span class="cell-secondary">${escapeHtml(a.phone.slice(0,3))}****${escapeHtml(a.phone.slice(-4))}</span></div></div></td><td><span class="cell-primary">${escapeHtml(a.hospital)}</span><span class="cell-secondary">${escapeHtml(a.department)} · ${escapeHtml(a.title)}</span></td><td>${escapeHtml(a.venue)}</td><td><span class="cell-primary">${escapeHtml(a.outNo)}</span><span class="cell-secondary">${fmtDate(a.outDate)} ${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</span></td><td><span class="cell-primary">${escapeHtml(a.returnNo)}</span><span class="cell-secondary">${fmtDate(a.returnDate)} ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</span></td><td>${progressSelect(a,"privacyLetterStatus",[["pending","待沟通"],["sent","已发送"],["complete","已完成"]])}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><span class="status status-${isLocked(a) ? "locked" : a.approval}">${isLocked(a) ? "已锁定" : approvalLabel(a.approval)}</span></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`).join("");
+    const segmentBadge=(a,segment,label)=>{ const status=segmentApproval(a,segment); const text=status==="approved"?"已审批":status==="pending"?"待审批":status==="rejected"?"已退回":"无需审批"; return `<span class="segment-status ${status}">${label}·${text}</span>`; };
+    $("#attendeeTableBody").innerHTML = list.map(a => `<tr><td><div class="person-cell"><span class="person-avatar">${escapeHtml(a.name[0])}</span><div><span class="cell-primary">${escapeHtml(a.name)}</span><span class="cell-secondary">${escapeHtml(a.phone.slice(0,3))}****${escapeHtml(a.phone.slice(-4))}</span></div></div></td><td><span class="cell-primary">${escapeHtml(a.hospital)}</span><span class="cell-secondary">${escapeHtml(a.department)} · ${escapeHtml(a.title)}</span></td><td>${escapeHtml(a.venue)}</td><td><span class="cell-primary">${escapeHtml(a.outNo)}</span><span class="cell-secondary">${fmtDate(a.outDate)} ${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</span></td><td><span class="cell-primary">${escapeHtml(a.returnNo)}</span><span class="cell-secondary">${fmtDate(a.returnDate)} ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</span></td><td>${progressSelect(a,"privacyLetterStatus",[["pending","待沟通"],["sent","已发送"],["complete","已完成"]])}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><div class="approval-status-stack">${segmentBadge(a,"outbound","去程")}${segmentBadge(a,"return","返程")}</div></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`).join("");
     $$('[data-progress-field]').forEach(select=>select.onchange=()=>updateProgressField(select));
     $("#attendeeEmpty").classList.toggle("is-hidden", !!list.length); bindDynamicButtons();
   }
@@ -461,13 +478,15 @@
     const a=state.attendees.find(item=>item.id===select.dataset.attendeeId); if(!a||isLocked(a)) return renderAttendeeTable();
     if(currentUser().role==="sales"&&a.ownerId!==currentUser().id) return deny();
     const field=select.dataset.progressField; const previous=a[field]||"pending"; const next=select.value; if(previous===next)return;
+    if(field==="ticketStatus"&&["processing","ticketed","changed"].includes(next)) { const blockers=ticketApprovalBlockers(a); if(blockers.length){ select.value=previous; const labels=blockers.map(segment=>segment==="outbound"?"去程":"返程").join("、"); return toast(`${a.name}的${labels}行程尚未审批通过，不能进行出票`,"error"); } }
     const labels={pending:"待处理",sent:"已发送",complete:"已完成",processing:"出票中",ticketed:"已出票",changed:"改签",refunded:"已退票"};
     a[field]=next; addNotification("change",`${currentUser().name}变更了${a.name}的${FIELD_LABELS[field]}：${labels[previous]||previous} → ${labels[next]||next}`); saveState(); renderAll(); toast(`${a.name}的${FIELD_LABELS[field]}已更新`);
   }
 
   function renderApprovals() {
-    const list = visibleAttendees().filter(a => a.approval === "pending");
-    $("#approvalBoard").innerHTML = list.length ? list.map(a => `<article class="panel approval-card"><span class="status status-pending">待审批</span><h3>${escapeHtml(a.name)}</h3><div class="approval-meta">${escapeHtml(a.hospital)} · 负责人 ${escapeHtml(userName(a.ownerId))}</div><div class="risk-list">${a.risks.map(r => `<div class="risk-item">△ ${escapeHtml(r)}</div>`).join("")}</div><div class="route-line"><div><small>去程出发</small><strong>${escapeHtml(a.outFrom)}</strong></div><span>→</span><div><small>返程到达</small><strong>${escapeHtml(a.returnTo)}</strong></div></div><div class="approval-actions"><button class="button button-secondary" data-reject="${a.id}" ${canManage() ? "" : "disabled"}>退回修改</button><button class="button button-primary" data-approve="${a.id}" ${canManage() ? "" : "disabled"}>通过</button></div></article>`).join("") : `<article class="panel empty-state" style="grid-column:1/-1">没有待审批的异常行程</article>`;
+    const list = visibleAttendees().filter(a => ["outbound","return"].some(segment=>["pending","rejected"].includes(segmentApproval(a,segment))));
+    const segmentRow=(a,segment)=>{ const outbound=segment==="outbound"; const status=segmentApproval(a,segment); const risks=evaluateSegmentRisks(a)[segment]; if(status==="normal")return""; return `<div class="segment-approval-row"><div><span class="segment-status ${status}">${outbound?"去程":"返程"} · ${status==="approved"?"已审批":status==="rejected"?"已退回":"待审批"}</span><strong>${escapeHtml(outbound?`${a.outFrom} → ${a.outTo} · ${a.outNo}`:`${a.returnFrom} → ${a.returnTo} · ${a.returnNo}`)}</strong><small>${risks.map(escapeHtml).join("；")}</small></div><div class="segment-actions"><button class="button button-secondary" data-reject="${a.id}" data-segment="${segment}" ${canManage()?"":"disabled"}>退回</button><button class="button button-primary" data-approve="${a.id}" data-segment="${segment}" ${canManage()?"":"disabled"}>审批通过</button></div></div>`; };
+    $("#approvalBoard").innerHTML = list.length ? list.map(a => `<article class="panel approval-card segment-approval-card"><span class="status status-pending">分段审批</span><h3>${escapeHtml(a.name)}</h3><div class="approval-meta">${escapeHtml(a.hospital)} · 负责人 ${escapeHtml(userName(a.ownerId))}</div><div class="segment-approval-list">${segmentRow(a,"outbound")}${segmentRow(a,"return")}</div></article>`).join("") : `<article class="panel empty-state" style="grid-column:1/-1">没有待审批的异常行程</article>`;
     bindDynamicButtons();
   }
 
@@ -587,8 +606,8 @@
 
   function bindDynamicButtons() {
     $$('[data-open-attendee]').forEach(button => button.onclick = () => openAttendee(button.dataset.openAttendee));
-    $$('[data-approve]').forEach(button => button.onclick = () => approveAttendee(button.dataset.approve));
-    $$('[data-reject]').forEach(button => button.onclick = () => rejectAttendee(button.dataset.reject));
+    $$('[data-approve]').forEach(button => button.onclick = () => approveAttendee(button.dataset.approve,button.dataset.segment));
+    $$('[data-reject]').forEach(button => button.onclick = () => rejectAttendee(button.dataset.reject,button.dataset.segment));
     $$('[data-edit-transport]').forEach(button => button.onclick = () => editTransport(button.dataset.editTransport, button.dataset.type));
   }
 
@@ -603,13 +622,13 @@
     $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">EDIT TRAVEL</span><h2>修改 ${escapeHtml(a.name)} 的行程</h2><p>保存后会生成变更提醒并重新检查审批规则</p></div><form class="detail-body" id="tripEditForm"><div class="field-grid"><label>去程出发城市<input name="outFrom" value="${escapeHtml(a.outFrom)}" required></label><label>去程到达城市<input name="outTo" value="${escapeHtml(a.outTo)}" required></label><label>去程航班 / 车次<input name="outNo" value="${escapeHtml(a.outNo)}" required></label><label>去程出发时间<input name="outDeparture" type="time" value="${escapeHtml(a.outDeparture)}" required></label><label>返程出发城市<input name="returnFrom" value="${escapeHtml(a.returnFrom)}" required></label><label>返程到达城市<input name="returnTo" value="${escapeHtml(a.returnTo)}" required></label><label>返程航班 / 车次<input name="returnNo" value="${escapeHtml(a.returnNo)}" required></label><label>返程出发时间<input name="returnDeparture" type="time" value="${escapeHtml(a.returnDeparture)}" required></label></div><div class="detail-actions"><button class="button button-primary" type="submit">保存变更</button><button class="button button-secondary" type="button" id="cancelEdit">取消</button></div></form>`;
     $("#cancelEdit").onclick = () => openAttendee(a.id);
     $("#tripEditForm").onsubmit = event => {
-      event.preventDefault(); const fd = new FormData(event.currentTarget); const changes = []; ["outFrom","outTo","outNo","outDeparture","returnFrom","returnTo","returnNo","returnDeparture"].forEach(key => { const next = fd.get(key); if (next !== a[key]) { changes.push(`${FIELD_LABELS[key]}：${a[key]||"空"} → ${next||"空"}`); a[key] = next; } });
-      a.risks = evaluateRisks(a); a.approval = a.risks.length ? "pending" : "normal"; addNotification("change", `${currentUser().name}修改了${a.name}的行程：${changes.join("；")}`); saveState(); $("#attendeeDialog").close(); renderAll(); toast("行程已更新，会务负责人已收到变更提醒");
+      event.preventDefault(); const fd = new FormData(event.currentTarget); const changes = []; const changedSegments=new Set(); ["outFrom","outTo","outNo","outDeparture","returnFrom","returnTo","returnNo","returnDeparture"].forEach(key => { const next = fd.get(key); if (next !== a[key]) { changes.push(`${FIELD_LABELS[key]}：${a[key]||"空"} → ${next||"空"}`); changedSegments.add(key.startsWith("return")?"return":"outbound"); a[key] = next; } });
+      refreshTravelApprovals(a,changedSegments); addNotification("change", `${currentUser().name}修改了${a.name}的行程：${changes.join("；")}`); saveState(); $("#attendeeDialog").close(); renderAll(); toast("行程已更新，会务负责人已收到变更提醒");
     };
   }
 
-  function approveAttendee(id) { if (!canManage()) return deny(); const a = state.attendees.find(item => item.id === id); a.approval = "approved"; a.risks = []; addNotification("approval", `${a.name}的异常行程已由${currentUser().name}审批通过`); saveState(); renderAll(); toast("行程已审批通过"); }
-  function rejectAttendee(id) { if (!canManage()) return deny(); const a = state.attendees.find(item => item.id === id); addNotification("approval", `${currentUser().name}退回了${a.name}的异常行程，请负责人修改`); saveState(); renderAll(); toast("已退回负责人修改"); }
+  function approveAttendee(id,segment="outbound") { if (!canManage()) return deny(); const a = state.attendees.find(item => item.id === id); const key=segment==="return"?"returnApproval":"outboundApproval"; a[key]="approved"; syncAggregateApproval(a); addNotification("approval", `${a.name}的${segment==="return"?"返程":"去程"}异常行程已由${currentUser().name}审批通过`); saveState(); renderAll(); toast(`${segment==="return"?"返程":"去程"}行程已审批通过`); }
+  function rejectAttendee(id,segment="outbound") { if (!canManage()) return deny(); const a = state.attendees.find(item => item.id === id); const key=segment==="return"?"returnApproval":"outboundApproval"; a[key]="rejected"; syncAggregateApproval(a); addNotification("approval", `${currentUser().name}退回了${a.name}的${segment==="return"?"返程":"去程"}异常行程，请负责人修改`); saveState(); renderAll(); toast("已退回负责人修改"); }
   function deny() { toast("当前身份没有此操作权限", "error"); renderAll(); }
 
   function editTransport(id, type) {
@@ -644,7 +663,7 @@
     event.preventDefault(); if (state.locks.master) return toast("全名单已锁定，不能新增报名", "error");
     const data = Object.fromEntries(new FormData(event.currentTarget)); data.phone = normalizePhone(data.phone); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");
     if (state.attendees.some(a => a.phone === data.phone)) return toast("该手机号已存在报名记录", "error");
-    data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); data.risks = evaluateRisks(data); data.approval = data.risks.length ? "pending" : "normal"; data.privacyLetterStatus="pending"; data.ticketStatus="pending"; data.customFields={}; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point: "会议酒店大堂" } };
+    data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); refreshTravelApprovals(data); data.privacyLetterStatus="pending"; data.ticketStatus="pending"; data.customFields={}; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point: "会议酒店大堂" } };
     state.attendees.unshift(data); addNotification("create", `${currentUser().name}新增报名：${data.name} · ${data.venue}${data.risks.length ? "（行程待审批）" : ""}`); saveState(); event.currentTarget.reset(); renderAll(); toast(data.risks.length ? "报名已保存，异常行程已提交审批" : "报名已保存"); location.hash = "attendees";
   }
 
@@ -918,7 +937,7 @@
     const errors=[];
     if (!attendee.name) errors.push("缺少姓名"); if (phone.length!==11) errors.push("手机号格式错误"); if (!attendee.idNumber) errors.push("缺少证件号"); if (!attendee.hcpId) errors.push("缺少HCP ID");
     if (phone&&seen.has(phone)) errors.push("文件内手机号重复"); if (phone) seen.add(phone); if (existing&&isLocked(existing)) errors.push("已有记录已锁定");
-    attendee.risks=evaluateRisks(attendee); attendee.approval=attendee.risks.length?"pending":"normal";
+    refreshTravelApprovals(attendee);
     if (!existing) { attendee.transport.pickup.time=attendee.outDate&&attendee.outArrival?`${attendee.outDate} ${attendee.outArrival}`:"待设置"; attendee.transport.pickup.point=attendee.outTo?`${attendee.outTo}到达口`:"待设置"; attendee.transport.dropoff.time=recommendedDropoffTime(attendee)||"待设置"; }
     return {attendee,sheetRow,status:errors.length?"error":existing?"update":"new",errors};
   }
@@ -938,14 +957,15 @@
 
   function exportExcel() {
     const columns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns;
-    const headers=[...columns.map(column=>column.header),"隐私沟通函状态","出票状态"];
+    const headers=[...columns.map(column=>column.header),"隐私沟通函状态","去程审批状态","返程审批状态","出票状态"];
     const progressLabels={pending:"待处理",sent:"已发送",complete:"已完成",processing:"出票中",ticketed:"已出票",changed:"改签",refunded:"已退票"};
+    const segmentLabels={normal:"无需审批",pending:"待审批",approved:"已审批",rejected:"已退回"};
     const rows=visibleAttendees().map((a,i)=>[...columns.map(column=>{
       if(column.key==="sequence") return i+1;
       if(column.key==="contactName") return a.contactName||userName(a.ownerId);
       if(column.key==="contactMobile") return a.contactMobile||state.users.find(u=>u.id===a.ownerId)?.phone||"";
       return column.custom ? a.customFields?.[column.key]||"" : a[column.key]||"";
-    }),progressLabels[a.privacyLetterStatus||"pending"],progressLabels[a.ticketStatus||"pending"]]);
+    }),progressLabels[a.privacyLetterStatus||"pending"],segmentLabels[segmentApproval(a,"outbound")],segmentLabels[segmentApproval(a,"return")],progressLabels[a.ticketStatus||"pending"]]);
     if (window.XLSX) { const ws = XLSX.utils.aoa_to_sheet([headers,...rows]); ws["!cols"] = headers.map((_,i) => ({ wch: i === 0 ? 7 : 18 })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"报名表"); XLSX.writeFile(wb,`${state.settings.slug||"项目"}-报名表-${new Date().toISOString().slice(0,10)}.xlsx`); toast("Excel 已按当前项目模板导出"); }
     else { const csv = [headers,...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n"); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob(["\ufeff",csv],{type:"text/csv"})); link.download = "HEMA-SEM-报名表.csv"; link.click(); toast("已导出兼容 Excel 的 CSV 文件"); }
   }

@@ -18,6 +18,18 @@ if(!templateText.includes("饮食禁忌")) throw new Error(`Custom template colu
 await page.goto("http://127.0.0.1:4173/#attendees",{waitUntil:"domcontentloaded"});
 const privacy=page.locator('[data-progress-field="privacyLetterStatus"]').first();
 await privacy.selectOption("complete");
+let guRow=page.locator("#attendeeTableBody tr",{hasText:"顾明远"});
+await guRow.locator('[data-progress-field="ticketStatus"]').selectOption("ticketed");
+guRow=page.locator("#attendeeTableBody tr",{hasText:"顾明远"});
+if(await guRow.locator('[data-progress-field="ticketStatus"]').inputValue()!=="pending") throw new Error("Ticketing was not blocked before approval");
+await page.goto("http://127.0.0.1:4173/#approvals",{waitUntil:"domcontentloaded"});
+const guApproval=page.locator(".approval-card",{hasText:"顾明远"});
+await guApproval.locator('[data-approve][data-segment="return"]').click();
+await page.goto("http://127.0.0.1:4173/#attendees",{waitUntil:"domcontentloaded"});
+guRow=page.locator("#attendeeTableBody tr",{hasText:"顾明远"});
+await guRow.locator('[data-progress-field="ticketStatus"]').selectOption("ticketed");
+guRow=page.locator("#attendeeTableBody tr",{hasText:"顾明远"});
+if(await guRow.locator('[data-progress-field="ticketStatus"]').inputValue()!=="ticketed" || !(await guRow.innerText()).includes("返程·已审批")) throw new Error("Approved trip did not allow ticketing with both statuses");
 if(!(await page.locator("#notificationList").count())) await page.goto("http://127.0.0.1:4173/#notifications",{waitUntil:"domcontentloaded"});
 await page.goto("http://127.0.0.1:4173/#notifications",{waitUntil:"domcontentloaded"});
 const notices=await page.locator("#notificationList").innerText();
@@ -37,5 +49,5 @@ page.once("dialog",dialog=>dialog.accept());
 await page.click('#transportBatchForm button[type="submit"]');
 if(!await page.locator("#transportBatchList").innerText().then(text=>text.includes("大连机场测试批次"))) throw new Error("Batch transport save failed");
 
-console.log(JSON.stringify({projectTemplate:"pass",customField:"pass",privacyProgress:"pass",detailedNotification:"pass",batchTransport:"pass",errors},null,2));
+console.log(JSON.stringify({projectTemplate:"pass",customField:"pass",privacyProgress:"pass",ticketApprovalGuard:"pass",approvalAndTicketStatus:"pass",detailedNotification:"pass",batchTransport:"pass",errors},null,2));
 await browser.close(); if(errors.length)process.exitCode=1;

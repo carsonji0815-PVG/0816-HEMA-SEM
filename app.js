@@ -96,6 +96,8 @@
   let lastLookupSchedule = null;
   let publicAuthSession = null;
   let publicProjectConfig = null;
+  let publicRegistrantAttendees = [];
+  let publicEditingAttendeeId = null;
   let projectMemberships = [];
   let pendingImportRows = [];
 
@@ -109,7 +111,7 @@
   const canManage = () => ["ops", "client"].includes(currentUser().role);
   const isLocked = attendee => state.locks.master || state.locks.rows.includes(attendee.id);
   const currentProject = () => state.projects.find(project => project.id === state.activeProjectId) || state.projects[0] || {};
-  const currentEventSlug = () => new URLSearchParams(location.search).get("event") || state.settings.slug || window.APP_CONFIG?.eventSlug || "";
+  const currentEventSlug = () => new URLSearchParams(location.search).get("event") || window.APP_CONFIG?.eventSlug || state.settings.slug || "";
   const publicProjectUrl = (hash = "portal") => {
     const url = new URL(location.href);
     url.searchParams.set("event", currentProject().slug || state.settings.slug || currentEventSlug());
@@ -333,7 +335,7 @@
     const isPublic = ["portal", "lookup", "register"].includes(target);
     $("#adminApp").classList.toggle("is-hidden", isPublic);
     $("#publicPortalView").classList.toggle("is-hidden", !isPublic);
-    if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : "register"); scrollTo({ top: 0, behavior: "instant" }); return; }
+    if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : "register"); if (!publicProjectConfig) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
     const routeName = $( `[data-page="${target}"]`) ? target : "dashboard";
     $$(".page").forEach(page => page.classList.toggle("active", page.dataset.page === routeName));
     $$("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === routeName));
@@ -385,7 +387,8 @@
     $("#masterLock").addEventListener("change", event => { if (!canManage()) return deny(); state.locks.master = event.target.checked; addNotification("lock", `${currentUser().name}${event.target.checked ? "锁定" : "解锁"}了全部名单`); saveState(); renderAll(); });
     $("#copyRegistrationLink").addEventListener("click", copyRegistrationLink);
     $("#downloadQr").addEventListener("click", downloadQr);
-    $("#backToPublicAuth").addEventListener("click", resetPublicRegistrationStep);
+    $("#backToPublicAuth").addEventListener("click", closePublicAttendeeEditor);
+    $("#newPublicAttendee").addEventListener("click", () => openPublicAttendeeEditor());
     $$('[data-portal-tab]').forEach(button => button.addEventListener("click", () => { location.hash = button.dataset.portalTab === "lookup" ? "lookup" : "portal"; }));
     $("#resetDemo").addEventListener("click", () => { if (!confirm("确认恢复全部演示数据？")) return; state = initialState(); saveState(); populateUsers(); populateProjects(); renderAll(); toast("已恢复演示数据"); });
   }
@@ -659,6 +662,29 @@
     const data = Object.fromEntries(new FormData($("#registrationForm"))); const risks = evaluateRisks(data); const box = $("#liveRisk"); box.className = `risk-preview ${risks.length ? "warning" : data.outFrom && data.returnTo ? "ok" : ""}`; box.innerHTML = risks.length ? risks.map(r => `△ ${escapeHtml(r)}`).join("<br>") : data.outFrom && data.returnTo ? "✓ 当前行程符合预设规则" : "填写行程后显示检查结果";
   }
 
+  async function loadPublicProjectInfo() {
+    if (!window.APP_CONFIG?.supabaseUrl) return;
+    const submit=$("#publicRegistrationForm").querySelector('button[type="submit"]'); submit.disabled=true;
+    try {
+      if (!currentEventSlug()) throw new Error("请选择报名项目");
+      const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"project-info",meeting:currentEventSlug()}) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "读取项目失败");
+      publicProjectConfig = payload.project || null; applyPublicProject(publicProjectConfig); $("#publicProjectSelector").classList.add("is-hidden"); $("#publicRegistrationResult").innerHTML=""; submit.disabled=false;
+    } catch (error) {
+      await loadAvailablePublicProjects(error.message);
+    }
+  }
+
+  async function loadAvailablePublicProjects(reason="请选择报名项目") {
+    const response=await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`,{method:"POST",headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey},body:JSON.stringify({action:"list-projects"})});
+    const payload=await response.json(); const projects=payload.projects || []; const submit=$("#publicRegistrationForm").querySelector('button[type="submit"]');
+    if (!response.ok || !projects.length) { $("#publicProjectName").textContent="暂无可用项目"; $("#publicRegistrationResult").innerHTML=`<div class="lookup-error">${escapeHtml(payload.error || reason)}，请联系会务负责人。</div>`; submit.disabled=true; return; }
+    if (projects.length===1) { const url=new URL(location.href); url.searchParams.set("event",projects[0].slug); history.replaceState(null,"",url); publicProjectConfig=projects[0]; applyPublicProject(projects[0]); submit.disabled=false; return; }
+    $("#publicProjectName").textContent="请选择要报名的项目"; $("#publicRegistrationResult").innerHTML=`<div class="lookup-error">${escapeHtml(reason)}。请选择项目后再进入报名名单。</div>`;
+    const selector=$("#publicProjectSelector"); selector.innerHTML=`<option value="">请选择项目</option>${projects.map(project=>`<option value="${escapeHtml(project.slug)}">${escapeHtml(project.name)}</option>`).join("")}`; selector.classList.remove("is-hidden"); selector.onchange=()=>{ if(!selector.value)return; const url=new URL(location.href); url.searchParams.set("event",selector.value); history.replaceState(null,"",url); publicProjectConfig=null; loadPublicProjectInfo(); }; submit.disabled=true;
+  }
+
   function submitRegistration(event) {
     event.preventDefault(); if (state.locks.master) return toast("全名单已锁定，不能新增报名", "error");
     const data = Object.fromEntries(new FormData(event.currentTarget)); data.phone = normalizePhone(data.phone); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");
@@ -676,35 +702,60 @@
     const phone = normalizePhone(data.phone);
     if (phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的 11 位手机号。</div>`; return; }
     if (!window.APP_CONFIG?.supabaseUrl) { result.innerHTML = `<div class="lookup-error">报名服务暂不可用，请联系会务负责人。</div>`; return; }
-    submit.disabled = true; submit.textContent = "正在验证…";
+    submit.disabled = true; submit.textContent = "正在进入…";
     try {
       const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, {
         method:"POST",
         headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey},
-        body:JSON.stringify({action:"authenticate",meeting:currentEventSlug(),region:data.region,name:data.name,phone}),
+        body:JSON.stringify({action:"registrant-login",meeting:currentEventSlug(),region:data.region,name:data.name,phone}),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "验证失败");
-      publicAuthSession = { region:data.region.trim(), name:data.name.trim(), phone }; publicProjectConfig = payload.project || null; applyPublicProject(payload.project);
-      showPublicFullRegistration(payload.attendee || publicAuthSession);
+      if (!response.ok) throw new Error(payload.error || "进入失败");
+      publicAuthSession = { region:data.region.trim(), name:data.name.trim(), phone }; publicProjectConfig = payload.project || publicProjectConfig; publicRegistrantAttendees = payload.attendees || []; applyPublicProject(publicProjectConfig);
+      enterRegistrantWorkspace();
     } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
-    finally { submit.disabled = false; submit.innerHTML = `验证并进入报名表 <span>→</span>`; }
+    finally { submit.disabled = false; submit.innerHTML = `进入我的报名名单 <span>→</span>`; }
   }
 
-  function showPublicFullRegistration(attendee = {}) {
-    const form = $("#publicFullRegistrationForm");
-    const aliases = { attendeeType:"attendeeType", name:"name", city:"city", hospital:"hospital", department:"department", title:"title", venue:"venue", sex:"sex", idNumber:"idNumber", phone:"phone", hcpId:"hcpId", accommodation:"accommodation", flight:"flight", region:"region", contactName:"contactName", contactMobile:"contactMobile", mslContact:"mslContact", remarks:"remarks", outDate:"outDate", outFrom:"outFrom", outTo:"outTo", outNo:"outNo", outDeparture:"outDeparture", outArrival:"outArrival", returnDate:"returnDate", returnFrom:"returnFrom", returnTo:"returnTo", returnNo:"returnNo", returnDeparture:"returnDeparture", returnArrival:"returnArrival" };
-    Object.entries(aliases).forEach(([field,key]) => { if (form.elements[field]) form.elements[field].value = attendee[key] ?? publicAuthSession?.[key] ?? (field === "attendeeType" ? "HCP" : ""); });
-    form.elements.name.value = publicAuthSession.name; form.elements.phone.value = publicAuthSession.phone; form.elements.region.value = publicAuthSession.region;
-    applyPublicTemplate(publicProjectConfig?.registrationTemplate, publicProjectConfig?.templateName, attendee.customFields||{});
-    applyPublicFieldConfig(publicProjectConfig?.fieldConfig || {});
+  function enterRegistrantWorkspace() {
     $("#publicRegistrationResult").innerHTML = ""; $("#publicAuthStep").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.remove("is-hidden"); $(".portal-card").classList.add("expanded");
+    $("#publicRegistrantIdentity").textContent = `${publicAuthSession.region} · ${publicAuthSession.name} · ${publicAuthSession.phone}`;
+    $("#publicRegistrantProject").textContent = `当前项目：${publicProjectConfig?.name || currentEventSlug()}`;
+    $("#newPublicAttendee").disabled=!!publicProjectConfig?.masterLocked;
+    renderPublicAttendeeList(); closePublicAttendeeEditor();
+    if (!publicRegistrantAttendees.length) openPublicAttendeeEditor();
     scrollTo({top:0,behavior:"smooth"});
+  }
+
+  function renderPublicAttendeeList() {
+    const list=$("#publicAttendeeList");
+    if (!publicRegistrantAttendees.length) { list.innerHTML=`<div class="public-attendee-empty"><strong>本项目还没有您提交的参会人员</strong><small>点击“新增参会人员”开始填写报名表</small></div>`; return; }
+    list.innerHTML=publicRegistrantAttendees.map(attendee=>`<article class="public-attendee-card"><div class="public-attendee-card-main"><strong>${escapeHtml(attendee.name || "未命名参会人员")}</strong><small>${escapeHtml(attendee.hospital || "医院待填写")} · ${escapeHtml(attendee.venue || "会场待选择")} · ${escapeHtml(attendee.phone || "手机号待填写")}</small><span class="status ${attendee.rowLocked ? "status-locked" : attendee.approval === "pending" ? "status-pending" : "status-ok"}">${attendee.rowLocked ? "名单已锁定" : attendee.approval === "pending" ? "行程待审批" : "可修改"}</span></div><button class="button button-secondary" type="button" data-edit-public-attendee="${escapeHtml(attendee.id)}">${attendee.rowLocked ? "查看" : "修改 / 更新"}</button></article>`).join("");
+    $$('[data-edit-public-attendee]',list).forEach(button=>button.addEventListener("click",()=>openPublicAttendeeEditor(publicRegistrantAttendees.find(item=>item.id===button.dataset.editPublicAttendee))));
+  }
+
+  function openPublicAttendeeEditor(attendee = null) {
+    const form = $("#publicFullRegistrationForm");
+    form.reset(); form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=false); form.querySelector('button[type="submit"]').classList.remove("is-hidden");
+    publicEditingAttendeeId = attendee?.id || null;
+    const aliases = { attendeeType:"attendeeType", name:"name", city:"city", hospital:"hospital", department:"department", title:"title", venue:"venue", sex:"sex", idNumber:"idNumber", phone:"phone", hcpId:"hcpId", accommodation:"accommodation", flight:"flight", region:"region", contactName:"contactName", contactMobile:"contactMobile", mslContact:"mslContact", remarks:"remarks", outDate:"outDate", outFrom:"outFrom", outTo:"outTo", outNo:"outNo", outDeparture:"outDeparture", outArrival:"outArrival", returnDate:"returnDate", returnFrom:"returnFrom", returnTo:"returnTo", returnNo:"returnNo", returnDeparture:"returnDeparture", returnArrival:"returnArrival" };
+    Object.entries(aliases).forEach(([field,key]) => { if (form.elements[field]) form.elements[field].value = attendee?.[key] ?? (field === "attendeeType" ? "HCP" : ""); });
+    form.elements.region.value = publicAuthSession.region; form.elements.contactName.value = publicAuthSession.name; form.elements.contactMobile.value = publicAuthSession.phone;
+    applyPublicTemplate(publicProjectConfig?.registrationTemplate, publicProjectConfig?.templateName, attendee?.customFields||{});
+    applyPublicFieldConfig(publicProjectConfig?.fieldConfig || {});
+    const locked=!!attendee?.rowLocked || !!publicProjectConfig?.masterLocked; form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=locked || input.readOnly); form.querySelector('button[type="submit"]').classList.toggle("is-hidden",locked);
+    $("#publicEditorTitle").textContent=attendee ? `${locked ? "查看" : "修改"}参会人员：${attendee.name}` : "新增参会人员";
+    $("#publicFullRegistrationResult").innerHTML=""; $("#publicAttendeeEditor").classList.remove("is-hidden");
+    $("#publicAttendeeEditor").scrollIntoView({behavior:"smooth",block:"start"});
   }
 
   function applyPublicProject(project = {}) {
     if (!project) return;
     document.title = `行程台 · ${project.name || "参会服务"}`;
+    $("#publicProjectName").textContent=project.name || "参会服务";
+    const dateText=project.startDate ? `${fmtDate(project.startDate)}${project.endDate && project.endDate !== project.startDate ? ` — ${fmtDate(project.endDate)}` : ""}` : "待公布";
+    $("#publicProjectDates").textContent=dateText; $("#publicProjectVenues").textContent=(project.venues || []).join(" / ") || "待公布"; $("#publicProjectClient").textContent=project.clientName || project.name || "待公布";
+    $("#publicProjectDeadline").textContent=project.deadline ? new Intl.DateTimeFormat("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(project.deadline)) : "以会务通知为准";
     const footer=$(".public-footer"); if (footer) footer.textContent = project.servicePhone ? `会务服务台 ${project.servicePhone} · 工作时间 08:00–21:00` : "会务服务台 · 工作时间 08:00–21:00";
     const venueSelect=$("#publicFullRegistrationForm").elements.venue;
     if (venueSelect && project.venues?.length) { const selected=venueSelect.value; venueSelect.innerHTML=`<option value="">请选择</option>${project.venues.map(venue=>`<option>${escapeHtml(venue)}</option>`).join("")}`; venueSelect.value=project.venues.includes(selected) ? selected : ""; }
@@ -735,8 +786,13 @@
     });
   }
 
+  function closePublicAttendeeEditor() {
+    publicEditingAttendeeId=null; $("#publicAttendeeEditor").classList.add("is-hidden"); $("#publicFullRegistrationResult").innerHTML=""; renderPublicAttendeeList();
+    $("#publicFullRegistrationStep").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
   function resetPublicRegistrationStep() {
-    publicAuthSession = null; const form = $("#publicFullRegistrationForm"); form.reset(); form.querySelectorAll("input,select,textarea").forEach(input => input.disabled = false); form.querySelector('button[type="submit"]').classList.remove("is-hidden"); $("#backToPublicAuth").textContent = "返回验证"; $("#publicFullRegistrationStep").classList.add("is-hidden"); $("#publicAuthStep").classList.remove("is-hidden"); $(".portal-card").classList.remove("expanded"); $("#publicFullRegistrationResult").innerHTML = "";
+    publicAuthSession=null; publicRegistrantAttendees=[]; publicEditingAttendeeId=null; const form=$("#publicFullRegistrationForm"); form.reset(); form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=false); form.querySelector('button[type="submit"]').classList.remove("is-hidden"); $("#publicAttendeeEditor").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.add("is-hidden"); $("#publicAuthStep").classList.remove("is-hidden"); $(".portal-card").classList.remove("expanded"); $("#publicFullRegistrationResult").innerHTML="";
   }
 
   async function submitPublicFullRegistration(event) {
@@ -744,16 +800,16 @@
     const form = event.currentTarget; const result = $("#publicFullRegistrationResult"); const submit = form.querySelector('button[type="submit"]');
     const details = Object.fromEntries(new FormData(form));
     details.customFields={}; Object.keys(details).filter(key=>key.startsWith("custom__")).forEach(key=>{ details.customFields[key.slice(8)]=details[key]; delete details[key]; });
-    details.contactMobile = normalizePhone(details.contactMobile);
-    if (form.elements.contactMobile?.required && details.contactMobile.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的销售联系人手机号。</div>`; return; }
+    details.phone = normalizePhone(details.phone); details.region=publicAuthSession.region; details.contactName=publicAuthSession.name; details.contactMobile=publicAuthSession.phone;
+    if (details.phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的参会人员手机号。</div>`; return; }
     submit.disabled = true; submit.textContent = "正在保存…";
     try {
-      const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"complete-registration",meeting:currentEventSlug(),...publicAuthSession,...details}) });
+      const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"save-attendee",meeting:currentEventSlug(),phone:publicAuthSession.phone,registrantName:publicAuthSession.name,registrantRegion:publicAuthSession.region,attendeeId:publicEditingAttendeeId,details}) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "提交失败");
-      result.innerHTML = `<div class="lookup-success"><strong>✓ 完整报名已保存</strong><br />${payload.needsApproval ? "行程异常已自动提交会务负责人审批。" : "可返回参会服务查询后续接送安排。"}</div>`;
-      form.querySelectorAll("input,select,textarea").forEach(input => input.disabled = true); submit.classList.add("is-hidden"); $("#backToPublicAuth").textContent = "完成并返回";
+      const index=publicRegistrantAttendees.findIndex(item=>item.id===payload.attendee.id); if(index>=0) publicRegistrantAttendees[index]=payload.attendee; else publicRegistrantAttendees.unshift(payload.attendee);
+      renderPublicAttendeeList(); toast(payload.needsApproval ? "参会人员已保存，异常行程已提交审批" : "参会人员信息已保存"); closePublicAttendeeEditor();
     } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
-    finally { submit.disabled = false; if (!submit.classList.contains("is-hidden")) submit.textContent = "提交完整报名"; }
+    finally { submit.disabled = false; if (!submit.classList.contains("is-hidden")) submit.textContent = "保存参会人员信息"; }
   }
 
   async function queryTransport(event) {

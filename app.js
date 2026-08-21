@@ -116,7 +116,11 @@
   const userName = id => state.users.find(user => user.id === id)?.name || "未分配";
   const visibleAttendees = () => currentUser().role === "sales" ? state.attendees.filter(item => item.ownerId === currentUser().id) : state.attendees;
   const canManage = () => ["ops", "client"].includes(currentUser().role);
-  const isDocumentAdmin = () => currentUser()?.name === DOCUMENT_ADMIN_NAME;
+  // The document service is the authority for archive permissions.  The
+  // Journey Desk display name can differ from the archive membership name,
+  // so relying on the local label alone incorrectly hid the administrator
+  // scenario and final-document options.
+  const isDocumentAdmin = () => documentState.user?.role === "admin" || currentUser()?.name?.trim() === DOCUMENT_ADMIN_NAME;
   const isLocked = attendee => state.locks.master || state.locks.rows.includes(attendee.id);
   const currentProject = () => state.projects.find(project => project.id === state.activeProjectId) || state.projects[0] || {};
   const currentEventSlug = () => new URLSearchParams(location.search).get("event") || window.APP_CONFIG?.eventSlug || state.settings.slug || "";

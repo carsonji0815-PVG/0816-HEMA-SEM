@@ -107,6 +107,7 @@
   let projectMemberships = [];
   let pendingImportRows = [];
   let documentState = { folder:null, files:[], user:null, loading:false };
+  let projectArchiveStates = {};
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -121,6 +122,12 @@
   // so relying on the local label alone incorrectly hid the administrator
   // scenario and final-document options.
   const isDocumentAdmin = () => documentState.user?.role === "admin" || currentUser()?.name?.trim() === DOCUMENT_ADMIN_NAME;
+  const isSystemAdmin = () => isDocumentAdmin() || currentUser()?.name?.trim() === DOCUMENT_ADMIN_NAME;
+  const archiveSummary = files => {
+    const list=files||[]; const quotation=list.some(file=>file.type==="quotation"); const pendingConfirmation=list.some(file=>file.type==="confirmation"&&file.documentStatus==="pending");
+    return { quotation, pendingConfirmation, ready:quotation&&pendingConfirmation };
+  };
+  const activeArchiveReady = () => !!projectArchiveStates[backendMeetingId]?.ready;
   const isLocked = attendee => state.locks.master || state.locks.rows.includes(attendee.id);
   const currentProject = () => state.projects.find(project => project.id === state.activeProjectId) || state.projects[0] || {};
   const currentEventSlug = () => new URLSearchParams(location.search).get("event") || window.APP_CONFIG?.eventSlug || state.settings.slug || "";
@@ -228,8 +235,15 @@
     label.firstChild.textContent = internal ? "合同编号" : "会议编码"; label.querySelector("input").placeholder = internal ? "例如：HT2026-0188" : "例如：EL2026-0820";
   }
 
-  function openProjectDialog(source = null) {
-    const form = $("#projectForm"); form.reset(); form.elements.activityType.value = source?.activityType || "external"; form.elements.identifier.value = source?.identifier ? `${source.identifier}-COPY` : ""; form.elements.name.value = source ? `${source.name}（复制）` : ""; form.elements.activityOwner.value = source?.activityOwner || currentUser()?.name || ""; form.elements.activityDate.value = source?.activityDate || new Date().toISOString().slice(0,10); form.elements.sourceId.value = source?.id || ""; form.elements.slug.value = source ? `${source.slug}-copy-${String(Date.now()).slice(-4)}` : ""; form.elements.slug.dataset.edited = source ? "1" : ""; $("#projectFormError").textContent = ""; updateProjectIdentifierLabel(); $("#projectDialog").showModal();
+  function openProjectDialog(source = null, mode = "new") {
+    const editing=mode==="edit"; const copying=mode==="copy"; const form=$("#projectForm"); form.reset();
+    form.elements.editId.value=editing?source?.id||"":""; form.elements.activityType.value=source?.activityType||"external";
+    form.elements.identifier.value=editing?source?.identifier||"":copying&&source?.identifier?`${source.identifier}-COPY`:"";
+    form.elements.name.value=editing?source?.name||"":copying?`${source?.name||""}（复制）`:"";
+    form.elements.activityOwner.value=source?.activityOwner||currentUser()?.name||""; form.elements.activityDate.value=source?.activityDate||new Date().toISOString().slice(0,10);
+    form.elements.sourceId.value=copying?source?.id||"":""; form.elements.slug.value=editing?source?.slug||"":copying?`${source?.slug||"project"}-copy-${String(Date.now()).slice(-4)}`:""; form.elements.slug.dataset.edited=source?"1":"";
+    $("#projectDialogTitle").textContent=editing?"编辑项目":"新建项目"; $("#projectDialogHint").textContent=editing?"修改项目基础资料，归档文件和行程数据保持不变":"创建后先完成前置文件归档，再开展报名与行程管理";
+    $("#projectCopyField").classList.toggle("is-hidden",editing); $("#projectSubmitButton").textContent=editing?"保存项目修改":"创建项目并进入归档"; $("#projectFormError").textContent=""; updateProjectIdentifierLabel(); $("#projectDialog").showModal();
   }
 
   async function switchProject(projectId) {
@@ -250,14 +264,15 @@
   async function createProject(event) {
     event.preventDefault();
     const form = event.currentTarget; const data = Object.fromEntries(new FormData(form));
-    const name = String(data.name||"").trim(); const slug = String(data.slug||"").trim().toLowerCase(); const activityType = data.activityType === "internal" ? "internal" : "external"; const identifier = String(data.identifier||"").trim(); const activityOwner = String(data.activityOwner||"").trim(); const activityDate = String(data.activityDate||"");
+    const editId=String(data.editId||""); const name = String(data.name||"").trim(); const slug = String(data.slug||"").trim().toLowerCase(); const activityType = data.activityType === "internal" ? "internal" : "external"; const identifier = String(data.identifier||"").trim(); const activityOwner = String(data.activityOwner||"").trim(); const activityDate = String(data.activityDate||"");
     $("#projectFormError").textContent = "";
     if (!name || !identifier || !activityOwner || !/^\d{4}-\d{2}-\d{2}$/.test(activityDate) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return $("#projectFormError").textContent = "请完整填写项目资料，并使用正确的链接标识";
     try {
       let projectId;
       if (backend) {
-        const { data:created,error } = await backend.rpc("create_meeting_project", { p_name:name, p_slug:slug, p_activity_type:activityType, p_identifier:identifier, p_activity_owner:activityOwner, p_activity_date:activityDate, p_source_id:data.sourceId||null });
-        if (error) throw error; projectId = created; await loadBackendState(projectId);
+        if(editId){ const {error}=await backend.rpc("update_meeting_project",{p_id:editId,p_name:name,p_slug:slug,p_activity_type:activityType,p_identifier:identifier,p_activity_owner:activityOwner,p_activity_date:activityDate}); if(error)throw error; projectId=editId; }
+        else { const { data:created,error } = await backend.rpc("create_meeting_project", { p_name:name, p_slug:slug, p_activity_type:activityType, p_identifier:identifier, p_activity_owner:activityOwner, p_activity_date:activityDate, p_source_id:data.sourceId||null }); if (error) throw error; projectId = created; }
+        await loadBackendState(projectId);
       } else {
         if (state.projects.some(project => project.slug === slug)) throw new Error("项目编号已存在");
         projectId = `demo-${Date.now()}`;
@@ -267,7 +282,7 @@
         state.attendees = []; state.notifications = []; state.locks = {master:false,columns:[],rows:[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
       }
       if (backend) await syncDocumentProject().catch(error => toast(`文件归档初始化失败：${error.message}`, "error"));
-      form.reset(); $("#projectDialog").close(); populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast("项目已创建，行程管理已开放");
+      await loadProjectArchiveStates(); form.reset(); $("#projectDialog").close(); populateUsers(); populateProjects(); renderAll(); location.hash = editId?"projects":"documents"; toast(editId?"项目资料已更新":"项目已创建，请先上传报价和待签署会务确认单");
     } catch (error) { $("#projectFormError").textContent = error.message.includes("duplicate") ? "项目编号已存在，请更换" : error.message; }
   }
 
@@ -287,12 +302,10 @@
   async function loadBackendState(preferredMeetingId = null) {
     const { data: authData } = await backend.auth.getUser();
     if (!authData.user) throw new Error("登录已过期");
-    const membershipRes = await backend.from("meeting_members").select("meeting_id,role,display_name,phone,meetings(*)").eq("user_id",authData.user.id);
-    if (membershipRes.error) throw new Error("请先运行多项目数据库升级脚本");
-    projectMemberships = membershipRes.data || [];
-    if (!projectMemberships.length) {
-      const profileRes = await backend.from("profiles").select("display_name,phone,role").eq("user_id",authData.user.id).maybeSingle();
-      if (profileRes.error || !profileRes.data) throw new Error("当前账号尚未建立人员资料");
+    const [profileRes,projectsRes]=await Promise.all([backend.from("profiles").select("display_name,phone,role").eq("user_id",authData.user.id).maybeSingle(),backend.from("meetings").select("*").order("created_at",{ascending:false})]);
+    if(profileRes.error||!profileRes.data)throw new Error("当前账号尚未建立人员资料"); if(projectsRes.error)throw new Error("请先运行项目权限数据库升级脚本");
+    const manageableProjects=projectsRes.data||[]; projectMemberships=manageableProjects.map(meeting=>({meeting_id:meeting.id,role:"ops",display_name:profileRes.data.display_name,phone:profileRes.data.phone,meetings:meeting}));
+    if (!manageableProjects.length) {
       const blank = initialState(); backendMeetingId = null;
       state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:profileRes.data.role,label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[profileRes.data.role]||"项目成员",phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
       localStorage.removeItem("journey-desk-active-project"); return;
@@ -313,15 +326,19 @@
     state = {
       currentUserId: authData.user.id,
       activeProjectId: backendMeetingId,
-      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:item.role, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
+      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:"ops", ownerUserId:m.owner_user_id||null, archiveReady:!!m.archive_ready, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
       users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
       settings: { eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, templateName:meeting.template_name||"标准31列报名模板", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : standardTemplate() },
       locks: { master: meeting.master_locked, columns: locksRes.data.filter(l => l.locked).map(l => l.field_group), rows: attendeesRes.data.filter(a => a.row_locked).map(a => a.id) },
       attendees: attendeesRes.data.map(fromDbAttendee),
       notifications: noticesRes.data.map(n => ({ id: n.id, type: n.type, text: n.message, time: n.created_at, read: !!n.read_at })),
     };
-    if (!state.users.some(user => user.id === authData.user.id) && activeMembership) state.users.push({id:authData.user.id,name:activeMembership.display_name,role:activeMembership.role,label:"项目成员",phone:activeMembership.phone||""});
+    if (!state.users.some(user => user.id === authData.user.id)) {
+      const profileName=profileRes.data.display_name?.trim();
+      state.users.push({id:authData.user.id,name:profileName,role:profileRes.data.role,label:profileName===DOCUMENT_ADMIN_NAME?"系统管理员":"项目负责人",phone:profileRes.data.phone||""});
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    await loadProjectArchiveStates();
   }
 
   function fromDbAttendee(row) {
@@ -364,13 +381,15 @@
     $("#adminApp").classList.toggle("is-hidden", isPublic);
     $("#publicPortalView").classList.toggle("is-hidden", !isPublic);
     if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : "register"); if (!publicProjectConfig) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
-    const requestedRoute = $( `[data-page="${target}"]`) ? target : "dashboard"; const routeName = !state.activeProjectId && requestedRoute !== "projects" ? "projects" : requestedRoute;
-    if (routeName !== requestedRoute) { history.replaceState(null,"","#projects"); toast("请先新建项目，再进行报名和行程管理", "error"); }
+    const requestedRoute = $( `[data-page="${target}"]`) ? target : "dashboard"; const gatedRoutes=new Set(["dashboard","registration","attendees","approvals","transport","locks","notifications","settings"]); let routeName = !state.activeProjectId && requestedRoute !== "projects" ? "projects" : requestedRoute;
+    if(state.activeProjectId&&gatedRoutes.has(routeName)&&!activeArchiveReady())routeName="documents";
+    if (routeName !== requestedRoute) { history.replaceState(null,"",state.activeProjectId?"#documents":"#projects"); toast(state.activeProjectId?"请先上传报价和会务确认单（待签署），完成前置归档后再继续":"请先新建项目，再进行报名和行程管理", "error"); }
     $$(".page").forEach(page => page.classList.toggle("active", page.dataset.page === routeName));
     $$("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === routeName));
     scrollTo({ top: 0, behavior: "instant" });
     renderAll();
     if (routeName === "documents") loadDocuments();
+    if (routeName === "projects") loadProjectArchiveStates();
   }
 
   function bindForms() {
@@ -447,11 +466,14 @@
 
   function renderProjects() {
     $("#projectGrid").innerHTML = state.projects.map(project => {
-      const active = project.id === state.activeProjectId; const role = ({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售 / 负责人"})[project.role] || "项目成员"; const visual=projectVisual(project);
-      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前项目" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><small>公开入口：?event=${escapeHtml(project.slug)}</small><div class="project-actions"><button class="button button-primary" data-switch-project="${project.id}" ${active ? "disabled" : ""}>${active ? "正在使用" : "进入项目"}</button><button class="button button-secondary" data-copy-project="${project.id}">复制项目</button><button class="text-button" data-copy-project-link="${project.id}">复制入口</button></div></article>`;
+      const active = project.id === state.activeProjectId; const role = project.ownerUserId===state.currentUserId?"我的项目":isSystemAdmin()?"管理员可管理":"项目负责人"; const visual=projectVisual(project); const archive=projectArchiveStates[project.id]||{ready:!!project.archiveReady};
+      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前项目" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><div class="project-archive-state ${archive.ready?"ready":"pending"}"><b>${archive.ready?"前置归档已完成":"等待前置归档"}</b><span>${archive.ready?"报名与行程功能已开放":"需上传报价＋会务确认单（待签署）"}</span></div><small>公开入口：?event=${escapeHtml(project.slug)}</small><div class="project-actions"><button class="button button-primary" data-switch-project="${project.id}" ${active ? "disabled" : ""}>${active ? "正在使用" : "进入项目"}</button><button class="button button-secondary" data-project-documents="${project.id}">文件归档</button><button class="text-button" data-edit-project="${project.id}">编辑</button><button class="text-button danger" data-delete-project="${project.id}">删除</button><button class="text-button" data-copy-project="${project.id}">复制</button><button class="text-button" data-copy-project-link="${project.id}">复制入口</button></div></article>`;
     }).join("");
     $$('[data-switch-project]').forEach(button => button.onclick = () => switchProject(button.dataset.switchProject));
-    $$('[data-copy-project]').forEach(button => button.onclick = () => openProjectDialog(state.projects.find(item=>item.id===button.dataset.copyProject)));
+    $$('[data-project-documents]').forEach(button=>button.onclick=async()=>{if(button.dataset.projectDocuments!==state.activeProjectId)await switchProject(button.dataset.projectDocuments);location.hash="documents";});
+    $$('[data-edit-project]').forEach(button=>button.onclick=()=>openProjectDialog(state.projects.find(item=>item.id===button.dataset.editProject),"edit"));
+    $$('[data-delete-project]').forEach(button=>button.onclick=()=>deleteProject(button.dataset.deleteProject));
+    $$('[data-copy-project]').forEach(button => button.onclick = () => openProjectDialog(state.projects.find(item=>item.id===button.dataset.copyProject),"copy"));
     $$('[data-copy-project-link]').forEach(button => button.onclick = () => { const project=state.projects.find(item=>item.id===button.dataset.copyProjectLink); const url=new URL(location.href); url.searchParams.set("event",project.slug); url.hash="portal"; navigator.clipboard?.writeText(url.toString()).then(()=>toast("项目入口已复制")).catch(()=>toast(url.toString())); });
   }
 
@@ -466,6 +488,17 @@
     return payload;
   }
 
+  async function loadProjectArchiveStates() {
+    if(!backend||!state.projects.length)return; const {data}=await backend.auth.getSession(); const token=data.session?.access_token; if(!token)return;
+    const entries=await Promise.all(state.projects.map(async project=>{try{const response=await fetch(`${DOCUMENT_API_BASE}/api/integrated/projects/${project.id}/documents`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)return[project.id,{ready:!!project.archiveReady}];const payload=await response.json();const summary=archiveSummary(payload.files);if(project.id===backendMeetingId)documentState={folder:payload.folder||null,files:payload.files||[],user:payload.user||null,loading:false};return[project.id,{...summary,folder:payload.folder||null}];}catch{return[project.id,{ready:!!project.archiveReady}];}}));
+    projectArchiveStates=Object.fromEntries(entries); renderProjects();
+  }
+
+  async function deleteProject(projectId){
+    const project=state.projects.find(item=>item.id===projectId); if(!project||!confirm(`确认删除项目“${project.name}”？项目资料、报名名单、行程和归档文件都将删除，无法恢复。`))return;
+    try{await documentApi(`/api/integrated/projects/${projectId}`,{method:"DELETE"});const{error}=await backend.rpc("delete_meeting_project",{p_id:projectId});if(error)throw error;delete projectArchiveStates[projectId];const next=state.projects.find(item=>item.id!==projectId)?.id||null;await loadBackendState(next);populateUsers();populateProjects();renderAll();location.hash="projects";toast("项目已删除");}catch(error){toast(`删除失败：${error.message}`,"error");}
+  }
+
   async function syncDocumentProject() {
     if (!backend || !backendMeetingId) return null;
     return documentApi(`/api/integrated/projects/${backendMeetingId}/sync`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ meetingType:state.settings.activityType||"external", identifier:state.settings.identifier||state.settings.slug, activityName:state.settings.eventName, owner:state.settings.activityOwner||currentUser().name, date:state.settings.activityDate||state.settings.startDate }) });
@@ -477,7 +510,7 @@
     try {
       let payload = await documentApi(`/api/integrated/projects/${backendMeetingId}/documents`);
       if (!payload.folder && canManage()) payload = await syncDocumentProject();
-      documentState = { folder:payload.folder||null, files:payload.files||[], user:payload.user||null, loading:false }; renderDocuments();
+      documentState = { folder:payload.folder||null, files:payload.files||[], user:payload.user||null, loading:false }; projectArchiveStates[backendMeetingId]={...archiveSummary(documentState.files),folder:documentState.folder}; renderDocuments();
     } catch (error) { documentState.loading = false; renderDocuments(error.message); }
   }
 
@@ -493,12 +526,14 @@
   }
 
   function renderDocuments(message = "") {
-    const files = documentState.files || []; const folder = documentState.folder; const hasPo = files.some(file=>file.type==="po"); const hasEmail = files.some(file=>file.type==="po_email"); const hasSigned = files.some(file=>file.type==="confirmation"&&file.documentStatus==="signed"); const scenario = folder?.complianceScenario || "unclassified";
+    const files = documentState.files || []; const folder = documentState.folder; const prerequisite=archiveSummary(files); const hasPo = files.some(file=>file.type==="po"); const hasEmail = files.some(file=>file.type==="po_email"); const hasSigned = files.some(file=>file.type==="confirmation"&&file.documentStatus==="signed"); const scenario = folder?.complianceScenario || "unclassified";
     $("#navDocumentCount").textContent = files.length;
     $("#documentProjectLabel").textContent = currentProject().identifier || currentProject().slug || "未选择项目";
     const finalReady = scenario === "po_email" ? hasEmail : scenario === "signed_confirmation" ? hasSigned : false;
     $("#documentStatusGrid").innerHTML = [
       [folder?"complete":"warning","项目归档",folder?"已关联":"待初始化",folder?.name||"项目创建后自动建立归档"],
+      [prerequisite.quotation?"complete":"warning","报价",prerequisite.quotation?"已上传":"待上传",prerequisite.ready?"前置归档已完成":"完成后才能开放后续功能"],
+      [prerequisite.pendingConfirmation?"complete":"warning","会务确认单（待签署）",prerequisite.pendingConfirmation?"已上传":"待上传",prerequisite.ready?"报名与行程已开放":"完成后才能开放后续功能"],
       [hasPo?"complete":"warning","采购订单（PO）",hasPo?"已上传":"待上传",hasPo?"采购订单已归档":"管理员补充最终采购订单"],
       [finalReady?"complete":"warning",scenario==="po_email"?"供应商PO确认邮件":"已签署会务确认单",finalReady?"已完成":scenario==="unclassified"?"场景待选择":"待上传",scenario==="unclassified"?"管理员上传时选择场景一或场景二":"按当前场景核对最终材料"],
     ].map(([cls,label,value,note])=>`<article class="document-status-card ${cls}"><small>${label}</small><strong>${value}</strong><span>${escapeHtml(note)}</span></article>`).join("");
@@ -514,13 +549,13 @@
 
   function bindDocumentRows() {
     $$('[data-document-download]').forEach(button=>button.onclick=async()=>{ try { const response=await documentApi(`/api/integrated/files/${button.dataset.documentDownload}?projectId=${backendMeetingId}`,{download:true}); const url=URL.createObjectURL(await response.blob()); const link=document.createElement("a"); link.href=url; link.download=button.dataset.documentName; link.click(); setTimeout(()=>URL.revokeObjectURL(url),30000); } catch(error){ toast(error.message,"error"); } });
-    $$('[data-document-delete]').forEach(button=>button.onclick=async()=>{ if(!confirm("确认删除这个项目文件？"))return; try{await documentApi(`/api/integrated/files/${button.dataset.documentDelete}?projectId=${backendMeetingId}`,{method:"DELETE"});toast("文件已删除");await loadDocuments();}catch(error){toast(error.message,"error");} });
+    $$('[data-document-delete]').forEach(button=>button.onclick=async()=>{ if(!confirm("确认删除这个项目文件？"))return; try{await documentApi(`/api/integrated/files/${button.dataset.documentDelete}?projectId=${backendMeetingId}`,{method:"DELETE"});toast("文件已删除");await loadDocuments();renderProjects();}catch(error){toast(error.message,"error");} });
   }
 
   async function uploadDocument(event) {
     event.preventDefault(); const form=event.currentTarget; const file=form.elements.file.files[0]; const selectedType=form.elements.type.value; $("#documentError").textContent=""; if(!file||!selectedType)return $("#documentError").textContent="请选择文件类型和文件";
     const type=selectedType.startsWith("confirmation_")?"confirmation":selectedType; const status=selectedType==="confirmation_signed"?"signed":selectedType==="confirmation_pending"?"pending":""; const scenario=isDocumentAdmin()?form.elements.scenario.value:"";
-    try { const query=new URLSearchParams({type,filename:file.name}); if(status)query.set("status",status); if(scenario)query.set("scenario",scenario); await documentApi(`/api/integrated/projects/${backendMeetingId}/documents?${query}`,{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:file}); form.elements.file.value=""; $("#documentFileName").textContent="单个文件最大 50MB"; toast("文件已归档"); await loadDocuments(); }
+    try { const query=new URLSearchParams({type,filename:file.name}); if(status)query.set("status",status); if(scenario)query.set("scenario",scenario); await documentApi(`/api/integrated/projects/${backendMeetingId}/documents?${query}`,{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:file}); form.elements.file.value=""; $("#documentFileName").textContent="单个文件最大 50MB"; await loadDocuments(); renderProjects(); toast(activeArchiveReady()?"文件已归档，报名与行程功能现已开放":"文件已归档，请继续补齐报价和待签署会务确认单"); }
     catch(error){ $("#documentError").textContent=error.message; }
   }
 

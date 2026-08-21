@@ -31,7 +31,7 @@ const registrationView = (row: Record<string, unknown>) => ({
 });
 const projectView = (meeting: Record<string, unknown>) => ({
   slug: meeting.slug || "", name: meeting.name || "参会服务", clientName: meeting.client_name || "", venues: meeting.venues || [], servicePhone: meeting.service_phone || "", brandColor: meeting.brand_color || "#5267d9", fieldConfig: meeting.field_config || {}, flightLeadMinutes: meeting.flight_lead_minutes || 120, trainLeadMinutes: meeting.train_lead_minutes || 90,
-  startDate: meeting.start_date || "", endDate: meeting.end_date || "", deadline: meeting.deadline || "", masterLocked: !!meeting.master_locked,
+  startDate: meeting.start_date || "", endDate: meeting.end_date || "", deadline: meeting.deadline || "", masterLocked: !!meeting.master_locked, archiveReady: !!meeting.archive_ready,
   templateName: meeting.template_name || "标准31列报名模板", registrationTemplate: meeting.registration_template || {},
 });
 
@@ -58,14 +58,15 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   const action = clean(payload.action, 50);
   const slug = clean(payload.meeting, 100);
   if (action === "list-projects") {
-    const { data:meetings, error } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,flight_lead_minutes,train_lead_minutes,deadline,master_locked").order("start_date",{ascending:false}).limit(50);
+    const { data:meetings, error } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready").eq("archive_ready",true).order("start_date",{ascending:false}).limit(50);
     if (error) return reply({ error:"读取项目列表失败" }, 500);
     return reply({ projects:(meetings || []).map(projectView) });
   }
   if (!slug) return reply({ error: "报名链接缺少项目编号，请使用项目专属二维码或链接" }, 400);
 
-  const { data: meeting } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,flight_lead_minutes,train_lead_minutes,deadline,master_locked,allowed_departure_cities,check_city_mismatch,check_departure_city").eq("slug", slug).maybeSingle();
+  const { data: meeting } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,allowed_departure_cities,check_city_mismatch,check_departure_city").eq("slug", slug).maybeSingle();
   if (!meeting) return reply({ error: "未找到会议" }, 404);
+  if (!meeting.archive_ready) return reply({ error:"项目尚未完成前置文件归档，报名暂未开放" }, 423);
   if (action === "project-info") return reply({ project:projectView(meeting) });
 
   const phone = clean(payload.phone).replace(/\D/g, "").slice(-11);

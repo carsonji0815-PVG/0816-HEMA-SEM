@@ -404,7 +404,7 @@
     $("#adminApp").classList.toggle("is-hidden", isPublic);
     $("#publicPortalView").classList.toggle("is-hidden", !isPublic);
     if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : "register"); if (!publicProjectConfig) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
-    const requestedRoute = $( `[data-page="${target}"]`) ? target : "dashboard"; const gatedRoutes=new Set(["dashboard","registration","attendees","approvals","transport","locks","notifications","settings"]); let routeName = !state.activeProjectId && requestedRoute !== "projects" ? "projects" : requestedRoute;
+    const requestedRoute = $( `[data-page="${target}"]`) ? target : "dashboard"; const gatedRoutes=new Set(["dashboard","registration","attendees","approvals","transport"]); let routeName = !state.activeProjectId && requestedRoute !== "projects" ? "projects" : requestedRoute;
     if(state.activeProjectId&&gatedRoutes.has(routeName)&&!activeArchiveReady())routeName="documents";
     if (routeName !== requestedRoute) { history.replaceState(null,"",state.activeProjectId?"#documents":"#projects"); toast(state.activeProjectId?"请先在项目管理中完成项目建档文件，再继续报名和行程管理":"请先新建项目，再进行报名和行程管理", "error"); }
     $$(".page").forEach(page => page.classList.toggle("active", page.dataset.page === routeName));

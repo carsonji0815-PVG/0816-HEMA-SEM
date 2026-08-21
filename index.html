@@ -19,6 +19,7 @@
         supabaseUrl: "https://bupsipicxwyeuxunkvii.supabase.co",
         supabaseAnonKey: "sb_publishable_grWeE2d8EPmAozkMurNRDA_GTFJC-h-",
         eventSlug: "hema-sem-2026",
+        documentApiBase: "https://139.196.97.236",
       };
     </script>
     <script src="app.js" defer></script>
@@ -143,6 +144,7 @@
           <a href="#transport" data-route="transport"><span>⌁</span>接送机</a>
           <p>管理</p>
           <a href="#projects" data-route="projects"><span>▤</span>项目管理</a>
+          <a href="#documents" data-route="documents"><span>▱</span>文件归档 <b id="navDocumentCount">0</b></a>
           <a href="#locks" data-route="locks"><span>▦</span>名单锁定</a>
           <a href="#notifications" data-route="notifications"><span>◌</span>变更提醒 <b id="navNoticeCount" class="alert-count">0</b></a>
           <a href="#settings" data-route="settings"><span>⚙</span>会议设置</a>
@@ -170,6 +172,28 @@
           <section class="page" data-page="projects">
             <div class="page-heading heading-with-action"><div><span class="eyebrow">PROJECT CENTER</span><h1>项目管理</h1><p>新建或复制项目；每个项目拥有独立的报名入口、名单、权限和接送规则。</p></div><button class="button button-primary" id="newProjectButton">＋ 新建项目</button></div>
             <div class="project-grid" id="projectGrid"></div>
+          </section>
+
+          <section class="page" data-page="documents">
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">DOCUMENT CENTER</span><h1>文件归档</h1><p>当前项目的报价、会务确认单、采购订单和供应商确认邮件统一归档。</p></div><button class="button button-secondary" id="refreshDocuments" type="button">刷新状态</button></div>
+            <div class="document-status-grid" id="documentStatusGrid"></div>
+            <div class="document-layout">
+              <article class="panel document-upload-panel">
+                <div class="panel-heading"><div><span class="kicker">UPLOAD</span><h2>上传项目文件</h2></div></div>
+                <form id="documentUploadForm" class="stack-form">
+                  <label id="documentScenarioField">项目场景<select name="scenario" id="documentScenario"><option value="">请选择场景</option><option value="po_email">场景一：PO＋供应商 PO 确认邮件</option><option value="signed_confirmation">场景二：PO＋已签署会务确认单</option></select></label>
+                  <label>文件类型<select name="type" id="documentType"></select></label>
+                  <label class="document-file-picker">选择文件<input name="file" id="documentFile" type="file" required /><small id="documentFileName">单个文件最大 50MB</small></label>
+                  <p class="form-hint" id="documentRoleHint"></p>
+                  <p class="login-error" id="documentError"></p>
+                  <button class="button button-primary button-block" type="submit">上传到当前项目</button>
+                </form>
+              </article>
+              <article class="panel document-list-panel">
+                <div class="panel-heading"><div><span class="kicker">ARCHIVE</span><h2>已归档文件</h2></div><span id="documentProjectLabel" class="status"></span></div>
+                <div id="documentList" class="document-list"><div class="empty-state">正在读取项目文件…</div></div>
+              </article>
+            </div>
           </section>
 
           <section class="page" data-page="dashboard">
@@ -336,7 +360,7 @@
         <div class="detail-actions"><button class="button button-primary" id="confirmImport" type="button" disabled>确认导入有效名单</button><button class="button button-secondary" id="cancelImport" type="button">取消</button></div>
       </div>
     </dialog>
-    <dialog id="projectDialog" class="login-dialog project-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">项</span><div><strong>新建项目</strong><small>可空白创建或复制已有配置</small></div></div><form id="projectForm" class="stack-form"><label>项目名称<input name="name" required placeholder="例如：2026 血液高峰论坛" /></label><label>项目编号 / 链接标识<input name="slug" required pattern="[a-z0-9-]+" placeholder="例如：blood-forum-2026" /><small>仅使用小写字母、数字和短横线</small></label><label>复制配置<select name="sourceId" id="projectCopySource"><option value="">不复制，使用默认设置</option></select></label><p id="projectFormError" class="login-error"></p><button class="button button-primary button-block" type="submit">创建并进入项目</button></form></dialog>
+    <dialog id="projectDialog" class="login-dialog project-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">项</span><div><strong>新建项目</strong><small>项目创建后才能开展报名与行程管理</small></div></div><form id="projectForm" class="stack-form"><label>活动类型<select name="activityType" id="projectActivityType" required><option value="external">外部活动</option><option value="internal">内部活动</option></select></label><label id="projectIdentifierLabel">会议编码<input name="identifier" required placeholder="例如：EL2026-0820" /></label><label>活动名称<input name="name" required placeholder="例如：2026 血液高峰论坛" /></label><label>活动负责人<input name="activityOwner" required placeholder="请输入负责人姓名" /></label><label>活动日期<input name="activityDate" type="date" required /></label><label>项目链接标识<input name="slug" required pattern="[a-z0-9-]+" placeholder="例如：blood-forum-2026" /><small>用于报名链接，仅使用小写字母、数字和短横线</small></label><label>复制行程配置<select name="sourceId" id="projectCopySource"><option value="">不复制，使用默认设置</option></select></label><p id="projectFormError" class="login-error"></p><button class="button button-primary button-block" type="submit">创建项目并进入管理</button></form></dialog>
     <dialog id="loginDialog" class="login-dialog">
       <div class="login-brand"><span class="brand-mark">行</span><div><strong>行程台</strong><small>工作人员安全登录</small></div></div>
       <form id="loginForm" class="stack-form">

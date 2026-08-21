@@ -10,12 +10,14 @@
   const STANDARD_TEMPLATE_KEYS = ["sequence","attendeeType","name","city","hospital","department","title","venue","sex","idNumber","phone","hcpId","accommodation","flight","outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival","region","contactName","contactMobile","mslContact","remarks"];
   const CORE_AUTH_FIELDS = new Set(["name","phone","region"]);
   const FIELD_LABELS = {outFrom:"去程出发城市",outTo:"去程到达城市",outNo:"去程航班/车次",outDeparture:"去程出发时间",returnFrom:"返程出发城市",returnTo:"返程到达城市",returnNo:"返程航班/车次",returnDeparture:"返程出发时间",privacyLetterStatus:"隐私沟通函",ticketStatus:"出票状态"};
+  const DOCUMENT_API_BASE = String(window.APP_CONFIG?.documentApiBase || "https://139.196.97.236").replace(/\/$/, "");
+  const DOCUMENT_ADMIN_NAME = "季亮亮";
   const standardTemplate = () => ({ version:1, columns:STANDARD_TEMPLATE_HEADERS.map((header,index) => ({ header, key:STANDARD_TEMPLATE_KEYS[index], required:/\*/.test(header) || ["name","phone","region"].includes(STANDARD_TEMPLATE_KEYS[index]) })) });
 
   const initialState = () => ({
     currentUserId: "u-ops",
     activeProjectId: "demo-hema",
-    projects: [{ id:"demo-hema", slug:"hema-sem-2026", name:"HEMA SEM · 大连 & 福州", clientName:"礼来", role:"ops", attendeeCount:5, startDate:"2026-09-04", endDate:"2026-09-12", brandColor:"#5267d9" }],
+    projects: [{ id:"demo-hema", slug:"hema-sem-2026", name:"HEMA SEM · 大连 & 福州", activityType:"external", identifier:"HEMA-SEM-2026", activityOwner:"林悦", activityDate:"2026-09-04", clientName:"礼来", role:"ops", attendeeCount:5, startDate:"2026-09-04", endDate:"2026-09-12", brandColor:"#5267d9" }],
     users: [
       { id: "u-ops", name: "林悦", role: "ops", label: "会务负责人" },
       { id: "u-client", name: "周宁", role: "client", label: "会议负责人（客户）" },
@@ -41,6 +43,10 @@
       fieldConfig: { title:true, hcpId:true, accommodation:true, flight:true, mslContact:true, remarks:true },
       templateName: "标准31列报名模板",
       registrationTemplate: standardTemplate(),
+      activityType: "external",
+      identifier: "HEMA-SEM-2026",
+      activityOwner: "林悦",
+      activityDate: "2026-09-04",
     },
     locks: { master: false, columns: ["identity"], rows: ["a-104"] },
     attendees: [
@@ -100,6 +106,7 @@
   let publicEditingAttendeeId = null;
   let projectMemberships = [];
   let pendingImportRows = [];
+  let documentState = { folder:null, files:[], user:null, loading:false };
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -109,6 +116,7 @@
   const userName = id => state.users.find(user => user.id === id)?.name || "未分配";
   const visibleAttendees = () => currentUser().role === "sales" ? state.attendees.filter(item => item.ownerId === currentUser().id) : state.attendees;
   const canManage = () => ["ops", "client"].includes(currentUser().role);
+  const isDocumentAdmin = () => currentUser()?.name === DOCUMENT_ADMIN_NAME;
   const isLocked = attendee => state.locks.master || state.locks.rows.includes(attendee.id);
   const currentProject = () => state.projects.find(project => project.id === state.activeProjectId) || state.projects[0] || {};
   const currentEventSlug = () => new URLSearchParams(location.search).get("event") || window.APP_CONFIG?.eventSlug || state.settings.slug || "";
@@ -211,6 +219,15 @@
     $("#projectCopySource").innerHTML = `<option value="">不复制，使用默认设置</option>${options}`;
   }
 
+  function updateProjectIdentifierLabel() {
+    const internal = $("#projectActivityType").value === "internal"; const label = $("#projectIdentifierLabel");
+    label.firstChild.textContent = internal ? "合同编号" : "会议编码"; label.querySelector("input").placeholder = internal ? "例如：HT2026-0188" : "例如：EL2026-0820";
+  }
+
+  function openProjectDialog(source = null) {
+    const form = $("#projectForm"); form.reset(); form.elements.activityType.value = source?.activityType || "external"; form.elements.identifier.value = source?.identifier ? `${source.identifier}-COPY` : ""; form.elements.name.value = source ? `${source.name}（复制）` : ""; form.elements.activityOwner.value = source?.activityOwner || currentUser()?.name || ""; form.elements.activityDate.value = source?.activityDate || new Date().toISOString().slice(0,10); form.elements.sourceId.value = source?.id || ""; form.elements.slug.value = source ? `${source.slug}-copy-${String(Date.now()).slice(-4)}` : ""; form.elements.slug.dataset.edited = source ? "1" : ""; $("#projectFormError").textContent = ""; updateProjectIdentifierLabel(); $("#projectDialog").showModal();
+  }
+
   async function switchProject(projectId) {
     if (!projectId || projectId === state.activeProjectId) return;
     try {
@@ -219,7 +236,7 @@
         const project = state.projects.find(item => item.id === projectId);
         if (!project) return;
         state.activeProjectId = projectId;
-        state.settings = { ...state.settings, eventName:project.name, slug:project.slug, clientName:project.clientName||"", startDate:project.startDate||"", endDate:project.endDate||"", brandColor:project.brandColor||"#5267d9" };
+        state.settings = { ...state.settings, eventName:project.name, slug:project.slug, activityType:project.activityType||"external", identifier:project.identifier||project.slug, activityOwner:project.activityOwner||"", activityDate:project.activityDate||project.startDate||"", clientName:project.clientName||"", startDate:project.startDate||"", endDate:project.endDate||"", brandColor:project.brandColor||"#5267d9" };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       }
       populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast(`已切换至${state.settings.eventName}`);
@@ -229,23 +246,24 @@
   async function createProject(event) {
     event.preventDefault();
     const form = event.currentTarget; const data = Object.fromEntries(new FormData(form));
-    const name = String(data.name||"").trim(); const slug = String(data.slug||"").trim().toLowerCase();
+    const name = String(data.name||"").trim(); const slug = String(data.slug||"").trim().toLowerCase(); const activityType = data.activityType === "internal" ? "internal" : "external"; const identifier = String(data.identifier||"").trim(); const activityOwner = String(data.activityOwner||"").trim(); const activityDate = String(data.activityDate||"");
     $("#projectFormError").textContent = "";
-    if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return $("#projectFormError").textContent = "请填写项目名称，并使用正确的英文项目编号";
+    if (!name || !identifier || !activityOwner || !/^\d{4}-\d{2}-\d{2}$/.test(activityDate) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return $("#projectFormError").textContent = "请完整填写项目资料，并使用正确的链接标识";
     try {
       let projectId;
-      if (backend && backendMeetingId) {
-        const { data:created,error } = await backend.rpc("create_meeting_project", { p_name:name, p_slug:slug, p_source_id:data.sourceId||null });
+      if (backend) {
+        const { data:created,error } = await backend.rpc("create_meeting_project", { p_name:name, p_slug:slug, p_activity_type:activityType, p_identifier:identifier, p_activity_owner:activityOwner, p_activity_date:activityDate, p_source_id:data.sourceId||null });
         if (error) throw error; projectId = created; await loadBackendState(projectId);
       } else {
         if (state.projects.some(project => project.slug === slug)) throw new Error("项目编号已存在");
         projectId = `demo-${Date.now()}`;
         const source = state.projects.find(project => project.id === data.sourceId);
-        state.projects.push({ id:projectId, slug, name, clientName:source?.clientName||"", role:"ops", attendeeCount:0, startDate:source?.startDate||"", endDate:source?.endDate||"", brandColor:source?.brandColor||"#5267d9" });
-        state.activeProjectId = projectId; state.settings = { ...initialState().settings, ...(source ? state.settings : {}), eventName:name, slug };
+        state.projects.push({ id:projectId, slug, name, activityType, identifier, activityOwner, activityDate, clientName:source?.clientName||"", role:"ops", attendeeCount:0, startDate:source?.startDate||activityDate, endDate:source?.endDate||activityDate, brandColor:source?.brandColor||"#5267d9" });
+        state.activeProjectId = projectId; state.settings = { ...initialState().settings, ...(source ? state.settings : {}), eventName:name, slug, activityType, identifier, activityOwner, activityDate };
         state.attendees = []; state.notifications = []; state.locks = {master:false,columns:[],rows:[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
       }
-      form.reset(); $("#projectDialog").close(); populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast("项目已创建");
+      if (backend) await syncDocumentProject().catch(error => toast(`文件归档初始化失败：${error.message}`, "error"));
+      form.reset(); $("#projectDialog").close(); populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast("项目已创建，行程管理已开放");
     } catch (error) { $("#projectFormError").textContent = error.message.includes("duplicate") ? "项目编号已存在，请更换" : error.message; }
   }
 
@@ -258,7 +276,7 @@
       if (error) { $("#loginError").textContent = "邮箱或密码不正确"; return; }
       $("#loginError").textContent = "";
       await loadBackendState();
-      populateUsers(); populateProjects(); renderAll(); $("#loginDialog").close(); toast("登录成功");
+      populateUsers(); populateProjects(); renderAll(); $("#loginDialog").close(); location.hash = state.activeProjectId ? "dashboard" : "projects"; route(); toast(state.activeProjectId ? "登录成功" : "登录成功，请先新建项目");
     });
   }
 
@@ -268,7 +286,13 @@
     const membershipRes = await backend.from("meeting_members").select("meeting_id,role,display_name,phone,meetings(*)").eq("user_id",authData.user.id);
     if (membershipRes.error) throw new Error("请先运行多项目数据库升级脚本");
     projectMemberships = membershipRes.data || [];
-    if (!projectMemberships.length) throw new Error("当前账号尚未加入任何项目");
+    if (!projectMemberships.length) {
+      const profileRes = await backend.from("profiles").select("display_name,phone,role").eq("user_id",authData.user.id).maybeSingle();
+      if (profileRes.error || !profileRes.data) throw new Error("当前账号尚未建立人员资料");
+      const blank = initialState(); backendMeetingId = null;
+      state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:profileRes.data.role,label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[profileRes.data.role]||"项目成员",phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
+      localStorage.removeItem("journey-desk-active-project"); return;
+    }
     const savedProjectId = localStorage.getItem("journey-desk-active-project");
     backendMeetingId = [preferredMeetingId,savedProjectId,backendMeetingId].find(id => projectMemberships.some(item => item.meeting_id === id)) || projectMemberships[0].meeting_id;
     localStorage.setItem("journey-desk-active-project",backendMeetingId);
@@ -285,9 +309,9 @@
     state = {
       currentUserId: authData.user.id,
       activeProjectId: backendMeetingId,
-      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, clientName:m.client_name||"", role:item.role, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
+      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:item.role, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
       users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
-      settings: { eventName:meeting.name, slug:meeting.slug, clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, templateName:meeting.template_name||"标准31列报名模板", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : standardTemplate() },
+      settings: { eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, templateName:meeting.template_name||"标准31列报名模板", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : standardTemplate() },
       locks: { master: meeting.master_locked, columns: locksRes.data.filter(l => l.locked).map(l => l.field_group), rows: attendeesRes.data.filter(a => a.row_locked).map(a => a.id) },
       attendees: attendeesRes.data.map(fromDbAttendee),
       notifications: noticesRes.data.map(n => ({ id: n.id, type: n.type, text: n.message, time: n.created_at, read: !!n.read_at })),
@@ -315,7 +339,7 @@
     const transportRows = state.attendees.flatMap(a => ["pickup","dropoff"].map(direction => { const t = a.transport?.[direction] || {}; return { attendee_id:a.id, direction, driver_name:t.driver||null, staff_name:t.staffName||null, driver_phone:t.phone||null, vehicle:t.vehicle||null, service_time:parseServiceTime(t.time), meeting_point:t.point||null, service_mode:t.mode||null, batch_id:t.batchId||null, batch_name:t.batchName||null, terminal:t.terminal||null, placard:t.placard||null, capacity:t.capacity||null, notes:t.notes||null, time_strategy:t.timeStrategy||null }; }));
     if (transportRows.length) { const { error } = await backend.from("transports").upsert(transportRows,{onConflict:"attendee_id,direction"}); if (error) throw error; }
     if (canManage()) {
-      const { error } = await backend.from("meetings").update({ name:state.settings.eventName, client_name:state.settings.clientName||null, start_date:state.settings.startDate||null, end_date:state.settings.endDate||null, venues:state.settings.venues, service_phone:state.settings.servicePhone||null, brand_color:state.settings.brandColor, deadline:state.settings.deadline||null, capacity:state.settings.capacity, allowed_departure_cities:state.settings.allowedCities, check_city_mismatch:state.settings.mismatchRule, check_departure_city:state.settings.departureRule, flight_lead_minutes:state.settings.flightLeadMinutes, train_lead_minutes:state.settings.trainLeadMinutes, field_config:state.settings.fieldConfig, template_name:state.settings.templateName||null, registration_template:state.settings.registrationTemplate||standardTemplate(), master_locked:state.locks.master }).eq("id",backendMeetingId); if (error) throw error;
+      const { error } = await backend.from("meetings").update({ name:state.settings.eventName, activity_type:state.settings.activityType||"external", project_identifier:state.settings.identifier||state.settings.slug, activity_owner:state.settings.activityOwner||null, activity_date:state.settings.activityDate||state.settings.startDate||null, client_name:state.settings.clientName||null, start_date:state.settings.startDate||null, end_date:state.settings.endDate||null, venues:state.settings.venues, service_phone:state.settings.servicePhone||null, brand_color:state.settings.brandColor, deadline:state.settings.deadline||null, capacity:state.settings.capacity, allowed_departure_cities:state.settings.allowedCities, check_city_mismatch:state.settings.mismatchRule, check_departure_city:state.settings.departureRule, flight_lead_minutes:state.settings.flightLeadMinutes, train_lead_minutes:state.settings.trainLeadMinutes, field_config:state.settings.fieldConfig, template_name:state.settings.templateName||null, registration_template:state.settings.registrationTemplate||standardTemplate(), master_locked:state.locks.master }).eq("id",backendMeetingId); if (error) throw error;
       const lockRows = COLUMN_LOCKS.map(([field]) => ({ meeting_id:backendMeetingId, field_group:field, locked:state.locks.columns.includes(field), updated_by:state.currentUserId }));
       const lockResult = await backend.from("column_locks").upsert(lockRows); if (lockResult.error) throw lockResult.error;
     }
@@ -336,11 +360,13 @@
     $("#adminApp").classList.toggle("is-hidden", isPublic);
     $("#publicPortalView").classList.toggle("is-hidden", !isPublic);
     if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : "register"); if (!publicProjectConfig) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
-    const routeName = $( `[data-page="${target}"]`) ? target : "dashboard";
+    const requestedRoute = $( `[data-page="${target}"]`) ? target : "dashboard"; const routeName = !state.activeProjectId && requestedRoute !== "projects" ? "projects" : requestedRoute;
+    if (routeName !== requestedRoute) { history.replaceState(null,"","#projects"); toast("请先新建项目，再进行报名和行程管理", "error"); }
     $$(".page").forEach(page => page.classList.toggle("active", page.dataset.page === routeName));
     $$("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === routeName));
     scrollTo({ top: 0, behavior: "instant" });
     renderAll();
+    if (routeName === "documents") loadDocuments();
   }
 
   function bindForms() {
@@ -351,12 +377,17 @@
     $("#lookupForm").addEventListener("submit", queryTransport);
     $("#settingsForm").addEventListener("submit", saveSettings);
     $("#projectForm").addEventListener("submit", createProject);
+    $("#documentUploadForm").addEventListener("submit", uploadDocument);
     $("#transportBatchForm").addEventListener("submit", saveTransportBatch);
   }
 
   function bindControls() {
     $("#projectSelect").addEventListener("change", event => switchProject(event.target.value));
-    $("#newProjectButton").addEventListener("click", () => { const form=$("#projectForm"); form.reset(); $("#projectFormError").textContent=""; $("#projectDialog").showModal(); });
+    $("#newProjectButton").addEventListener("click", () => openProjectDialog());
+    $("#projectActivityType").addEventListener("change", updateProjectIdentifierLabel);
+    $("#documentScenario").addEventListener("change", updateDocumentTypeOptions);
+    $("#refreshDocuments").addEventListener("click", loadDocuments);
+    $("#documentFile").addEventListener("change", event => $("#documentFileName").textContent = event.target.files[0]?.name || "单个文件最大 50MB");
     $("#projectForm").elements.name.addEventListener("input", event => { const slug=$("#projectForm").elements.slug; if (!slug.dataset.edited) slug.value = `project-${new Date().toISOString().slice(0,10).replaceAll("-","")}-${String(Date.now()).slice(-4)}`; });
     $("#projectForm").elements.slug.addEventListener("input", event => event.target.dataset.edited = event.target.value ? "1" : "");
     $("#userSelect").addEventListener("change", event => { state.currentUserId = event.target.value; saveState(); renderAll(); toast(`已切换为${currentUser().label}`); });
@@ -407,17 +438,86 @@
     $("#greetingName").textContent = user.name;
     $("#userAvatar").textContent = user.name.slice(0, 1);
     const visual=projectVisual(currentProject()); $("#activeProjectIcon").textContent=visual.icon; $("#activeProjectIcon").style.setProperty("--project-accent",visual.color); document.documentElement.style.setProperty("--project-accent",visual.color);
-    renderRegistrationOwner(); renderCounts(); renderDashboard(); renderAttendeeTable(); renderApprovals(); renderTransport(); renderLocks(); renderNotifications(); renderSettings(); renderProjects(); renderQr();
+    renderRegistrationOwner(); renderCounts(); renderDashboard(); renderAttendeeTable(); renderApprovals(); renderTransport(); renderLocks(); renderNotifications(); renderSettings(); renderProjects(); renderDocuments(); renderQr();
   }
 
   function renderProjects() {
     $("#projectGrid").innerHTML = state.projects.map(project => {
       const active = project.id === state.activeProjectId; const role = ({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售 / 负责人"})[project.role] || "项目成员"; const visual=projectVisual(project);
-      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前项目" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${escapeHtml(project.clientName||"未设置客户")} · ${escapeHtml(project.startDate||"日期待定")}${project.endDate ? ` 至 ${escapeHtml(project.endDate)}` : ""}</p><small>公开入口：?event=${escapeHtml(project.slug)}</small><div class="project-actions"><button class="button button-primary" data-switch-project="${project.id}" ${active ? "disabled" : ""}>${active ? "正在使用" : "进入项目"}</button><button class="button button-secondary" data-copy-project="${project.id}">复制项目</button><button class="text-button" data-copy-project-link="${project.id}">复制入口</button></div></article>`;
+      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前项目" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><small>公开入口：?event=${escapeHtml(project.slug)}</small><div class="project-actions"><button class="button button-primary" data-switch-project="${project.id}" ${active ? "disabled" : ""}>${active ? "正在使用" : "进入项目"}</button><button class="button button-secondary" data-copy-project="${project.id}">复制项目</button><button class="text-button" data-copy-project-link="${project.id}">复制入口</button></div></article>`;
     }).join("");
     $$('[data-switch-project]').forEach(button => button.onclick = () => switchProject(button.dataset.switchProject));
-    $$('[data-copy-project]').forEach(button => button.onclick = () => { const project=state.projects.find(item=>item.id===button.dataset.copyProject); const form=$("#projectForm"); form.reset(); form.elements.name.value=`${project.name}（复制）`; form.elements.sourceId.value=project.id; form.elements.slug.value=`${project.slug}-copy-${String(Date.now()).slice(-4)}`; form.elements.slug.dataset.edited="1"; $("#projectDialog").showModal(); });
+    $$('[data-copy-project]').forEach(button => button.onclick = () => openProjectDialog(state.projects.find(item=>item.id===button.dataset.copyProject)));
     $$('[data-copy-project-link]').forEach(button => button.onclick = () => { const project=state.projects.find(item=>item.id===button.dataset.copyProjectLink); const url=new URL(location.href); url.searchParams.set("event",project.slug); url.hash="portal"; navigator.clipboard?.writeText(url.toString()).then(()=>toast("项目入口已复制")).catch(()=>toast(url.toString())); });
+  }
+
+  async function documentApi(path, options = {}) {
+    if (!backend) throw new Error("文件归档仅在正式登录模式下使用");
+    const { data } = await backend.auth.getSession(); const token = data.session?.access_token;
+    if (!token) throw new Error("登录已过期，请重新登录");
+    const response = await fetch(`${DOCUMENT_API_BASE}${path}`, { ...options, headers:{ Authorization:`Bearer ${token}`, ...(options.headers||{}) } });
+    if (options.download && response.ok) return response;
+    const payload = (response.headers.get("content-type")||"").includes("application/json") ? await response.json() : {};
+    if (!response.ok) throw new Error(payload.error || "文件服务暂时不可用");
+    return payload;
+  }
+
+  async function syncDocumentProject() {
+    if (!backend || !backendMeetingId) return null;
+    return documentApi(`/api/integrated/projects/${backendMeetingId}/sync`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ meetingType:state.settings.activityType||"external", identifier:state.settings.identifier||state.settings.slug, activityName:state.settings.eventName, owner:state.settings.activityOwner||currentUser().name, date:state.settings.activityDate||state.settings.startDate }) });
+  }
+
+  async function loadDocuments() {
+    if (!backendMeetingId) return renderDocuments("请先新建并进入一个项目");
+    documentState.loading = true; renderDocuments();
+    try {
+      let payload = await documentApi(`/api/integrated/projects/${backendMeetingId}/documents`);
+      if (!payload.folder && canManage()) payload = await syncDocumentProject();
+      documentState = { folder:payload.folder||null, files:payload.files||[], user:payload.user||null, loading:false }; renderDocuments();
+    } catch (error) { documentState.loading = false; renderDocuments(error.message); }
+  }
+
+  function updateDocumentTypeOptions() {
+    const admin = isDocumentAdmin(); const scenario = $("#documentScenario").value;
+    const options = !admin ? [["quotation","报价"],["confirmation_pending","会务确认单（待签署）"]]
+      : scenario === "po_email" ? [["quotation","报价"],["confirmation_pending","会务确认单（待签署）"],["po","采购订单（PO）"],["po_email","供应商 PO 确认邮件"],["other","其他"]]
+      : scenario === "signed_confirmation" ? [["quotation","报价"],["confirmation_pending","会务确认单（待签署）"],["confirmation_signed","会务确认单（已签署）"],["po","采购订单（PO）"],["other","其他"]]
+      : [["","请先选择项目场景"]];
+    $("#documentType").innerHTML = options.map(([value,label])=>`<option value="${value}">${label}</option>`).join("");
+    $("#documentScenarioField").classList.toggle("is-hidden", !admin);
+    $("#documentRoleHint").textContent = admin ? (scenario === "po_email" ? "场景一：需归档 PO 和供应商 PO 确认邮件。" : scenario === "signed_confirmation" ? "场景二：需归档 PO 和已签署会务确认单。" : "管理员上传前请选择项目场景。") : "成员可上传报价和未签署会务确认单，最终采购材料由季亮亮上传。";
+  }
+
+  function renderDocuments(message = "") {
+    const files = documentState.files || []; const folder = documentState.folder; const hasPo = files.some(file=>file.type==="po"); const hasEmail = files.some(file=>file.type==="po_email"); const hasSigned = files.some(file=>file.type==="confirmation"&&file.documentStatus==="signed"); const scenario = folder?.complianceScenario || "unclassified";
+    $("#navDocumentCount").textContent = files.length;
+    $("#documentProjectLabel").textContent = currentProject().identifier || currentProject().slug || "未选择项目";
+    const finalReady = scenario === "po_email" ? hasEmail : scenario === "signed_confirmation" ? hasSigned : false;
+    $("#documentStatusGrid").innerHTML = [
+      [folder?"complete":"warning","项目归档",folder?"已关联":"待初始化",folder?.name||"项目创建后自动建立归档"],
+      [hasPo?"complete":"warning","采购订单（PO）",hasPo?"已上传":"待上传",hasPo?"采购订单已归档":"管理员补充最终采购订单"],
+      [finalReady?"complete":"warning",scenario==="po_email"?"供应商 PO 确认邮件":"已签署会务确认单",finalReady?"已完成":scenario==="unclassified"?"场景待选择":"待上传",scenario==="unclassified"?"管理员上传时选择场景一或场景二":"按当前场景核对最终材料"],
+    ].map(([cls,label,value,note])=>`<article class="document-status-card ${cls}"><small>${label}</small><strong>${value}</strong><span>${escapeHtml(note)}</span></article>`).join("");
+    if (documentState.loading) $("#documentList").innerHTML = '<div class="empty-state">正在读取项目文件…</div>';
+    else if (message) $("#documentList").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
+    else if (!files.length) $("#documentList").innerHTML = '<div class="empty-state">当前项目还没有归档文件</div>';
+    else $("#documentList").innerHTML = files.map(file=>{ const signed=file.type==="confirmation"&&file.documentStatus==="signed"; const canDelete=documentState.user?.role==="admin"||(file.uploadedBy===currentUser().name&&(file.type==="quotation"||(file.type==="confirmation"&&!signed))); return `<div class="document-row"><span class="document-type-badge ${signed?"signed":""}">${escapeHtml(file.typeLabel)}${file.type==="confirmation"?` · ${signed?"已签署":"待签署"}`:""}</span><strong title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</strong><small>${formatDocumentSize(file.size)}</small><small>${escapeHtml(file.uploadedBy)}<br>${new Date(file.uploadedAt).toLocaleDateString("zh-CN")}</small><span class="document-actions"><button data-document-download="${file.id}" data-document-name="${escapeHtml(file.name)}">下载</button>${canDelete?`<button class="danger" data-document-delete="${file.id}">删除</button>`:""}</span></div>`;}).join("");
+    if (folder && ["po_email","signed_confirmation"].includes(folder.complianceScenario) && isDocumentAdmin()) $("#documentScenario").value = folder.complianceScenario;
+    updateDocumentTypeOptions(); bindDocumentRows();
+  }
+
+  function formatDocumentSize(bytes) { return bytes < 1024*1024 ? `${Math.max(1,Math.round(bytes/1024))} KB` : `${(bytes/1024/1024).toFixed(1)} MB`; }
+
+  function bindDocumentRows() {
+    $$('[data-document-download]').forEach(button=>button.onclick=async()=>{ try { const response=await documentApi(`/api/integrated/files/${button.dataset.documentDownload}?projectId=${backendMeetingId}`,{download:true}); const url=URL.createObjectURL(await response.blob()); const link=document.createElement("a"); link.href=url; link.download=button.dataset.documentName; link.click(); setTimeout(()=>URL.revokeObjectURL(url),30000); } catch(error){ toast(error.message,"error"); } });
+    $$('[data-document-delete]').forEach(button=>button.onclick=async()=>{ if(!confirm("确认删除这个项目文件？"))return; try{await documentApi(`/api/integrated/files/${button.dataset.documentDelete}?projectId=${backendMeetingId}`,{method:"DELETE"});toast("文件已删除");await loadDocuments();}catch(error){toast(error.message,"error");} });
+  }
+
+  async function uploadDocument(event) {
+    event.preventDefault(); const form=event.currentTarget; const file=form.elements.file.files[0]; const selectedType=form.elements.type.value; $("#documentError").textContent=""; if(!file||!selectedType)return $("#documentError").textContent="请选择文件类型和文件";
+    const type=selectedType.startsWith("confirmation_")?"confirmation":selectedType; const status=selectedType==="confirmation_signed"?"signed":selectedType==="confirmation_pending"?"pending":""; const scenario=isDocumentAdmin()?form.elements.scenario.value:"";
+    try { const query=new URLSearchParams({type,filename:file.name}); if(status)query.set("status",status); if(scenario)query.set("scenario",scenario); await documentApi(`/api/integrated/projects/${backendMeetingId}/documents?${query}`,{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:file}); form.elements.file.value=""; $("#documentFileName").textContent="单个文件最大 50MB"; toast("文件已归档"); await loadDocuments(); }
+    catch(error){ $("#documentError").textContent=error.message; }
   }
 
   function renderRegistrationOwner() {

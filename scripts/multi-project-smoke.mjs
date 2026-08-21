@@ -8,7 +8,11 @@ await page.locator("#loginDialog").evaluate(dialog=>{if(dialog.open)dialog.close
 await page.waitForSelector('[data-page="projects"].active');
 if (await page.locator("#projectSelect option").count()<1) throw new Error("Project selector is empty");
 await page.click("#newProjectButton");
+await page.selectOption('#projectForm [name="activityType"]',"internal");
+await page.fill('#projectForm [name="identifier"]',"HT-NEW-2026");
 await page.fill('#projectForm [name="name"]',"新会议项目");
+await page.fill('#projectForm [name="activityOwner"]',"林悦");
+await page.fill('#projectForm [name="activityDate"]',"2026-08-21");
 await page.fill('#projectForm [name="slug"]',"new-meeting-2026");
 await page.click('#projectForm button[type="submit"]');
 await page.waitForFunction(() => [...document.querySelectorAll("#projectSelect option")].some(option => option.textContent.includes("新会议项目")));

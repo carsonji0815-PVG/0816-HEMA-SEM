@@ -484,12 +484,12 @@
   function updateDocumentTypeOptions() {
     const admin = isDocumentAdmin(); const scenario = $("#documentScenario").value;
     const options = !admin ? [["quotation","报价"],["confirmation_pending","会务确认单（待签署）"]]
-      : scenario === "po_email" ? [["quotation","报价"],["confirmation_pending","会务确认单（待签署）"],["po","采购订单（PO）"],["po_email","供应商 PO 确认邮件"],["other","其他"]]
+      : scenario === "po_email" ? [["quotation","报价"],["confirmation_pending","会务确认单（待签署）"],["po","采购订单（PO）"],["po_email","供应商PO确认邮件"],["other","其他"]]
       : scenario === "signed_confirmation" ? [["quotation","报价"],["confirmation_pending","会务确认单（待签署）"],["confirmation_signed","会务确认单（已签署）"],["po","采购订单（PO）"],["other","其他"]]
       : [["","请先选择项目场景"]];
     $("#documentType").innerHTML = options.map(([value,label])=>`<option value="${value}">${label}</option>`).join("");
     $("#documentScenarioField").classList.toggle("is-hidden", !admin);
-    $("#documentRoleHint").textContent = admin ? (scenario === "po_email" ? "场景一：需归档 PO 和供应商 PO 确认邮件。" : scenario === "signed_confirmation" ? "场景二：需归档 PO 和已签署会务确认单。" : "管理员上传前请选择项目场景。") : "成员可上传报价和未签署会务确认单，最终采购材料由季亮亮上传。";
+    $("#documentRoleHint").textContent = admin ? (scenario === "po_email" ? "场景一：需归档 PO 和供应商PO确认邮件。" : scenario === "signed_confirmation" ? "场景二：需归档 PO 和已签署会务确认单。" : "管理员上传前请选择项目场景。") : "成员可上传报价和未签署会务确认单，最终采购材料由季亮亮上传。";
   }
 
   function renderDocuments(message = "") {
@@ -500,7 +500,7 @@
     $("#documentStatusGrid").innerHTML = [
       [folder?"complete":"warning","项目归档",folder?"已关联":"待初始化",folder?.name||"项目创建后自动建立归档"],
       [hasPo?"complete":"warning","采购订单（PO）",hasPo?"已上传":"待上传",hasPo?"采购订单已归档":"管理员补充最终采购订单"],
-      [finalReady?"complete":"warning",scenario==="po_email"?"供应商 PO 确认邮件":"已签署会务确认单",finalReady?"已完成":scenario==="unclassified"?"场景待选择":"待上传",scenario==="unclassified"?"管理员上传时选择场景一或场景二":"按当前场景核对最终材料"],
+      [finalReady?"complete":"warning",scenario==="po_email"?"供应商PO确认邮件":"已签署会务确认单",finalReady?"已完成":scenario==="unclassified"?"场景待选择":"待上传",scenario==="unclassified"?"管理员上传时选择场景一或场景二":"按当前场景核对最终材料"],
     ].map(([cls,label,value,note])=>`<article class="document-status-card ${cls}"><small>${label}</small><strong>${value}</strong><span>${escapeHtml(note)}</span></article>`).join("");
     if (documentState.loading) $("#documentList").innerHTML = '<div class="empty-state">正在读取项目文件…</div>';
     else if (message) $("#documentList").innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;

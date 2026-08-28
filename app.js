@@ -197,7 +197,8 @@
   const locationCity = value => state.settings.allowedCities.find(city=>String(value||"").includes(city)) || String(value||"").replace(/(国际)?机场.*|[A-Z]?\d航站楼.*|站$/g,"").trim();
 
   function evaluateSegmentRisks(data) {
-    const result={outbound:[],return:[]};
+    const verification=data.customFields?._travelVerification||{};
+    const result={outbound:[...(verification.outbound?.warnings||[])],return:[...(verification.return?.warnings||[])]};
     if (state.settings.mismatchRule && data.outFrom && data.returnTo && locationCity(data.outFrom) !== locationCity(data.returnTo)) result.return.push("去程出发城市与返程到达城市不一致");
     if (state.settings.departureRule && data.outFrom && !state.settings.allowedCities.some(city=>String(data.outFrom).includes(city))) result.outbound.push(`出发城市“${data.outFrom.trim()}”不在预设范围`);
     [["outbound","去程",data.outNo,data.outFrom,data.outTo,data.outDate,data.outDeparture,data.outArrival],["return","返程",data.returnNo,data.returnFrom,data.returnTo,data.returnDate,data.returnDeparture,data.returnArrival]].forEach(([segment,label,number,from,to,date,departure,arrival])=>{
@@ -678,16 +679,43 @@
     $("#transportGrid").innerHTML = cards.join("") || `<div class="empty-state">暂无接送机记录</div>`; bindDynamicButtons();
   }
 
-  function auditRosterTravel() {
+  const comparableStation = value => String(value||"").replace(/(?:火车)?站$/u,"").replace(/\s+/g,"").trim();
+  function trainVerificationWarnings(attendee, segment, result) {
+    if(!result?.found||!result.match)return result?.warnings||["未查询到该车次的计划时刻"];
+    const outbound=segment==="outbound"; const match=result.match; const warnings=[];
+    const current={from:attendee[outbound?"outFrom":"returnFrom"],to:attendee[outbound?"outTo":"returnTo"],departure:attendee[outbound?"outDeparture":"returnDeparture"],arrival:attendee[outbound?"outArrival":"returnArrival"]};
+    if(match.from&&comparableStation(current.from)!==comparableStation(match.from))warnings.push(`${outbound?"去程":"返程"}出发站与计划不一致：当前“${current.from}”，计划“${match.from}”`);
+    if(match.to&&comparableStation(current.to)!==comparableStation(match.to))warnings.push(`${outbound?"去程":"返程"}抵达站与计划不一致：当前“${current.to}”，计划“${match.to}”`);
+    if(match.departure&&current.departure&&match.departure!==current.departure)warnings.push(`${outbound?"去程":"返程"}发车时间与计划不一致：当前${current.departure}，计划${match.departure}`);
+    if(match.arrival&&current.arrival&&match.arrival!==current.arrival)warnings.push(`${outbound?"去程":"返程"}到站时间与计划不一致：当前${current.arrival}，计划${match.arrival}`);
+    return warnings;
+  }
+  async function auditRosterTravel() {
     if(!canManage())return deny();
-    let normalized=0; let issues=0;
+    const button=$("#auditTravel"); const originalText=button.textContent; button.disabled=true; button.textContent="⌛ 正在核验计划时刻";
+    let normalized=0; let issues=0; let apiChecked=0; let cacheHits=0;
     state.attendees.forEach(attendee=>{
       ["outFrom","outTo","returnFrom","returnTo"].forEach(key=>{const next=normalizeTerminal(attendee[key]);if(next&&next!==attendee[key]){attendee[key]=next;normalized++;}});
-      refreshTravelApprovals(attendee); issues+=attendee.risks.length;
+      refreshTravelApprovals(attendee);
     });
-    addNotification("change",`${currentUser().name}核验了${state.attendees.length}人的行程填写：${issues}项待核查${normalized?`，标准化${normalized}处站点名称`:""}`);
-    saveState(); renderAll(); location.hash="approvals";
-    toast(issues?`发现 ${issues} 项待核查信息，已进入行程审批`:`${state.attendees.length} 人的行程填写完整` ,issues?"error":"success");
+    try {
+      if(backend&&backendMeetingId){
+        const journeys=[];
+        state.attendees.forEach(attendee=>[["outbound","outDate","outNo","outFrom","outTo","outDeparture","outArrival"],["return","returnDate","returnNo","returnFrom","returnTo","returnDeparture","returnArrival"]].forEach(([segment,date,no,from,to,departure,arrival])=>{if(isTrainNumber(attendee[no])&&attendee[date]&&attendee[from]&&attendee[to])journeys.push({attendeeId:attendee.id,segment,mode:"train",date:attendee[date],number:attendee[no],from:attendee[from],to:attendee[to],departure:attendee[departure],arrival:attendee[arrival]});}));
+        if(journeys.length){
+          const payload=await documentApi(`/api/integrated/projects/${backendMeetingId}/travel/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({journeys})});
+          apiChecked=payload.results?.length||0; cacheHits=payload.usage?.cacheHits||0;
+          (payload.results||[]).forEach(result=>{const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={provider:payload.provider,checkedAt:result.fetchedAt||new Date().toISOString(),match:result.match||null,warnings:trainVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
+        }
+      }
+    } catch(error) {
+      if(!/尚未配置/.test(error.message))toast(`计划时刻核验失败，已保留本地检查：${error.message}`,"error");
+    } finally {
+      state.attendees.forEach(attendee=>{refreshTravelApprovals(attendee);issues+=attendee.risks.length;});
+      addNotification("change",`${currentUser().name}核验了${state.attendees.length}人的行程填写：${issues}项待核查${apiChecked?`，核对${apiChecked}段高铁计划时刻（缓存${cacheHits}段）`:""}${normalized?`，标准化${normalized}处站点名称`:""}`);
+      saveState(); renderAll(); location.hash="approvals"; button.disabled=false; button.textContent=originalText;
+      toast(issues?`发现 ${issues} 项待核查信息，已进入行程审批`:`${state.attendees.length} 人的行程填写完整`,issues?"error":"success");
+    }
   }
 
   function timeBucket(value,minutes) {

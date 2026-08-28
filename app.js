@@ -680,15 +680,16 @@
   }
 
   const comparableStation = value => String(value||"").replace(/(?:火车)?站$/u,"").replace(/\s+/g,"").trim();
-  function trainVerificationWarnings(attendee, segment, result) {
-    if(!result?.found||!result.match)return result?.warnings||["未查询到该车次的计划时刻"];
-    const outbound=segment==="outbound"; const match=result.match; const warnings=[];
+  function travelVerificationWarnings(attendee, segment, result) {
+    const flight=result?.mode==="flight"; const service=flight?"航班":"车次";
+    if(!result?.found||!result.match)return result?.warnings||[`未查询到该${service}的计划时刻`];
+    const outbound=segment==="outbound"; const match=result.match; const warnings=[...(result.warnings||[])];
     const current={from:attendee[outbound?"outFrom":"returnFrom"],to:attendee[outbound?"outTo":"returnTo"],departure:attendee[outbound?"outDeparture":"returnDeparture"],arrival:attendee[outbound?"outArrival":"returnArrival"]};
-    if(match.from&&comparableStation(current.from)!==comparableStation(match.from))warnings.push(`${outbound?"去程":"返程"}出发站与计划不一致：当前“${current.from}”，计划“${match.from}”`);
-    if(match.to&&comparableStation(current.to)!==comparableStation(match.to))warnings.push(`${outbound?"去程":"返程"}抵达站与计划不一致：当前“${current.to}”，计划“${match.to}”`);
-    if(match.departure&&current.departure&&match.departure!==current.departure)warnings.push(`${outbound?"去程":"返程"}发车时间与计划不一致：当前${current.departure}，计划${match.departure}`);
-    if(match.arrival&&current.arrival&&match.arrival!==current.arrival)warnings.push(`${outbound?"去程":"返程"}到站时间与计划不一致：当前${current.arrival}，计划${match.arrival}`);
-    return warnings;
+    if(match.from&&comparableStation(current.from)!==comparableStation(match.from))warnings.push(`${outbound?"去程":"返程"}${flight?"出发机场/航站楼":"出发站"}与计划不一致：当前“${current.from}”，计划“${match.from}”`);
+    if(match.to&&comparableStation(current.to)!==comparableStation(match.to))warnings.push(`${outbound?"去程":"返程"}${flight?"抵达机场/航站楼":"抵达站"}与计划不一致：当前“${current.to}”，计划“${match.to}”`);
+    if(match.departure&&current.departure&&match.departure!==current.departure)warnings.push(`${outbound?"去程":"返程"}${flight?"计划起飞":"发车"}时间不一致：当前${current.departure}，计划${match.departure}`);
+    if(match.arrival&&current.arrival&&match.arrival!==current.arrival)warnings.push(`${outbound?"去程":"返程"}${flight?"计划落地":"到站"}时间不一致：当前${current.arrival}，计划${match.arrival}`);
+    return [...new Set(warnings)];
   }
   async function auditRosterTravel() {
     if(!canManage())return deny();
@@ -705,7 +706,7 @@
         if(journeys.length){
           const payload=await documentApi(`/api/integrated/projects/${backendMeetingId}/travel/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({journeys})});
           apiChecked=payload.results?.length||0; cacheHits=payload.usage?.cacheHits||0;
-          (payload.results||[]).forEach(result=>{if((result.warnings||[]).some(warning=>/尚未配置/.test(warning)))return;const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={provider:result.mode,checkedAt:result.fetchedAt||new Date().toISOString(),match:result.match||null,warnings:trainVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
+          (payload.results||[]).forEach(result=>{if((result.warnings||[]).some(warning=>/尚未配置/.test(warning)))return;const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={provider:result.provider||result.mode,checkedAt:result.fetchedAt||new Date().toISOString(),match:result.match||null,warnings:travelVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
         }
       }
     } catch(error) {

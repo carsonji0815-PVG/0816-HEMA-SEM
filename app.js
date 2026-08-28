@@ -701,18 +701,18 @@
     try {
       if(backend&&backendMeetingId){
         const journeys=[];
-        state.attendees.forEach(attendee=>[["outbound","outDate","outNo","outFrom","outTo","outDeparture","outArrival"],["return","returnDate","returnNo","returnFrom","returnTo","returnDeparture","returnArrival"]].forEach(([segment,date,no,from,to,departure,arrival])=>{if(isTrainNumber(attendee[no])&&attendee[date]&&attendee[from]&&attendee[to])journeys.push({attendeeId:attendee.id,segment,mode:"train",date:attendee[date],number:attendee[no],from:attendee[from],to:attendee[to],departure:attendee[departure],arrival:attendee[arrival]});}));
+        state.attendees.forEach(attendee=>[["outbound","outDate","outNo","outFrom","outTo","outDeparture","outArrival"],["return","returnDate","returnNo","returnFrom","returnTo","returnDeparture","returnArrival"]].forEach(([segment,date,no,from,to,departure,arrival])=>{if(attendee[no]&&attendee[date]&&attendee[from]&&attendee[to])journeys.push({attendeeId:attendee.id,segment,mode:isTrainNumber(attendee[no])?"train":"flight",date:attendee[date],number:attendee[no],from:attendee[from],to:attendee[to],departure:attendee[departure],arrival:attendee[arrival]});}));
         if(journeys.length){
           const payload=await documentApi(`/api/integrated/projects/${backendMeetingId}/travel/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({journeys})});
           apiChecked=payload.results?.length||0; cacheHits=payload.usage?.cacheHits||0;
-          (payload.results||[]).forEach(result=>{const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={provider:payload.provider,checkedAt:result.fetchedAt||new Date().toISOString(),match:result.match||null,warnings:trainVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
+          (payload.results||[]).forEach(result=>{if((result.warnings||[]).some(warning=>/尚未配置/.test(warning)))return;const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={provider:result.mode,checkedAt:result.fetchedAt||new Date().toISOString(),match:result.match||null,warnings:trainVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
         }
       }
     } catch(error) {
       if(!/尚未配置/.test(error.message))toast(`计划时刻核验失败，已保留本地检查：${error.message}`,"error");
     } finally {
       state.attendees.forEach(attendee=>{refreshTravelApprovals(attendee);issues+=attendee.risks.length;});
-      addNotification("change",`${currentUser().name}核验了${state.attendees.length}人的行程填写：${issues}项待核查${apiChecked?`，核对${apiChecked}段高铁计划时刻（缓存${cacheHits}段）`:""}${normalized?`，标准化${normalized}处站点名称`:""}`);
+      addNotification("change",`${currentUser().name}核验了${state.attendees.length}人的行程填写：${issues}项待核查${apiChecked?`，核对${apiChecked}段高铁/航班计划时刻（缓存${cacheHits}段）`:""}${normalized?`，标准化${normalized}处站点名称`:""}`);
       saveState(); renderAll(); location.hash="approvals"; button.disabled=false; button.textContent=originalText;
       toast(issues?`发现 ${issues} 项待核查信息，已进入行程审批`:`${state.attendees.length} 人的行程填写完整`,issues?"error":"success");
     }

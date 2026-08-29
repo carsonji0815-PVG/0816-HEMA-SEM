@@ -49,7 +49,7 @@ python3 -m http.server 4173
 ### 1. 建立 Supabase 项目
 
 1. 在 Supabase 新建项目。
-2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按文件名顺序执行 `supabase/migrations/` 内的升级脚本。已有项目执行尚未运行的升级脚本；本次管理端权限更新对应 `2026082903_system_staff_allowlist.sql`。
+2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按文件名顺序执行 `supabase/migrations/` 内的升级脚本。已有项目执行尚未运行的升级脚本；本次行程/分房/锁定/审计与系统设置更新对应 `2026083001_workflow_rooming_audit.sql`。
 3. 在 Authentication 仅为下列管理邮箱创建密码账号。其他邮箱即使拥有 Auth 账号，也会被数据库和前端同时拒绝进入管理端：
 
    - `jll@grandchinamice.com`：季亮亮，超级管理员
@@ -120,5 +120,14 @@ window.APP_CONFIG = {
 - `supabase/migrations/20260820_segment_approval_ticket_guard.sql`：去程/返程分段审批与出票前数据库强制校验
 - `supabase/migrations/2026082901_registration_control_identity_permissions.sql`：报名开放控制、填报身份绑定、软取消、移交、审计和服务端权限升级脚本
 - `supabase/migrations/2026082903_system_staff_allowlist.sql`：管理端固定邮箱白名单、超级管理员兜底权限与项目级会务负责人分配
+- `supabase/migrations/2026083001_workflow_rooming_audit.sql`：行程核验与审批解耦后的详细变更审计、取消名单提醒过滤、行列/接送机服务端锁定、分房扩展数据与系统级共享配置
+
+## 当前业务导航
+
+- 工作台：参会名单、名单锁定、分房管理、报名管理、接送机调度
+- 会议项目：会议管理与项目建档文件；会议详情内统一配置报名、名额、行程审批、分房规则和项目权限
+- 审批中心：行程审批与住宿审批集中处理
+- 消息提醒：逐字段查看修改前/修改后内容；取消报名只保留审计，不生成待办
+- 系统设置：仅超级管理员可见，提供备份恢复、全局日志、账号权限、主题版式和业务字典
 - `supabase/functions/public-trip-query/index.ts`：报名身份会话、本人报名维护和无短信验证码的参会信息查询接口
 - `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布

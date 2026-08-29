@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-24" />
+    <link rel="stylesheet" href="styles.css?v=20260830-01" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
@@ -23,7 +23,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-24" defer></script>
+    <script src="app.js?v=20260830-01" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -156,17 +156,11 @@
           <a class="project-manage-link" href="#projects" aria-label="管理项目">⚙</a>
         </div>
         <nav class="side-nav" aria-label="主导航">
-          <p>工作台</p>
-          <a href="#dashboard" data-route="dashboard"><span>◫</span>总览</a>
-          <a href="#registration" data-route="registration"><span>✎</span>新增报名</a>
-          <a href="#attendees" data-route="attendees"><span>♟</span>参会名单 <b id="navAttendeeCount">0</b></a>
-          <a href="#approvals" data-route="approvals"><span>⚑</span>行程审批 <b id="navApprovalCount" class="alert-count">0</b></a>
-          <a href="#transport" data-route="transport"><span>⌁</span>接送机</a>
-          <p>管理</p>
-          <a href="#projects" data-route="projects"><span>▤</span>项目管理</a>
-          <a href="#locks" data-route="locks"><span>▦</span>名单锁定</a>
-          <a href="#notifications" data-route="notifications"><span>◌</span>变更提醒 <b id="navNoticeCount" class="alert-count">0</b></a>
-          <a href="#settings" data-route="settings"><span>⚙</span>会议设置</a>
+          <div class="nav-group"><p>工作台</p><a href="#dashboard" data-route="dashboard"><span>◫</span>工作台首页</a><a href="#attendees" data-route="attendees"><span>♟</span>参会名单管理 <b id="navAttendeeCount">0</b></a><a href="#locks" data-route="locks"><span>▦</span>名单锁定</a><a href="#rooming" data-route="rooming"><span>▥</span>分房管理</a><a href="#registration" data-route="registration"><span>✎</span>报名管理</a><a href="#transport" data-route="transport"><span>⌁</span>接送机调度</a></div>
+          <div class="nav-group"><p>会议项目</p><a href="#projects" data-route="projects"><span>▤</span>会议管理</a><a href="#documents" data-route="documents"><span>▧</span>项目建档文件</a></div>
+          <div class="nav-group"><p>审批中心</p><a href="#approvals" data-route="approvals"><span>⚑</span>行程与住宿审批 <b id="navApprovalCount" class="alert-count">0</b></a></div>
+          <div class="nav-group"><p>消息提醒</p><a href="#notifications" data-route="notifications"><span>◌</span>变更提醒 <b id="navNoticeCount" class="alert-count">0</b></a></div>
+          <div class="nav-group system-nav-group is-hidden" id="systemSettingsNav"><p>系统管理</p><a href="#system" data-route="system"><span>⚙</span>系统设置</a></div>
         </nav>
         <div class="sidebar-footer">
           <a href="#lookup"><span>↗</span> 打开参会者查询端</a>
@@ -189,7 +183,7 @@
 
         <main class="page-content">
           <section class="page" data-page="projects">
-            <div class="page-heading heading-with-action"><div><span class="eyebrow">PROJECT CENTER</span><h1>项目管理</h1><p>新建或复制项目；每个项目拥有独立的报名入口、名单、权限和接送规则。</p></div><button class="button button-primary" id="newProjectButton">＋ 新建项目</button></div>
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">MEETING CENTER</span><h1>会议管理</h1><p>新建、编辑、复制或删除会议；点开项目详情配置报名、审批、分房、权限和建档文件。</p></div><button class="button button-primary" id="newProjectButton">＋ 新建会议</button></div>
             <div class="project-grid" id="projectGrid"></div>
           </section>
 
@@ -306,8 +300,14 @@
           </section>
 
           <section class="page" data-page="approvals">
-            <div class="page-heading"><span class="eyebrow">TRAVEL APPROVAL</span><h1>行程审批</h1><p>异常规则由会议设置统一管理，审批动作保留记录。</p></div>
+            <div class="page-heading"><span class="eyebrow">TRAVEL APPROVAL</span><h1>行程审批</h1><p>仅展示命中当前项目合规规则的行程；真实性核验结果不会进入审批流。</p></div>
             <div class="approval-board" id="approvalBoard"></div>
+          </section>
+
+          <section class="page" data-page="rooming">
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">ROOMING MANAGEMENT</span><h1>分房管理</h1><p>人员完全同步自参会名单；此处只能安排房型与室友，不能新增或删除参会人。</p></div><div class="heading-actions"><button class="button button-secondary" id="applyRoomingSuggestions" type="button">按规则生成建议</button><button class="button button-primary" id="exportRoomingList" type="button">导出 Rooming List</button></div></div>
+            <div class="metric-grid rooming-metrics" id="roomingMetrics"></div>
+            <div class="panel rooming-panel"><div class="table-toolbar"><label class="search-box"><span>⌕</span><input id="roomingSearch" placeholder="搜索姓名、大区、医院或房号" /></label><select id="roomingStatusFilter"><option value="all">全部住宿状态</option><option value="pending">待分房</option><option value="conflict">规则冲突</option><option value="approval">住宿待审批</option><option value="done">已安排</option></select></div><div class="table-wrap"><table class="rooming-table"><thead><tr><th>参会者</th><th>大区 / 医院</th><th>职称</th><th>抵达 / 撤离</th><th>间夜</th><th>申请房型</th><th>系统建议</th><th>实际安排</th><th>拼住室友</th><th>房号</th><th>住宿审批</th></tr></thead><tbody id="roomingTableBody"></tbody></table></div></div>
           </section>
 
           <section class="page" data-page="transport">
@@ -317,7 +317,7 @@
           </section>
 
           <section class="page" data-page="locks">
-            <div class="page-heading"><span class="eyebrow">DATA CONTROL</span><h1>名单锁定</h1><p>可以锁定整份名单、单个参会者，或指定字段。锁定后销售无法修改。</p></div>
+            <div class="page-heading"><span class="eyebrow">DATA CONTROL</span><h1>名单锁定</h1><p>可叠加锁定整份名单、单个有效参会者或指定整列；超级管理员除外，其他账号均受锁定约束。</p></div>
             <div class="lock-layout">
               <article class="panel master-lock"><div class="lock-icon">▣</div><div><h2>全名单锁定</h2><p>适合出票或最终名单确认后使用</p></div><label class="switch"><input type="checkbox" id="masterLock"><span></span></label></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">COLUMN LOCKS</span><h2>按列锁定</h2></div></div><div class="lock-chips" id="columnLocks"></div></article>
@@ -331,10 +331,12 @@
           </section>
 
           <section class="page" data-page="settings">
-            <div class="page-heading"><span class="eyebrow">PROJECT SETTINGS</span><h1>项目设置</h1><p>以下配置只作用于当前项目，不影响其他项目。</p></div>
+            <div class="page-heading"><span class="eyebrow">MEETING PROJECT DETAIL</span><h1>会议项目详情</h1><p>基础信息、报名模板、审批、分房、名额和项目权限均只作用于当前会议。</p><a class="text-button" href="#projects">← 返回会议项目列表</a></div>
             <form id="settingsForm" class="settings-grid">
               <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>会议总名额 <small>用于校验各分组名额合计</small><input name="capacity" type="number" min="1" /></label><label>会务联系电话<input name="servicePhone" /></label></div></article>
-              <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL RULES</span><h2>行程与接送规则</h2></div></div><div class="stack-form"><label>允许的出发城市 <small>用顿号或逗号分隔</small><textarea name="allowedCities" rows="3"></textarea></label><div class="field-grid"><label>航班送机提前分钟<input name="flightLeadMinutes" type="number" min="0" step="10" /></label><label>高铁送站提前分钟<input name="trainLeadMinutes" type="number" min="0" step="10" /></label></div><label>自动接送分组间隔（分钟）<input name="transportGroupMinutes" type="number" min="10" max="180" step="10" /><small>例如 30：同一站点、相邻半小时内的人员归为一个建议批次</small></label><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时提醒</label><label class="check-row"><input name="departureRule" type="checkbox" /> 出发城市不在允许范围时提醒</label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL APPROVAL RULES</span><h2>行程审批规则</h2><p>仅命中合规规则时进入人工审批；API真实性核验不在此处。</p></div></div><div class="stack-form"><label class="check-row"><input name="approvalTimeRule" type="checkbox" /> 抵达或返程时间超出允许范围时触发审批</label><div class="field-grid"><label>最早允许抵达<input name="arrivalWindowStart" type="datetime-local" /></label><label>最晚允许抵达<input name="arrivalWindowEnd" type="datetime-local" /></label><label>最早允许返程<input name="returnWindowStart" type="datetime-local" /></label><label>最晚允许返程<input name="returnWindowEnd" type="datetime-local" /></label></div><label class="check-row"><input name="tourismCityRule" type="checkbox" /> 出发城市属于旅游城市清单时触发审批</label><label>旅游城市清单 <small>项目可自行增删，用顿号或逗号分隔</small><textarea name="tourismCities" rows="3"></textarea></label><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时触发审批</label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">TRANSPORT RULES</span><h2>接送机规则</h2></div></div><div class="stack-form"><div class="field-grid"><label>航班送机提前分钟<input name="flightLeadMinutes" type="number" min="0" step="10" /></label><label>高铁送站提前分钟<input name="trainLeadMinutes" type="number" min="0" step="10" /></label></div><label>自动接送分组间隔（分钟）<input name="transportGroupMinutes" type="number" min="10" max="180" step="10" /><small>同一站点、相邻时间内的人员归为一个建议批次</small></label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">ROOMING RULES</span><h2>分房规则</h2><p>规则只作用于当前会议项目。</p></div></div><div class="stack-form"><label>建议单间的职称 <small>用顿号或逗号分隔，可自行增删</small><textarea name="singleRoomTitles" rows="3"></textarea></label><label>其他人员默认房型<select name="defaultRoomType"><option value="shared">标间拼住</option><option value="single">单间</option></select></label><label class="check-row"><input name="roomConflictApproval" type="checkbox" /> 申请房型与系统建议冲突时生成住宿审批待办</label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">FORM FIELDS</span><h2>报名字段</h2></div></div><div class="field-toggle-grid"><label class="check-row"><input name="fieldTitle" type="checkbox" /> 显示职称</label><label class="check-row"><input name="fieldHcpId" type="checkbox" /> 显示 HCP ID</label><label class="check-row"><input name="fieldAccommodation" type="checkbox" /> 显示住宿安排</label><label class="check-row"><input name="fieldFlight" type="checkbox" /> 显示是否航空</label><label class="check-row"><input name="fieldMslContact" type="checkbox" /> 显示 MSL 联系人</label><label class="check-row"><input name="fieldRemarks" type="checkbox" /> 显示备注</label></div></article>
               <article class="panel quota-settings-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION QUOTA</span><h2>会议报名名额</h2><p>按会场和大区分配听众名额；角色嘉宾不设名额限制，按实际报名统计。</p></div><span class="status" id="quotaSettingsStatus">尚未配置</span></div><div class="quota-settings-summary" id="quotaSettingsSummary"></div><div class="quota-settings-actions"><p>报名进度看板直接读取这里的听众名额和当前有效名单，调整后立即重新统计。</p><button class="button button-secondary" id="editQuotasFromSettings" type="button">设置 / 调整听众名额</button></div></article>
               <article class="panel registration-control-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION CONTROL</span><h2>报名与会务权限</h2></div><span class="status" id="registrationOpenStatus">报名关闭</span></div><div class="control-switch-list"><label class="permission-switch"><span><strong>项目报名开放</strong><small id="registrationOpenHint">必须先导入报名表模板</small></span><span class="switch"><input id="registrationOpenSwitch" type="checkbox" /><span></span></span></label><label class="permission-switch"><span><strong>会务负责人编辑参会资料</strong><small>默认仅可查看；超级管理员始终拥有最高维护权限</small></span><span class="switch"><input id="managerEditSwitch" type="checkbox" /><span></span></span></label></div></article>
@@ -343,6 +345,17 @@
               <article class="panel"><div class="panel-heading"><div><span class="kicker">PERMISSION LEVELS</span><h2>系统权限层级</h2></div></div><div class="role-list"><div><span class="role-dot admin"></span><p><strong>超级管理员 · 季亮亮</strong><small>始终拥有全部项目、全部名单、设置、锁定、审批、导入导出及账号分配权限</small></p></div><div><span class="role-dot ops"></span><p><strong>会务负责人</strong><small>仅可进入获授权项目；按项目设置执行名单、审批、接送与报名管理</small></p></div><div><span class="role-dot public"></span><p><strong>填报人 / 参会人员</strong><small>通过参会服务入口使用，不属于管理端邮箱账号</small></p></div></div></article>
               <div class="settings-actions"><button class="button button-primary" type="submit">保存会议设置</button><button class="button button-ghost" type="button" id="resetDemo">恢复演示数据</button></div>
             </form>
+          </section>
+
+          <section class="page" data-page="system">
+            <div class="page-heading"><span class="eyebrow">SYSTEM ADMINISTRATION</span><h1>系统设置</h1><p>仅超级管理员可见；用于全局数据维护、人员权限、外观和业务字典。</p></div>
+            <div class="settings-grid system-settings-grid">
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">DATA MAINTENANCE</span><h2>数据备份与恢复</h2></div><span class="status status-alert">高权限</span></div><div class="stack-form"><label>自动备份周期<select id="backupInterval"><option value="0">关闭自动备份</option><option value="1">每天</option><option value="7">每7天</option><option value="30">每30天</option></select></label><div id="backupStatus" class="system-setting-note"></div><button class="button button-secondary" id="downloadBackup" type="button">立即下载完整数据快照</button><label class="template-upload compact"><input id="restoreBackupFile" type="file" accept=".json" /><span>↺</span><strong>选择备份文件恢复</strong><small>恢复前将进行二次风险确认</small></label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">GLOBAL AUDIT</span><h2>全局操作日志</h2></div></div><label class="search-box system-log-search"><span>⌕</span><input id="globalLogSearch" placeholder="搜索账号、参会人、字段或操作" /></label><div id="globalLogList" class="global-log-list"></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">ACCESS CONTROL</span><h2>人员权限管理</h2><p>会务负责人账号和各项目授权总览。</p></div></div><div id="systemPermissionOverview" class="system-permission-overview"></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">APPEARANCE</span><h2>系统外观设置</h2></div></div><div class="stack-form"><label>主题<select id="systemTheme"><option value="light">浅色默认主题</option><option value="dark">深色主题</option></select></label><label>品牌主色<input id="systemBrandColor" type="color" value="#d52b1e" /></label><label>表格版式<select id="tableDensity"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">BUSINESS DICTIONARY</span><h2>业务字典</h2></div></div><div class="stack-form"><label>旅游城市清单<textarea id="dictionaryTourismCities" rows="5"></textarea></label><label>职称字典<textarea id="dictionaryTitles" rows="4"></textarea></label><button class="button button-primary" id="saveSystemDictionary" type="button">保存业务字典</button></div></article>
+            </div>
           </section>
         </main>
       </div>
@@ -379,7 +392,7 @@
       <form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form>
       <div class="detail-head import-head"><span class="kicker">OFFLINE ROSTER</span><h2>导入线下名单</h2><p>仅会务负责人可用 · 先预览校验，确认后才写入当前项目</p></div>
       <div class="detail-body">
-        <label class="import-dropzone" id="importDropzone"><input id="rosterFile" type="file" accept=".xlsx,.xls,.csv" /><span class="import-file-icon">XL</span><strong>选择或拖入名单文件</strong><small>支持礼来31列报名模板、Excel 或 CSV</small></label>
+        <label class="import-dropzone" id="importDropzone"><input id="rosterFile" type="file" accept=".xlsx,.xls,.csv" /><span class="import-file-icon">XL</span><strong>选择或拖入名单文件</strong><small>支持礼来32列新版模板，并兼容原31列模板、Excel 或 CSV</small></label>
         <div class="import-guide"><span><b>1</b> 读取模板</span><span><b>2</b> 校验手机号与必填项</span><span><b>3</b> 确认导入</span></div>
         <div id="importPreview" class="import-preview"><div class="empty-state">选择文件后将在此显示校验结果</div></div>
         <div class="detail-actions"><button class="button button-primary" id="confirmImport" type="button" disabled>确认导入有效名单</button><button class="button button-secondary" id="cancelImport" type="button">取消</button></div>
@@ -398,7 +411,13 @@
         <div class="detail-actions"><button class="button button-primary" type="submit">保存名额配置</button><button class="button button-secondary" id="cancelQuotaConfig" type="button">取消</button></div>
       </form>
     </dialog>
-    <dialog id="projectDialog" class="login-dialog project-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">项</span><div><strong id="projectDialogTitle">新建项目</strong><small id="projectDialogHint">创建后先完成项目建档文件，再开展报名与行程管理</small></div></div><form id="projectForm" class="stack-form"><input type="hidden" name="editId" /><label>活动类型<select name="activityType" id="projectActivityType" required><option value="external">外部活动</option><option value="internal">内部活动</option></select></label><label id="projectIdentifierLabel">会议编码<input name="identifier" required placeholder="例如：EL2026-0820" /></label><label>活动名称<input name="name" required placeholder="例如：2026 血液高峰论坛" /></label><label>活动负责人<input name="activityOwner" required placeholder="请输入负责人姓名" /></label><label>活动日期<input name="activityDate" type="date" required /></label><label>项目链接标识<input name="slug" required pattern="[a-z0-9-]+" placeholder="例如：blood-forum-2026" /><small>用于报名链接，仅使用小写字母、数字和短横线</small></label><label id="projectCopyField">复制行程配置<select name="sourceId" id="projectCopySource"><option value="">不复制，使用默认设置</option></select></label><p id="projectFormError" class="login-error"></p><button class="button button-primary button-block" id="projectSubmitButton" type="submit">创建项目并进入建档</button></form></dialog>
+    <dialog id="travelVerificationDialog" class="detail-dialog verification-dialog">
+      <form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form>
+      <div class="detail-head"><span class="kicker">TRAVEL DATA VERIFICATION</span><h2>行程真实性核验结果</h2><p>只比对计划数据并纠错，不进入审批流。</p></div>
+      <div class="detail-body"><div id="travelVerificationSummary" class="verification-summary"></div><div id="travelVerificationResults" class="verification-result-list"></div><div class="detail-actions"><button class="button button-secondary" id="closeTravelVerification" type="button">关闭</button></div></div>
+    </dialog>
+    <dialog id="notificationDetailDialog" class="detail-dialog notification-detail-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div id="notificationDetailContent"></div></dialog>
+    <dialog id="projectDialog" class="login-dialog project-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">会</span><div><strong id="projectDialogTitle">新建会议</strong><small id="projectDialogHint">创建后进入会议详情配置报名、规则、权限与建档文件</small></div></div><form id="projectForm" class="stack-form"><input type="hidden" name="editId" /><input type="hidden" name="slug" /><label>活动类型<select name="activityType" id="projectActivityType" required><option value="external">外部活动</option><option value="internal">内部活动</option></select></label><label id="projectIdentifierLabel">会议编码<input name="identifier" required placeholder="例如：EL2026-0820" /></label><label>会议名称<input name="name" required placeholder="例如：2026 血液高峰论坛" /></label><label>活动负责人<input name="activityOwner" required placeholder="请输入负责人姓名" /></label><label>活动日期<input name="activityDate" type="date" required /></label><label id="projectCopyField">复制会议配置<select name="sourceId" id="projectCopySource"><option value="">不复制，使用默认设置</option></select></label><p id="projectFormError" class="login-error"></p><button class="button button-primary button-block" id="projectSubmitButton" type="submit">创建会议并进入详情</button></form></dialog>
     <dialog id="loginDialog" class="login-dialog">
       <div class="login-brand login-brand-lilly"><span class="lilly-logo-frame"><img class="lilly-logo" src="assets/lilly-logo-red.png" alt="礼来 Lilly" /></span><div><strong>礼来会议管理平台</strong><small>管理员安全登录</small></div></div>
       <form id="loginForm" class="stack-form">

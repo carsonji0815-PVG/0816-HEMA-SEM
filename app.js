@@ -13,6 +13,14 @@
   const DOCUMENT_API_BASE = String(window.APP_CONFIG?.documentApiBase || "https://139.196.97.236").replace(/\/$/, "");
   const DOCUMENT_ADMIN_NAME = "季亮亮";
   const standardTemplate = () => ({ version:1, columns:STANDARD_TEMPLATE_HEADERS.map((header,index) => ({ header, key:STANDARD_TEMPLATE_KEYS[index], required:/\*/.test(header) || ["name","phone","region"].includes(STANDARD_TEMPLATE_KEYS[index]) })) });
+  function defaultRegistrationQuotas() {
+    const regions=["华北大区","华南大区","沪苏皖","浙闽鄂赣","西南大区","鲁豫大区"];
+    const build=(venue,role,values)=>regions.map((region,index)=>({venue,region,role,quota:values[index]}));
+    return [
+      ...build("大连","听众",[45,3,3,5,2,5]),...build("福州","听众",[13,2,3,16,3,0]),
+      ...build("大连","讨论嘉宾（组长）",[4,1,1,0,1,0]),...build("福州","讨论嘉宾（组长）",[2,0,1,2,0,0]),
+    ];
+  }
 
   const initialState = () => ({
     currentUserId: "u-ops",
@@ -47,6 +55,7 @@
       registrationOpen: true,
       templateImported: true,
       managerEditEnabled: true,
+      registrationQuotas: defaultRegistrationQuotas(),
       activityType: "external",
       identifier: "HEMA-SEM-2026",
       activityOwner: "林悦",
@@ -100,6 +109,7 @@
 
   let state = loadState();
   let activeTransportFilter = "all";
+  let activeQuotaRole = "听众";
   let incompleteRosterOnly = false;
   const selectedAttendeeIds = new Set();
   let backend = null;
@@ -243,7 +253,8 @@
   async function init() {
     bindLogin();
     const config = window.APP_CONFIG || {};
-    if (config.mode === "production" && config.supabaseUrl && config.supabaseAnonKey && window.supabase) {
+    const localPreview = ["127.0.0.1","localhost"].includes(location.hostname) && new URLSearchParams(location.search).has("preview");
+    if (!localPreview && config.mode === "production" && config.supabaseUrl && config.supabaseAnonKey && window.supabase) {
       backend = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
       const { data } = await backend.auth.getSession();
       if (data.session) await loadBackendState();
@@ -367,7 +378,7 @@
       activeProjectId: backendMeetingId,
       projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:"ops", ownerUserId:m.owner_user_id||null, archiveReady:!!m.archive_ready, registrationOpen:!!m.registration_open, templateImported:!!m.template_imported_at, managerEditEnabled:!!m.manager_attendee_edit_enabled, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
       users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
-      settings: { eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:[...new Set((meeting.venues||[]).map(normalizeVenueLabel).filter(Boolean))], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, transportGroupMinutes:meeting.transport_group_minutes??30, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, templateName:meeting.template_name||"", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : {version:1,columns:[]}, templateImported:!!meeting.template_imported_at, registrationOpen:!!meeting.registration_open, managerEditEnabled:!!meeting.manager_attendee_edit_enabled },
+      settings: { eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:[...new Set((meeting.venues||[]).map(normalizeVenueLabel).filter(Boolean))], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, transportGroupMinutes:meeting.transport_group_minutes??30, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, registrationQuotas:Array.isArray(meeting.field_config?.registrationQuotas)&&meeting.field_config.registrationQuotas.length?meeting.field_config.registrationQuotas:(/hema/i.test(meeting.slug||meeting.name||"")?defaultRegistrationQuotas():[]), templateName:meeting.template_name||"", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : {version:1,columns:[]}, templateImported:!!meeting.template_imported_at, registrationOpen:!!meeting.registration_open, managerEditEnabled:!!meeting.manager_attendee_edit_enabled },
       locks: { master: meeting.master_locked, columns: locksRes.data.filter(l => l.locked).map(l => l.field_group), rows: attendeesRes.data.filter(a => a.row_locked).map(a => a.id) },
       attendees: attendeesRes.data.map(fromDbAttendee),
       notifications: noticesRes.data.map(n => ({ id: n.id, type: n.type, text: n.message, time: n.created_at, read: !!n.read_at })),
@@ -399,7 +410,7 @@
     const transportRows = state.attendees.flatMap(a => ["pickup","dropoff"].map(direction => { const t = a.transport?.[direction] || {}; return { attendee_id:a.id, direction, driver_name:t.driver||null, staff_name:t.staffName||null, driver_phone:t.phone||null, vehicle:t.vehicle||null, service_time:parseServiceTime(t.time), meeting_point:t.point||null, service_mode:t.mode||null, batch_id:t.batchId||null, batch_name:t.batchName||null, terminal:t.terminal||null, placard:t.placard||null, capacity:t.capacity||null, notes:t.notes||null, time_strategy:t.timeStrategy||null }; }));
     if (transportRows.length) { const { error } = await backend.from("transports").upsert(transportRows,{onConflict:"attendee_id,direction"}); if (error) throw error; }
     if (canManage()) {
-      const { error } = await backend.from("meetings").update({ name:state.settings.eventName, activity_type:state.settings.activityType||"external", project_identifier:state.settings.identifier||state.settings.slug, activity_owner:state.settings.activityOwner||null, activity_date:state.settings.activityDate||state.settings.startDate||null, client_name:state.settings.clientName||null, start_date:state.settings.startDate||null, end_date:state.settings.endDate||null, venues:state.settings.venues, service_phone:state.settings.servicePhone||null, brand_color:state.settings.brandColor, deadline:state.settings.deadline||null, capacity:state.settings.capacity, allowed_departure_cities:state.settings.allowedCities, check_city_mismatch:state.settings.mismatchRule, check_departure_city:state.settings.departureRule, flight_lead_minutes:state.settings.flightLeadMinutes, train_lead_minutes:state.settings.trainLeadMinutes, transport_group_minutes:state.settings.transportGroupMinutes||30, field_config:state.settings.fieldConfig, template_name:state.settings.templateName||null, registration_template:state.settings.registrationTemplate||standardTemplate(), master_locked:state.locks.master }).eq("id",backendMeetingId); if (error) throw error;
+      const { error } = await backend.from("meetings").update({ name:state.settings.eventName, activity_type:state.settings.activityType||"external", project_identifier:state.settings.identifier||state.settings.slug, activity_owner:state.settings.activityOwner||null, activity_date:state.settings.activityDate||state.settings.startDate||null, client_name:state.settings.clientName||null, start_date:state.settings.startDate||null, end_date:state.settings.endDate||null, venues:state.settings.venues, service_phone:state.settings.servicePhone||null, brand_color:state.settings.brandColor, deadline:state.settings.deadline||null, capacity:state.settings.capacity, allowed_departure_cities:state.settings.allowedCities, check_city_mismatch:state.settings.mismatchRule, check_departure_city:state.settings.departureRule, flight_lead_minutes:state.settings.flightLeadMinutes, train_lead_minutes:state.settings.trainLeadMinutes, transport_group_minutes:state.settings.transportGroupMinutes||30, field_config:{...state.settings.fieldConfig,registrationQuotas:state.settings.registrationQuotas||[]}, template_name:state.settings.templateName||null, registration_template:state.settings.registrationTemplate||standardTemplate(), master_locked:state.locks.master }).eq("id",backendMeetingId); if (error) throw error;
       const lockRows = COLUMN_LOCKS.map(([field]) => ({ meeting_id:backendMeetingId, field_group:field, locked:state.locks.columns.includes(field), updated_by:state.currentUserId }));
       const lockResult = await backend.from("column_locks").upsert(lockRows); if (lockResult.error) throw lockResult.error;
     }
@@ -442,6 +453,7 @@
     $("#projectForm").addEventListener("submit", createProject);
     $("#documentUploadForm").addEventListener("submit", uploadDocument);
     $("#transportBatchForm").addEventListener("submit", saveTransportBatch);
+    $("#quotaForm").addEventListener("submit", saveQuotaConfiguration);
   }
 
   function bindControls() {
@@ -488,6 +500,10 @@
     $("#markAllRead").addEventListener("click", async () => { state.notifications.forEach(n => n.read = true); localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); if (backend && backendMeetingId) await backend.from("notifications").update({read_at:new Date().toISOString()}).eq("meeting_id",backendMeetingId).is("read_at",null); renderNotifications(); renderCounts(); });
     $("#masterLock").addEventListener("change", event => { if (!canManage()) return deny(); state.locks.master = event.target.checked; addNotification("lock", `${currentUser().name}${event.target.checked ? "锁定" : "解锁"}了全部名单`); saveState(); renderAll(); });
     $("#copyRegistrationLink").addEventListener("click", copyRegistrationLink);
+    $("#configureQuotas").addEventListener("click", openQuotaConfiguration);
+    $("#quotaRoleFilter").addEventListener("change",event=>{activeQuotaRole=event.target.value;renderRegistrationProgress();});
+    $("#addQuotaRow").addEventListener("click",()=>appendQuotaConfigRow());
+    $("#cancelQuotaConfig").addEventListener("click",()=>$("#quotaDialog").close());
     $("#downloadQr").addEventListener("click", downloadQr);
     $("#backToPublicAuth").addEventListener("click", closePublicAttendeeEditor);
     $("#newPublicAttendee").addEventListener("click", () => openPublicAttendeeEditor());
@@ -675,6 +691,47 @@
     $("#topNoticeCount").textContent = unread;
   }
 
+  const normalizeQuotaRole = value => { const text=String(value||"").trim(); if(/讨论.*(组长|嘉宾)/.test(text))return"讨论嘉宾（组长）"; if(["HCP","公开报名","参会者","听众"].includes(text)||!text)return"听众"; return text; };
+  const normalizeQuotaRegion = value => ({"北区":"华北大区","华东大区":"沪苏皖"})[String(value||"").trim()]||String(value||"").trim()||"未填写大区";
+  const quotaKey = (venue,region,role) => [normalizeVenueLabel(venue),normalizeQuotaRegion(region),normalizeQuotaRole(role)].join("|");
+  const quotaNumber = value => Math.max(0,Math.round(Number(value)||0));
+  function registrationQuotaRows(role=activeQuotaRole) {
+    const configured=(state.settings.registrationQuotas||[]).map(item=>({venue:normalizeVenueLabel(item.venue),region:normalizeQuotaRegion(item.region),role:normalizeQuotaRole(item.role),quota:quotaNumber(item.quota)}));
+    const actualMap=new Map(); activeVisibleAttendees().forEach(attendee=>{const key=quotaKey(attendee.venue,attendee.region,attendee.attendeeType);actualMap.set(key,(actualMap.get(key)||0)+1);});
+    const rows=configured.filter(item=>item.role===role).map(item=>{const actual=actualMap.get(quotaKey(item.venue,item.region,item.role))||0;actualMap.delete(quotaKey(item.venue,item.region,item.role));return{...item,actual};});
+    for(const[key,actual]of actualMap){const[venue,region,itemRole]=key.split("|");if(itemRole===role)rows.push({venue,region,role:itemRole,quota:0,actual});}
+    return rows.map(item=>{const gap=item.actual-item.quota;const remaining=Math.max(item.quota-item.actual,0);const percent=item.quota?item.actual/item.quota*100:item.actual?100:0;return{...item,gap,remaining,percent};});
+  }
+  function quotaRoleOptions() {
+    const configured=(state.settings.registrationQuotas||[]).map(item=>normalizeQuotaRole(item.role));const actual=activeVisibleAttendees().map(item=>normalizeQuotaRole(item.attendeeType));return[...new Set([...configured,...actual].filter(Boolean))];
+  }
+  const quotaState = row => row.gap<0?["shortage","缺口"]:row.gap>0?["over","超额"]:row.quota?["complete","达标"]:["neutral","持平"];
+  function renderRegistrationProgress() {
+    const roles=quotaRoleOptions();if(!roles.includes(activeQuotaRole))activeQuotaRole=roles[0]||"听众";
+    $("#quotaRoleFilter").innerHTML=roles.map(role=>`<option value="${escapeHtml(role)}">${escapeHtml(role)}</option>`).join("");$("#quotaRoleFilter").value=activeQuotaRole;
+    $("#quotaRoleTabs").innerHTML=roles.map(role=>`<button type="button" class="${role===activeQuotaRole?"active":""}" data-quota-role="${escapeHtml(role)}">${escapeHtml(role)}</button>`).join("");
+    $$('[data-quota-role]').forEach(button=>button.onclick=()=>{activeQuotaRole=button.dataset.quotaRole;renderRegistrationProgress();});
+    $("#configureQuotas").classList.toggle("is-hidden",!canManage());
+    const rows=registrationQuotaRows();const quota=rows.reduce((sum,row)=>sum+row.quota,0);const actual=rows.reduce((sum,row)=>sum+row.actual,0);const gap=actual-quota;const remaining=Math.max(quota-actual,0);const percent=quota?actual/quota*100:0;
+    $("#quotaSummary").innerHTML=[
+      ["分配名额",quota,"当前角色目标","quota"],["实际报名",actual,"已提交有效报名","actual"],[gap<0?"名额缺口":"名额差额",gap<0?remaining:`+${gap}`,gap<0?"仍需继续报名":"已达到或超过目标",gap<0?"shortage":"over"],["完成率",`${percent.toFixed(1)}%`,`${actual} / ${quota||0}`,"rate"],
+    ].map(([label,value,note,type])=>`<div class="quota-summary-item ${type}"><small>${label}</small><strong>${value}</strong><span>${note}</span></div>`).join("");
+    const byVenue=[...new Set(rows.map(row=>row.venue))].map(venue=>{const list=rows.filter(row=>row.venue===venue);const venueQuota=list.reduce((sum,row)=>sum+row.quota,0);const venueActual=list.reduce((sum,row)=>sum+row.actual,0);return{venue,quota:venueQuota,actual:venueActual,gap:venueActual-venueQuota,percent:venueQuota?venueActual/venueQuota*100:0};});
+    $("#quotaVenueProgress").innerHTML=byVenue.length?byVenue.map(item=>`<div class="quota-venue-row"><div><strong>${escapeHtml(item.venue)}</strong><span>${item.actual} / ${item.quota} 人</span></div><div class="quota-venue-numbers"><span>尚缺 <b class="${item.gap<0?"negative":"positive"}">${Math.max(-item.gap,0)}</b></span><strong>${item.percent.toFixed(1)}%</strong></div><div class="quota-meter"><i class="${item.percent>=100?"over":""}" style="width:${Math.min(item.percent,100)}%"></i><span style="left:${Math.min(item.percent,100)}%"></span></div></div>`).join(""):`<div class="empty-state">尚未配置${escapeHtml(activeQuotaRole)}名额</div>`;
+    const alertHtml=(items,type)=>items.length?items.slice(0,3).map((row,index)=>`<div class="quota-alert-row"><b>${index+1}</b><span><strong>${escapeHtml(row.region)}</strong><small>${escapeHtml(row.venue)} · ${escapeHtml(row.role)}</small></span><em class="${type}">${row.gap>0?"+":""}${row.gap}</em></div>`).join(""):`<div class="quota-alert-empty">暂无${type==="shortage"?"名额缺口":"超额报名"}</div>`;
+    $("#quotaShortageList").innerHTML=alertHtml(rows.filter(row=>row.gap<0).sort((a,b)=>a.gap-b.gap),"shortage");$("#quotaOverList").innerHTML=alertHtml(rows.filter(row=>row.gap>0).sort((a,b)=>b.gap-a.gap),"over");
+    if(!rows.length){$("#quotaProgressBody").innerHTML=`<tr><td colspan="9"><div class="empty-state">点击“配置名额”建立报名目标后即可统计</div></td></tr>`;return;}
+    const detailRow=row=>{const[stateClass,label]=quotaState(row);return`<tr><td><strong>${escapeHtml(row.venue)}</strong></td><td>${escapeHtml(row.region)}</td><td>${escapeHtml(row.role)}</td><td>${row.quota}</td><td>${row.actual}</td><td><b class="quota-gap ${stateClass}">${row.gap>0?"+":""}${row.gap}</b></td><td>${row.remaining}</td><td><div class="quota-rate"><span>${row.percent.toFixed(1)}%</span><i><b class="${stateClass}" style="width:${Math.min(row.percent,100)}%"></b></i></div></td><td><span class="quota-status ${stateClass}">${label}</span></td></tr>`;};
+    const summaryRow=(label,list,grand=false)=>{const subtotalQuota=list.reduce((sum,row)=>sum+row.quota,0);const subtotalActual=list.reduce((sum,row)=>sum+row.actual,0);const subtotalGap=subtotalActual-subtotalQuota;const subtotalRemaining=Math.max(subtotalQuota-subtotalActual,0);const subtotalPercent=subtotalQuota?subtotalActual/subtotalQuota*100:0;const[stateClass,statusLabel]=quotaState({gap:subtotalGap,quota:subtotalQuota});return`<tr class="${grand?"quota-grand-total":"quota-subtotal"}"><td colspan="3"><strong>${escapeHtml(label)}</strong></td><td>${subtotalQuota}</td><td>${subtotalActual}</td><td><b class="quota-gap ${stateClass}">${subtotalGap>0?"+":""}${subtotalGap}</b></td><td>${subtotalRemaining}</td><td><strong>${subtotalPercent.toFixed(1)}%</strong></td><td><span class="quota-status ${stateClass}">${statusLabel}</span></td></tr>`;};
+    const ordered=[...rows].sort((a,b)=>a.venue.localeCompare(b.venue,"zh-CN")||a.region.localeCompare(b.region,"zh-CN"));const venues=[...new Set(ordered.map(row=>row.venue))];
+    $("#quotaProgressBody").innerHTML=venues.map(venue=>{const list=ordered.filter(row=>row.venue===venue);return list.map(detailRow).join("")+summaryRow(`${venue}${activeQuotaRole}小计`,list);}).join("")+summaryRow(`${activeQuotaRole}合计`,ordered,true);
+  }
+
+  function quotaConfigOptions(key,value) { const source=key==="venue"?[...(state.settings.venues||[]).map(normalizeVenueLabel)]:key==="region"?["华北大区","华南大区","沪苏皖","浙闽鄂赣","西南大区","鲁豫大区",...activeVisibleAttendees().map(item=>normalizeQuotaRegion(item.region))]:["听众","讨论嘉宾（组长）",...activeVisibleAttendees().map(item=>normalizeQuotaRole(item.attendeeType))];return[...new Set(source.filter(Boolean))].map(option=>`<option value="${escapeHtml(option)}" ${option===value?"selected":""}>${escapeHtml(option)}</option>`).join(""); }
+  function appendQuotaConfigRow(item={venue:normalizeVenueLabel(state.settings.venues?.[0])||"",region:"华北大区",role:activeQuotaRole,quota:0}) { const row=document.createElement("div");row.className="quota-config-row";row.innerHTML=`<select name="quotaVenue" aria-label="会场">${quotaConfigOptions("venue",normalizeVenueLabel(item.venue))}</select><select name="quotaRegion" aria-label="大区">${quotaConfigOptions("region",normalizeQuotaRegion(item.region))}</select><select name="quotaRole" aria-label="角色">${quotaConfigOptions("role",normalizeQuotaRole(item.role))}</select><input name="quotaValue" type="number" min="0" step="1" value="${quotaNumber(item.quota)}" aria-label="分配名额"/><button type="button" class="quota-remove-row">删除</button>`;row.querySelector(".quota-remove-row").onclick=()=>row.remove();$("#quotaConfigRows").append(row); }
+  function openQuotaConfiguration() { if(!canManage())return deny();$("#quotaConfigRows").innerHTML="";(state.settings.registrationQuotas||[]).forEach(appendQuotaConfigRow);if(!$("#quotaConfigRows").children.length)appendQuotaConfigRow();$("#quotaFormError").textContent="";$("#quotaDialog").showModal(); }
+  async function saveQuotaConfiguration(event) { event.preventDefault();if(!canManage())return deny();const button=event.currentTarget.querySelector('button[type="submit"]');const rows=$$(".quota-config-row",event.currentTarget).map(row=>({venue:normalizeVenueLabel(row.querySelector('[name="quotaVenue"]').value),region:normalizeQuotaRegion(row.querySelector('[name="quotaRegion"]').value),role:normalizeQuotaRole(row.querySelector('[name="quotaRole"]').value),quota:quotaNumber(row.querySelector('[name="quotaValue"]').value)}));const seen=new Set();if(rows.some(row=>!row.venue||!row.region||!row.role))return $("#quotaFormError").textContent="请完整填写每一行名额配置";if(rows.some(row=>{const key=quotaKey(row.venue,row.region,row.role);if(seen.has(key))return true;seen.add(key);return false;}))return $("#quotaFormError").textContent="同一会场、大区和角色不能重复配置";button.disabled=true;try{if(backend){const fieldConfig={...state.settings.fieldConfig,registrationQuotas:rows};const{error}=await backend.from("meetings").update({field_config:fieldConfig}).eq("id",backendMeetingId);if(error)throw error;}state.settings.registrationQuotas=rows;addNotification("change",`${currentUser().name}更新了报名名额配置，共${rows.length}项`);localStorage.setItem(STORAGE_KEY,JSON.stringify(state));$("#quotaDialog").close();renderRegistrationProgress();toast("名额配置已保存");}catch(error){$("#quotaFormError").textContent=error.message||"名额保存失败";}finally{button.disabled=false;} }
+
   function renderDashboard() {
     const list = activeVisibleAttendees(); const pending = list.filter(a => a.approval === "pending").length;
     const assigned = list.filter(a => a.transport?.pickup?.driver && a.transport.pickup.driver !== "待分配").length;
@@ -685,11 +742,7 @@
       ["已安排接送", assigned, `共 ${list.length} 位参会者`, "↗", "#dcebe7"],
     ];
     $("#metricGrid").innerHTML = metrics.map(([label,value,note,icon,tint]) => `<article class="metric-card" style="--metric-tint:${tint}"><p>${label}</p><strong>${value}</strong><small>${note}</small><span>${icon}</span></article>`).join("");
-    $("#progressCount").textContent = list.length; const percent = Math.min(100, Math.round(list.length / state.settings.capacity * 100));
-    $("#progressBar").style.width = `${percent}%`; $("#progressPercent").textContent = `${percent}%`;
-    const cityCounts = Object.entries(list.reduce((acc,a) => (acc[a.city] = (acc[a.city] || 0) + 1, acc), {})).sort((a,b) => b[1] - a[1]).slice(0,4);
-    const max = Math.max(...cityCounts.map(([,v]) => v), 1); const colors = ["#D52B1E", "#397a73", "#b07a2b", "#7b4f70"];
-    $("#cityBars").innerHTML = cityCounts.map(([city,count],i) => `<div class="city-bar"><span>${escapeHtml(city)}</span><div><i style="width:${count/max*100}%;--bar-color:${colors[i]}"></i></div><strong>${count}</strong></div>`).join("") || `<div class="empty-state">暂无报名</div>`;
+    renderRegistrationProgress();
     const risks = list.filter(a => a.approval === "pending").slice(0,3);
     $("#attentionList").innerHTML = risks.length ? risks.map(a => `<div class="attention-item"><span class="attention-icon">△</span><div><strong>${escapeHtml(a.name)} · ${escapeHtml(a.risks[0] || "异常行程")}</strong><small>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)} / ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</small></div><button data-open-attendee="${a.id}">处理 →</button></div>`).join("") : `<div class="empty-state">暂无待处理事项</div>`;
     $("#recentTimeline").innerHTML = state.notifications.slice(0,4).map(n => `<div class="timeline-item"><p>${escapeHtml(n.text)}</p><small>${relativeTime(n.time)}</small></div>`).join("");

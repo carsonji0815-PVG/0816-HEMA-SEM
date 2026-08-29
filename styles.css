@@ -240,3 +240,228 @@ tbody tr { transition: background .15s; } tbody tr:hover { background: #fafbf8; 
   .app-shell { display: block; }.sidebar { transform: translateX(-100%); transition: transform .25s; }.sidebar.open { transform: translateX(0); }.main-column { grid-column: auto; }.mobile-overlay { position: fixed; z-index: 19; inset: 0; background: rgba(0,0,0,.35); }.mobile-overlay.show { display: block; }.mobile-only { display: inline-grid; }.topbar { padding: 0 16px; }.topbar-event small { display: none; }.user-switcher label span { display:none; }.user-switcher select { max-width: 115px; }.page-content { padding: 27px 17px 55px; }.heading-with-action { align-items: flex-start; flex-direction: column; }.heading-actions { width: 100%; flex-wrap:wrap; }.heading-actions .button { flex:1; }.metric-grid { grid-template-columns: 1fr 1fr; }.metric-card { min-height: 105px; }.metric-card strong { font-size: 24px; }.field-grid { grid-template-columns: 1fr; }.span-2 { grid-column: auto; }.form-section { padding: 21px; }.table-toolbar { flex-wrap: wrap; }.search-box { flex-basis: 100%; }.transport-grid { grid-template-columns: 1fr; }.transport-batch-list { grid-template-columns:1fr; }.approval-board,.settings-grid { grid-template-columns: 1fr; }.settings-actions { grid-column:auto; }.lookup-layout,.portal-layout:has(.portal-card.expanded) { grid-template-columns: 1fr; gap: 35px; padding: 50px 0; }.lookup-copy h1 { font-size: 47px; }.public-header .brand small { display:none; }.public-shell { padding: 23px; }.detail-grid { grid-template-columns:1fr; }.public-field-grid { grid-template-columns:1fr; }.public-field-grid .span-2 { grid-column:auto; }.portal-card.expanded { padding:20px; }.public-form-section { padding:14px; }.public-form-actions { flex-direction:column-reverse; }.public-form-actions .button { width:100%; }.project-grid,.document-status-grid { grid-template-columns:1fr; }.document-row { grid-template-columns:1fr auto; }.document-row > :nth-child(3),.document-row > :nth-child(4) { display:none; }.field-toggle-grid { grid-template-columns:1fr; }.import-guide { grid-template-columns:1fr; }.import-summary { align-items:flex-start; flex-direction:column; }.import-stats { width:100%; }.import-stats > div { flex:1; }.batch-select-head { align-items:flex-start; flex-direction:column; }
 }
 @media (max-width: 440px) { .metric-grid { grid-template-columns: 1fr; }.topbar-event { font-size: 9px; }.avatar { display:none; }.user-switcher { padding-left: 8px; }.public-header .text-link { font-size:8px; } }
+
+/* Lilly brand refresh · 2026-08-29 */
+:root {
+  --ink: #2d2526;
+  --ink-soft: #766b6d;
+  --canvas: #f6f2ef;
+  --card: rgba(255, 253, 251, .96);
+  --line: #e7ded9;
+  --green: #c91f2c;
+  --green-2: #a81723;
+  --mint: #f9dfe2;
+  --coral: #df6555;
+  --amber: #b07a2b;
+  --lavender: #ece3eb;
+  --lilly-red: #c91f2c;
+  --lilly-red-bright: #e1252f;
+  --lilly-wine: #57151d;
+  --lilly-plum: #7b4f70;
+  --lilly-ivory: #fffaf6;
+  --medical-blue: #526d88;
+  --transport-teal: #397a73;
+  --shadow: 0 22px 58px rgba(83, 40, 41, .09);
+  --radius: 20px;
+}
+
+body { background: var(--canvas); }
+.ambient-one { background: #e5aaa9; right: -190px; top: 5%; }
+.ambient-two { background: #d9c2b2; left: 9%; bottom: -260px; }
+.app-shell { grid-template-columns: 268px 1fr; }
+.main-column { grid-column: 2; }
+
+.sidebar {
+  width: 268px;
+  padding: 20px 18px 18px;
+  background:
+    radial-gradient(circle at 12% 2%, rgba(225, 37, 47, .35), transparent 27%),
+    linear-gradient(165deg, #6d1b24 0%, #4c151b 44%, #331419 100%);
+  box-shadow: 14px 0 42px rgba(62, 20, 25, .13);
+}
+.lilly-brand { padding: 0; }
+.lilly-logo-frame {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid rgba(201, 31, 44, .12);
+  box-shadow: 0 10px 28px rgba(55, 18, 22, .12);
+}
+.lilly-logo { display: block; width: 100%; height: 100%; object-fit: contain; }
+.lilly-brand-sidebar { align-items: center; gap: 11px; padding: 4px 2px 13px; border-bottom: 1px solid rgba(255,255,255,.11); }
+.lilly-brand-sidebar .lilly-logo-frame { width: 102px; height: 61px; padding: 4px; border-radius: 13px; }
+.brand-product { min-width: 0; }
+.brand-product strong,
+.brand-product small { display: block; }
+.brand-product strong { max-width: 112px; font-size: 12px; line-height: 1.45; letter-spacing: .04em; }
+.brand-product small { margin-top: 4px; font-size: 7px; line-height: 1.35; letter-spacing: .13em; text-transform: uppercase; opacity: .58; }
+
+.event-switcher {
+  margin: 17px 0 15px;
+  border-color: rgba(255,255,255,.13);
+  background: rgba(255, 249, 246, .07);
+  box-shadow: inset 0 1px rgba(255,255,255,.04);
+}
+.project-mini-icon { background: var(--project-accent, var(--lilly-red)); }
+.project-manage-link { color: #ffe7e7; }
+.side-nav { gap: 4px; }
+.side-nav p { margin-top: 13px; color: #f4d9d9; opacity: .48; }
+.side-nav a { position: relative; overflow: hidden; min-height: 42px; color: rgba(255, 247, 244, .68); }
+.side-nav a:hover { background: rgba(255,255,255,.08); }
+.side-nav a.active {
+  color: #fff;
+  background: color-mix(in srgb, var(--nav-accent) 24%, rgba(255,255,255,.04));
+  box-shadow: inset 3px 0 var(--nav-accent), 0 8px 18px rgba(30, 6, 10, .12);
+}
+.side-nav a[data-route="dashboard"] { --nav-accent:#ef5358; }
+.side-nav a[data-route="registration"] { --nav-accent:#f0826f; }
+.side-nav a[data-route="attendees"] { --nav-accent:#83a9ca; }
+.side-nav a[data-route="approvals"] { --nav-accent:#dfad55; }
+.side-nav a[data-route="transport"] { --nav-accent:#6eb0a5; }
+.side-nav a[data-route="projects"] { --nav-accent:#bd86b2; }
+.side-nav a[data-route="locks"] { --nav-accent:#9aa4b1; }
+.side-nav a[data-route="notifications"] { --nav-accent:#df7890; }
+.side-nav a[data-route="settings"] { --nav-accent:#b38c68; }
+.side-nav b { background: rgba(255,255,255,.12); color: #fff; }
+.side-nav .alert-count { color: #651620; background: #ffd9dc; }
+.sidebar-footer { border-top-color: rgba(255,255,255,.1); }
+.sidebar-footer a { color: #ffe5e4; background: rgba(255,255,255,.06); }
+.demo-badge { color: rgba(255,255,255,.42); }
+
+.topbar {
+  height: 72px;
+  background: rgba(250, 247, 244, .9);
+  border-bottom-color: rgba(211, 197, 190, .68);
+}
+.live-dot { background: var(--lilly-red-bright); box-shadow: 0 0 0 4px rgba(201,31,44,.12); }
+.topbar-event { color: #5a252b; }
+.avatar { color: #fff; background: linear-gradient(135deg, var(--lilly-red-bright), #921c29); }
+.icon-button:hover { color: var(--lilly-red); background: #f8e4e5; }
+.page-content { max-width: 1520px; padding-top: 34px; }
+
+.page { --page-accent: var(--lilly-red); }
+.page[data-page="registration"] { --page-accent:#df6555; }
+.page[data-page="attendees"] { --page-accent:#526d88; }
+.page[data-page="approvals"] { --page-accent:#b07a2b; }
+.page[data-page="transport"] { --page-accent:#397a73; }
+.page[data-page="projects"] { --page-accent:#7b4f70; }
+.page[data-page="documents"] { --page-accent:#8b6b4a; }
+.page[data-page="locks"] { --page-accent:#667080; }
+.page[data-page="notifications"] { --page-accent:#a8435b; }
+.page[data-page="settings"] { --page-accent:#8b6b4a; }
+.page .page-heading h1 { border-left-width: 5px; border-left-color: var(--page-accent); }
+.page .page-heading .eyebrow { color: var(--page-accent); }
+.page-heading h1 { color: #34292a; }
+.page-heading p { color: #796e6f; }
+.button-primary { background: var(--lilly-red); box-shadow: 0 10px 24px rgba(201,31,44,.2); }
+.button-primary:hover { background: #a91824; }
+.page .button-primary { background: var(--page-accent); box-shadow: 0 10px 24px color-mix(in srgb, var(--page-accent) 24%, transparent); }
+.button-secondary { border-color: #dfd3ce; background: #fffdfb; }
+.button-secondary:hover { border-color: #c9aead; color: var(--lilly-red); }
+
+.panel,
+.glass-card,
+.metric-card { border-color: rgba(221, 208, 201, .82); box-shadow: 0 8px 28px rgba(73, 43, 42, .055); }
+.panel { position: relative; }
+.metric-card { background: linear-gradient(145deg, #fffefd, #fcf8f5); }
+.metric-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--metric-tint); filter: saturate(1.35); }
+.metric-card::after { opacity: .78; }
+.metric-card span { color: #5f3034; }
+.metric-card small { color: #8c4b52; }
+.dashboard-grid > .panel { --panel-accent: var(--lilly-red); border-top: 3px solid var(--panel-accent); }
+.dashboard-grid > .panel:nth-child(2) { --panel-accent:#397a73; }
+.dashboard-grid > .panel:nth-child(3) { --panel-accent:#b07a2b; }
+.dashboard-grid > .panel:nth-child(4) { --panel-accent:#a8435b; }
+.panel-heading .kicker { color: var(--panel-accent, var(--page-accent, var(--lilly-red))); }
+.page:not([data-page="dashboard"]) .panel { border-top: 3px solid color-mix(in srgb, var(--page-accent) 78%, #fff); }
+.page .table-panel { border-top-color: var(--page-accent); }
+.form-section::after { background: color-mix(in srgb, var(--page-accent) 16%, transparent); }
+.form-section h2,
+.public-form-section h3 { color: var(--page-accent, var(--lilly-red)); }
+.registration .form-main .form-section:nth-child(1),
+.public-full-form .public-form-section:nth-child(1) { --section-accent:#df6555; }
+.registration .form-main .form-section:nth-child(2),
+.public-full-form .public-form-section:nth-child(2) { --section-accent:#526d88; }
+.registration .form-main .form-section:nth-child(3),
+.public-full-form .public-form-section:nth-child(3) { --section-accent:#397a73; }
+.public-form-section { border-top: 3px solid var(--section-accent, var(--lilly-red)); background: rgba(255,253,251,.9); }
+.public-form-section h3 { color: var(--section-accent, var(--lilly-red)); }
+input:focus, select:focus, textarea:focus { border-color: var(--page-accent, var(--lilly-red)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--page-accent, var(--lilly-red)) 12%, transparent); }
+table th { color: #6e5d5f; background: #f4eeea; }
+table tbody tr:hover { background: #fff7f5; }
+.progress-track { background: #f2dfdf; }
+.progress-track i { background: linear-gradient(90deg, var(--lilly-red), #eb6468); }
+.attention-icon { color: #8e5c14; background: #f8e8c9; }
+.timeline-item::before { background: #d06573; box-shadow: 0 0 0 4px #f8e3e6; }
+
+.public-shell {
+  background:
+    radial-gradient(circle at 86% 13%, rgba(225,37,47,.12), transparent 30%),
+    radial-gradient(circle at 8% 90%, rgba(123,79,112,.1), transparent 28%),
+    linear-gradient(135deg, #fffdfb 0%, #f8f2ee 55%, #f5ebe8 100%);
+}
+.public-header { padding-bottom: 18px; border-bottom: 1px solid rgba(201,31,44,.12); }
+.lilly-brand-public { gap: 15px; }
+.lilly-brand-public .lilly-logo-frame { width: 145px; height: 76px; padding: 5px; border-radius: 15px; }
+.lilly-brand-public .brand-product strong { max-width: none; color: #3f292b; font-size: 14px; }
+.lilly-brand-public .brand-product small { color: #8e5c61; font-size: 8px; opacity: 1; }
+.public-header .text-link { color: var(--lilly-red); font-weight: 700; }
+.public-project-chip { border-color: rgba(201,31,44,.17); box-shadow: 0 12px 32px rgba(91,34,39,.09); }
+.public-project-chip > span { background: linear-gradient(135deg, var(--lilly-red-bright), #9f1723); }
+.lookup-copy .eyebrow { color: var(--lilly-red); }
+.lookup-copy h1 { color: #351f22; }
+.lookup-copy h1::after { content: ""; display: block; width: 74px; height: 5px; margin-top: 22px; border-radius: 4px; background: linear-gradient(90deg, var(--lilly-red), #df6555); }
+.public-project-facts > div { border-color: rgba(122,83,76,.12); background: rgba(255,253,251,.72); box-shadow: 0 6px 18px rgba(75,40,39,.035); }
+.public-project-facts > div:nth-child(1) > span { color:#b8232f; background:#f9dfe2; }
+.public-project-facts > div:nth-child(2) > span { color:#397a73; background:#dcebe7; }
+.public-project-facts > div:nth-child(3) > span { color:#7b4f70; background:#ece3eb; }
+.public-project-facts > div:nth-child(4) > span { color:#9b691e; background:#f8e9cd; }
+.privacy-note { color: #8d2630; border: 1px solid rgba(201,31,44,.1); background: rgba(255,255,255,.7); }
+.privacy-note span { background: #f9dfe2; }
+.portal-card { border-top: 4px solid var(--lilly-red); background: rgba(255,253,251,.93); box-shadow: 0 30px 75px rgba(91,39,43,.13); }
+.portal-tabs { background: #eee5e1; }
+.portal-tab[data-portal-tab="register"].active { background: linear-gradient(135deg, var(--lilly-red-bright), #b41926); box-shadow: 0 9px 20px rgba(201,31,44,.22); }
+.portal-tab[data-portal-tab="lookup"].active { background: linear-gradient(135deg, #458a82, #2e6c66); box-shadow: 0 9px 20px rgba(57,122,115,.2); }
+.portal-panel[data-portal-panel="lookup"] { --page-accent: var(--transport-teal); }
+.portal-panel[data-portal-panel="lookup"] .button-primary { background: var(--transport-teal); box-shadow: 0 10px 24px rgba(57,122,115,.2); }
+.icon-badge { background: #f9dfe2; color: var(--lilly-red); }
+.portal-panel[data-portal-panel="lookup"] .icon-badge { color: #2f6f68; background: #dcebe7; }
+.phone-input { border-color: #e2d7d2; background: #fffdfb; }
+.result-card { background: #f7f0ed; }
+.calendar-action { border-color: #c8dfda; background: linear-gradient(135deg,#e2f0ec,#fbfdfc); }
+.lookup-success { color: #7e2029; background: #fae4e6; }
+
+.login-dialog { background: #fffaf7; border-top: 5px solid var(--lilly-red); box-shadow: 0 35px 110px rgba(58,18,23,.3); }
+.login-dialog::backdrop { background: rgba(45,18,22,.76); }
+.login-brand-lilly { align-items: center; }
+.login-brand-lilly .lilly-logo-frame { width: 118px; height: 68px; padding: 4px; border-radius: 13px; }
+.login-brand-lilly strong { color: #3b2427; }
+.brand-mark { background: linear-gradient(135deg, var(--lilly-red-bright), #a41824); color: #fff; box-shadow: 0 9px 20px rgba(201,31,44,.2); }
+.detail-head { background: linear-gradient(120deg, #6b1b24, var(--lilly-red)); }
+.import-head { background: linear-gradient(120deg, #6b1b24, var(--lilly-red)); }
+.import-dropzone:hover,.import-dropzone.dragging { border-color: var(--lilly-red); background: #fff2f2; }
+.import-file-icon,.import-file-name > span { background: var(--lilly-red); }
+
+@media (max-width: 760px) {
+  .app-shell { display: block; }
+  .sidebar { width: 268px; }
+  .main-column { grid-column: auto; }
+  .page-content { padding-top: 26px; }
+  .public-header { align-items: flex-start; }
+  .lilly-brand-public { gap: 9px; }
+  .lilly-brand-public .lilly-logo-frame { width: 104px; height: 57px; }
+  .lilly-brand-public .brand-product strong { max-width: 95px; font-size: 10px; }
+  .lilly-brand-public .brand-product small { display: none; }
+  .lookup-layout,.portal-layout:has(.portal-card.expanded) { padding-top: 38px; }
+  .lookup-copy h1 { font-size: clamp(40px,13vw,54px); }
+}
+
+@media (max-width: 440px) {
+  .public-shell { padding: 18px; }
+  .lilly-brand-public .lilly-logo-frame { width: 92px; height: 52px; }
+  .lilly-brand-public .brand-product { display: none; }
+  .public-header .text-link { margin-top: 16px; }
+  .public-project-facts { grid-template-columns: 1fr; }
+}

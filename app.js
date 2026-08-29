@@ -140,7 +140,7 @@
   };
   const projectVisual = project => {
     const icons = ["✦","◈","✚","◎","⌁","◇","✺","⬡"];
-    const colors = ["#5267d9","#b665d6","#e47a52","#d49a28","#3e8fc6","#d45672","#7b68c8","#516f9b"];
+    const colors = ["#c91f2c","#7b4f70","#df6555","#b07a2b","#397a73","#a8435b","#526d88","#667080"];
     const seed = [...String(project?.slug || project?.name || "project")].reduce((sum,char)=>sum+char.charCodeAt(0),0);
     return { icon:icons[seed%icons.length], color:colors[seed%colors.length] };
   };
@@ -607,16 +607,16 @@
     const list = visibleAttendees(); const pending = list.filter(a => a.approval === "pending").length;
     const assigned = list.filter(a => a.transport?.pickup?.driver && a.transport.pickup.driver !== "待分配").length;
     const metrics = [
-      ["已报名人数", list.length, `名额 ${state.settings.capacity} 人`, "♟", "#e4e9ff"],
-      ["待审批行程", pending, pending ? "需要及时处理" : "全部处理完成", "△", "#fae3d8"],
-      ["住宿需求", list.filter(a => a.accommodation === "Y").length, "已选择住宿", "⌂", "#e9e6f6"],
-      ["已安排接送", assigned, `共 ${list.length} 位参会者`, "↗", "#f3e8c8"],
+      ["已报名人数", list.length, `名额 ${state.settings.capacity} 人`, "♟", "#f9dfe2"],
+      ["待审批行程", pending, pending ? "需要及时处理" : "全部处理完成", "△", "#f8e9cd"],
+      ["住宿需求", list.filter(a => a.accommodation === "Y").length, "已选择住宿", "⌂", "#ece3eb"],
+      ["已安排接送", assigned, `共 ${list.length} 位参会者`, "↗", "#dcebe7"],
     ];
     $("#metricGrid").innerHTML = metrics.map(([label,value,note,icon,tint]) => `<article class="metric-card" style="--metric-tint:${tint}"><p>${label}</p><strong>${value}</strong><small>${note}</small><span>${icon}</span></article>`).join("");
     $("#progressCount").textContent = list.length; const percent = Math.min(100, Math.round(list.length / state.settings.capacity * 100));
     $("#progressBar").style.width = `${percent}%`; $("#progressPercent").textContent = `${percent}%`;
     const cityCounts = Object.entries(list.reduce((acc,a) => (acc[a.city] = (acc[a.city] || 0) + 1, acc), {})).sort((a,b) => b[1] - a[1]).slice(0,4);
-    const max = Math.max(...cityCounts.map(([,v]) => v), 1); const colors = ["#5267d9", "#3e8fc6", "#d49a28", "#b665d6"];
+    const max = Math.max(...cityCounts.map(([,v]) => v), 1); const colors = ["#c91f2c", "#397a73", "#b07a2b", "#7b4f70"];
     $("#cityBars").innerHTML = cityCounts.map(([city,count],i) => `<div class="city-bar"><span>${escapeHtml(city)}</span><div><i style="width:${count/max*100}%;--bar-color:${colors[i]}"></i></div><strong>${count}</strong></div>`).join("") || `<div class="empty-state">暂无报名</div>`;
     const risks = list.filter(a => a.approval === "pending").slice(0,3);
     $("#attentionList").innerHTML = risks.length ? risks.map(a => `<div class="attention-item"><span class="attention-icon">△</span><div><strong>${escapeHtml(a.name)} · ${escapeHtml(a.risks[0] || "异常行程")}</strong><small>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)} / ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</small></div><button data-open-attendee="${a.id}">处理 →</button></div>`).join("") : `<div class="empty-state">暂无待处理事项</div>`;

@@ -17,7 +17,7 @@
   const initialState = () => ({
     currentUserId: "u-ops",
     activeProjectId: "demo-hema",
-    projects: [{ id:"demo-hema", slug:"hema-sem-2026", name:"HEMA SEM · 大连 & 福州", activityType:"external", identifier:"HEMA-SEM-2026", activityOwner:"林悦", activityDate:"2026-09-04", clientName:"礼来", role:"ops", attendeeCount:5, startDate:"2026-09-04", endDate:"2026-09-12", brandColor:"#5267d9" }],
+    projects: [{ id:"demo-hema", slug:"hema-sem-2026", name:"HEMA SEM · 大连 & 福州", activityType:"external", identifier:"HEMA-SEM-2026", activityOwner:"林悦", activityDate:"2026-09-04", clientName:"礼来", role:"ops", attendeeCount:5, startDate:"2026-09-04", endDate:"2026-09-12", brandColor:"#5267d9", registrationOpen:true, templateImported:true, managerEditEnabled:true }],
     users: [
       { id: "u-ops", name: "林悦", role: "ops", label: "会务负责人" },
       { id: "u-client", name: "周宁", role: "client", label: "会议负责人（客户）" },
@@ -44,6 +44,9 @@
       fieldConfig: { title:true, hcpId:true, accommodation:true, flight:true, mslContact:true, remarks:true },
       templateName: "标准31列报名模板",
       registrationTemplate: standardTemplate(),
+      registrationOpen: true,
+      templateImported: true,
+      managerEditEnabled: true,
       activityType: "external",
       identifier: "HEMA-SEM-2026",
       activityOwner: "林悦",
@@ -117,7 +120,9 @@
   const currentUser = () => state.users.find(user => user.id === state.currentUserId) || state.users[0];
   const userName = id => state.users.find(user => user.id === id)?.name || "未分配";
   const visibleAttendees = () => currentUser().role === "sales" ? state.attendees.filter(item => item.ownerId === currentUser().id) : state.attendees;
+  const activeVisibleAttendees = () => visibleAttendees().filter(item=>item.businessStatus!=="cancelled");
   const canManage = () => ["ops", "client"].includes(currentUser().role);
+  const canEditAttendeeData = () => isSystemAdmin() || currentUser().role === "sales" || (canManage() && !!state.settings.managerEditEnabled);
   // The document service is the authority for archive permissions.  The
   // Journey Desk display name can differ from the archive membership name,
   // so relying on the local label alone incorrectly hid the administrator
@@ -129,6 +134,8 @@
     return { quotation, pendingConfirmation, ready:quotation&&pendingConfirmation };
   };
   const activeArchiveReady = () => !!projectArchiveStates[backendMeetingId]?.ready;
+  const activeManagementOpen = () => !!state.settings.registrationOpen || activeArchiveReady();
+  const canOpenNewRegistration = () => !!state.settings.registrationOpen && !!state.settings.templateImported && !state.locks.master;
   const isLocked = attendee => state.locks.master || state.locks.rows.includes(attendee.id);
   const currentProject = () => state.projects.find(project => project.id === state.activeProjectId) || state.projects[0] || {};
   const currentEventSlug = () => new URLSearchParams(location.search).get("event") || window.APP_CONFIG?.eventSlug || state.settings.slug || "";
@@ -350,9 +357,9 @@
     state = {
       currentUserId: authData.user.id,
       activeProjectId: backendMeetingId,
-      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:"ops", ownerUserId:m.owner_user_id||null, archiveReady:!!m.archive_ready, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
+      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:"ops", ownerUserId:m.owner_user_id||null, archiveReady:!!m.archive_ready, registrationOpen:!!m.registration_open, templateImported:!!m.template_imported_at, managerEditEnabled:!!m.manager_attendee_edit_enabled, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
       users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
-      settings: { eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, transportGroupMinutes:meeting.transport_group_minutes??30, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, templateName:meeting.template_name||"标准31列报名模板", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : standardTemplate() },
+      settings: { eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:meeting.venues||[], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, transportGroupMinutes:meeting.transport_group_minutes??30, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, templateName:meeting.template_name||"", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : {version:1,columns:[]}, templateImported:!!meeting.template_imported_at, registrationOpen:!!meeting.registration_open, managerEditEnabled:!!meeting.manager_attendee_edit_enabled },
       locks: { master: meeting.master_locked, columns: locksRes.data.filter(l => l.locked).map(l => l.field_group), rows: attendeesRes.data.filter(a => a.row_locked).map(a => a.id) },
       attendees: attendeesRes.data.map(fromDbAttendee),
       notifications: noticesRes.data.map(n => ({ id: n.id, type: n.type, text: n.message, time: n.created_at, read: !!n.read_at })),
@@ -370,17 +377,17 @@
       const t = row.transports?.find(item => item.direction === direction) || {};
       return { driver: t.driver_name || "待分配", staffName:t.staff_name||"", phone: t.driver_phone || "—", vehicle: t.vehicle || "待分配", time: t.service_time ? new Date(t.service_time).toLocaleString("zh-CN", { hour12: false }).replaceAll("/", "-") : "待设置", point: t.meeting_point || "待设置", mode:t.service_mode||"", batchId:t.batch_id||"", batchName:t.batch_name||"", terminal:t.terminal||"", placard:t.placard||"", capacity:t.capacity||null, notes:t.notes||"", timeStrategy:t.time_strategy||"fixed" };
     };
-    return { id:row.id, attendeeType:row.attendee_type||"", name:row.name, city:row.city||"", hospital:row.hospital||"", department:row.department||"", title:row.title||"", venue:row.venue||"", sex:row.sex||"", idNumber:row.id_number, phone:row.phone, hcpId:row.hcp_id, accommodation:row.accommodation?"Y":"N", flight:row.is_flight?"Y":"N", region:row.region||"", contactName:row.contact_name||"", contactMobile:row.contact_mobile||"", mslContact:row.msl_contact||"", remarks:row.remarks||"", customFields:row.custom_fields||{}, privacyLetterStatus:row.privacy_letter_status||"pending", ticketStatus:row.ticket_status||"pending", outboundApproval:row.outbound_approval_status||"", returnApproval:row.return_approval_status||"", ownerId:row.owner_id, outDate:row.out_date||"", outFrom:row.out_from||"", outTo:row.out_to||"", outNo:row.out_no||"", outDeparture:(row.out_departure||"").slice(0,5), outArrival:(row.out_arrival||"").slice(0,5), returnDate:row.return_date||"", returnFrom:row.return_from||"", returnTo:row.return_to||"", returnNo:row.return_no||"", returnDeparture:(row.return_departure||"").slice(0,5), returnArrival:(row.return_arrival||"").slice(0,5), approval:row.approval, risks:row.risks||[], createdAt:row.created_at, transport:{pickup:trip("pickup"),dropoff:trip("dropoff")} };
+    return { id:row.id, attendeeType:row.attendee_type||"", name:row.name, city:row.city||"", hospital:row.hospital||"", department:row.department||"", title:row.title||"", venue:row.venue||"", sex:row.sex||"", idNumber:row.id_number, phone:row.phone, hcpId:row.hcp_id, accommodation:row.accommodation?"Y":"N", flight:row.is_flight?"Y":"N", region:row.region||"", contactName:row.contact_name||"", contactMobile:row.contact_mobile||"", mslContact:row.msl_contact||"", remarks:row.remarks||"", customFields:row.custom_fields||{}, privacyLetterStatus:row.privacy_letter_status||"pending", ticketStatus:row.ticket_status||"pending", outboundApproval:row.outbound_approval_status||"", returnApproval:row.return_approval_status||"", ownerId:row.owner_id, registrantId:row.registrant_id||null, businessStatus:row.business_status||"active", outDate:row.out_date||"", outFrom:row.out_from||"", outTo:row.out_to||"", outNo:row.out_no||"", outDeparture:(row.out_departure||"").slice(0,5), outArrival:(row.out_arrival||"").slice(0,5), returnDate:row.return_date||"", returnFrom:row.return_from||"", returnTo:row.return_to||"", returnNo:row.return_no||"", returnDeparture:(row.return_departure||"").slice(0,5), returnArrival:(row.return_arrival||"").slice(0,5), approval:row.approval, risks:row.risks||[], createdAt:row.created_at, transport:{pickup:trip("pickup"),dropoff:trip("dropoff")} };
   }
 
   function toDbAttendee(a) {
-    return { id:a.id, meeting_id:backendMeetingId, owner_id:a.ownerId, attendee_type:a.attendeeType||null, name:a.name, city:a.city||null, hospital:a.hospital||null, department:a.department||null, title:a.title||null, venue:a.venue||null, sex:a.sex||null, id_number:a.idNumber, phone:a.phone, hcp_id:a.hcpId, accommodation:a.accommodation==="Y", is_flight:a.flight==="Y", out_date:a.outDate||null, out_from:a.outFrom||null, out_to:a.outTo||null, out_no:a.outNo||null, out_departure:a.outDeparture||null, out_arrival:a.outArrival||null, return_date:a.returnDate||null, return_from:a.returnFrom||null, return_to:a.returnTo||null, return_no:a.returnNo||null, return_departure:a.returnDeparture||null, return_arrival:a.returnArrival||null, region:a.region||null, contact_name:a.contactName||null, contact_mobile:a.contactMobile||null, msl_contact:a.mslContact||null, remarks:a.remarks||null, custom_fields:a.customFields||{}, privacy_letter_status:a.privacyLetterStatus||"pending", ticket_status:a.ticketStatus||"pending", outbound_approval_status:segmentApproval(a,"outbound"), return_approval_status:segmentApproval(a,"return"), approval:a.approval, risks:a.risks||[], row_locked:state.locks.rows.includes(a.id) };
+    return { id:a.id, meeting_id:backendMeetingId, owner_id:a.ownerId, registrant_id:a.registrantId||null, business_status:a.businessStatus||"active", attendee_type:a.attendeeType||null, name:a.name, city:a.city||null, hospital:a.hospital||null, department:a.department||null, title:a.title||null, venue:a.venue||null, sex:a.sex||null, id_number:a.idNumber, phone:a.phone, hcp_id:a.hcpId, accommodation:a.accommodation==="Y", is_flight:a.flight==="Y", out_date:a.outDate||null, out_from:a.outFrom||null, out_to:a.outTo||null, out_no:a.outNo||null, out_departure:a.outDeparture||null, out_arrival:a.outArrival||null, return_date:a.returnDate||null, return_from:a.returnFrom||null, return_to:a.returnTo||null, return_no:a.returnNo||null, return_departure:a.returnDeparture||null, return_arrival:a.returnArrival||null, region:a.region||null, contact_name:a.contactName||null, contact_mobile:a.contactMobile||null, msl_contact:a.mslContact||null, remarks:a.remarks||null, custom_fields:a.customFields||{}, privacy_letter_status:a.privacyLetterStatus||"pending", ticket_status:a.ticketStatus||"pending", outbound_approval_status:segmentApproval(a,"outbound"), return_approval_status:segmentApproval(a,"return"), approval:a.approval, risks:a.risks||[], row_locked:state.locks.rows.includes(a.id) };
   }
 
   async function syncBackend() {
     if (!backend || !backendMeetingId) return;
     const attendeeRows = state.attendees.map(toDbAttendee);
-    if (attendeeRows.length) { const { error } = await backend.from("attendees").upsert(attendeeRows); if (error) throw error; }
+    if (attendeeRows.length&&canEditAttendeeData()) { const { error } = await backend.from("attendees").upsert(attendeeRows); if (error) throw error; }
     const transportRows = state.attendees.flatMap(a => ["pickup","dropoff"].map(direction => { const t = a.transport?.[direction] || {}; return { attendee_id:a.id, direction, driver_name:t.driver||null, staff_name:t.staffName||null, driver_phone:t.phone||null, vehicle:t.vehicle||null, service_time:parseServiceTime(t.time), meeting_point:t.point||null, service_mode:t.mode||null, batch_id:t.batchId||null, batch_name:t.batchName||null, terminal:t.terminal||null, placard:t.placard||null, capacity:t.capacity||null, notes:t.notes||null, time_strategy:t.timeStrategy||null }; }));
     if (transportRows.length) { const { error } = await backend.from("transports").upsert(transportRows,{onConflict:"attendee_id,direction"}); if (error) throw error; }
     if (canManage()) {
@@ -401,12 +408,12 @@
   function closeMenu() { $(".sidebar").classList.remove("open"); $("#mobileOverlay").classList.remove("show"); }
   function route() {
     const target = (location.hash || "#dashboard").slice(1).split("?")[0];
-    const isPublic = ["portal", "lookup", "register"].includes(target);
+    const isPublic = ["portal", "lookup", "register", "manage"].includes(target);
     $("#adminApp").classList.toggle("is-hidden", isPublic);
     $("#publicPortalView").classList.toggle("is-hidden", !isPublic);
-    if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : "register"); if (!publicProjectConfig) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
+    if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : target === "manage" ? "manage" : "register"); if (!publicProjectConfig) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
     const requestedRoute = $( `[data-page="${target}"]`) ? target : "dashboard"; const gatedRoutes=new Set(["dashboard","registration","attendees","approvals","transport"]); let routeName = !state.activeProjectId && requestedRoute !== "projects" ? "projects" : requestedRoute;
-    if(state.activeProjectId&&gatedRoutes.has(routeName)&&!activeArchiveReady())routeName="documents";
+    if(state.activeProjectId&&gatedRoutes.has(routeName)&&!activeManagementOpen())routeName="documents";
     if (routeName !== requestedRoute) { history.replaceState(null,"",state.activeProjectId?"#documents":"#projects"); toast(state.activeProjectId?"请先在项目管理中完成项目建档文件，再继续报名和行程管理":"请先新建项目，再进行报名和行程管理", "error"); }
     $$(".page").forEach(page => page.classList.toggle("active", page.dataset.page === routeName));
     $$("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === routeName));
@@ -420,6 +427,7 @@
     $("#registrationForm").addEventListener("input", updateLiveRisk);
     $("#registrationForm").addEventListener("submit", submitRegistration);
     $("#publicRegistrationForm").addEventListener("submit", submitPublicRegistration);
+    $("#publicManageForm").addEventListener("submit", submitPublicRegistration);
     $("#publicFullRegistrationForm").addEventListener("submit", submitPublicFullRegistration);
     $("#lookupForm").addEventListener("submit", queryTransport);
     $("#settingsForm").addEventListener("submit", saveSettings);
@@ -452,11 +460,15 @@
     $("#selectAllBatchAttendees").addEventListener("change", event => { $$('[name="batchAttendee"]',$("#batchAttendeeList")).forEach(input=>input.checked=event.target.checked); updateBatchCapacityNotice(); });
     $$('[data-transport-filter]').forEach(button => button.addEventListener("click", () => { activeTransportFilter = button.dataset.transportFilter; $$('[data-transport-filter]').forEach(b => b.classList.toggle("active", b === button)); renderTransport(); }));
     $("#exportExcel").addEventListener("click", exportExcel);
+    $("#transferRegistrant").addEventListener("click", openRegistrantTransfer);
+    $("#transferRegistrantForm").addEventListener("submit", submitRegistrantTransfer);
     $("#auditTravel").addEventListener("click", auditRosterTravel);
     $("#importRoster").addEventListener("click", openRosterImport);
     $("#rosterFile").addEventListener("change", event => readRosterFile(event.target.files[0]));
     $("#projectTemplateFile").addEventListener("change", event => readProjectTemplate(event.target.files[0]));
     $("#resetProjectTemplate").addEventListener("click", resetProjectTemplate);
+    $("#registrationOpenSwitch").addEventListener("change", toggleRegistrationOpen);
+    $("#managerEditSwitch").addEventListener("change", toggleManagerEdit);
     $("#confirmImport").addEventListener("click", confirmRosterImport);
     $("#cancelImport").addEventListener("click", () => $("#importDialog").close());
     const dropzone=$("#importDropzone");
@@ -469,11 +481,13 @@
     $("#downloadQr").addEventListener("click", downloadQr);
     $("#backToPublicAuth").addEventListener("click", closePublicAttendeeEditor);
     $("#newPublicAttendee").addEventListener("click", () => openPublicAttendeeEditor());
-    $$('[data-portal-tab]').forEach(button => button.addEventListener("click", () => { location.hash = button.dataset.portalTab === "lookup" ? "lookup" : "portal"; }));
+    $$('[data-portal-tab]').forEach(button => button.addEventListener("click", () => { location.hash = button.dataset.portalTab === "lookup" ? "lookup" : button.dataset.portalTab === "manage" ? "manage" : "portal"; }));
     $("#resetDemo").addEventListener("click", () => { if (!confirm("确认恢复全部演示数据？")) return; state = initialState(); saveState(); populateUsers(); populateProjects(); renderAll(); toast("已恢复演示数据"); });
   }
 
   function setPortalTab(tab) {
+    if(publicAuthSession&&tab!==publicAuthSession.mode)resetPublicRegistrationStep();
+    $(".portal-card")?.classList.remove("workspace-mode");
     $$('[data-portal-tab]').forEach(button => {
       const active = button.dataset.portalTab === tab;
       button.classList.toggle("active", active);
@@ -493,7 +507,8 @@
   function renderProjects() {
     $("#projectGrid").innerHTML = state.projects.map(project => {
       const active = project.id === state.activeProjectId; const role = project.ownerUserId===state.currentUserId?"我的项目":isSystemAdmin()?"管理员可管理":"项目负责人"; const visual=projectVisual(project); const archive=projectArchiveStates[project.id]||{ready:!!project.archiveReady};
-      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前项目" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><div class="project-archive-state ${archive.ready?"ready":"pending"}"><b>${archive.ready?"项目建档已完成":"等待项目建档"}</b><span>${archive.ready?"报名与行程功能已开放":"需上传报价＋会务确认单（待签署）"}</span></div><small>公开入口：?event=${escapeHtml(project.slug)}</small><div class="project-actions"><button class="button button-primary" data-switch-project="${project.id}" ${active ? "disabled" : ""}>${active ? "正在使用" : "进入项目"}</button><button class="button button-secondary" data-project-documents="${project.id}">项目建档文件</button><button class="text-button" data-edit-project="${project.id}">编辑</button><button class="text-button danger" data-delete-project="${project.id}">删除</button><button class="text-button" data-copy-project="${project.id}">复制</button><button class="text-button" data-copy-project-link="${project.id}">复制入口</button></div></article>`;
+      const managementOpen=project.registrationOpen||archive.ready;
+      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前项目" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><div class="project-archive-state ${managementOpen?"ready":"pending"}"><b>${project.registrationOpen?"报名开关已开启":archive.ready?"沿用建档开放规则":"报名与管理尚未开放"}</b><span>${project.registrationOpen?"允许新增报名；修改和查询正常可用":archive.ready?"管理模块可用，公开新增报名仍由开关控制":"需先导入模板后开启报名，或完成项目建档"}</span></div><label class="project-registration-switch"><span><strong>报名开放</strong><small>${project.templateImported?"人工控制新增报名":"请先导入报名模板"}</small></span><span class="switch"><input type="checkbox" data-project-registration-open="${project.id}" ${project.registrationOpen?"checked":""} ${!project.templateImported&&!project.registrationOpen?"disabled":""}/><span></span></span></label><small>公开入口：?event=${escapeHtml(project.slug)}</small><div class="project-actions"><button class="button button-primary" data-switch-project="${project.id}" ${active ? "disabled" : ""}>${active ? "正在使用" : "进入项目"}</button><button class="button button-secondary" data-project-documents="${project.id}">项目建档文件</button><button class="text-button" data-edit-project="${project.id}">编辑</button><button class="text-button danger" data-delete-project="${project.id}">删除</button><button class="text-button" data-copy-project="${project.id}">复制</button><button class="text-button" data-copy-project-link="${project.id}">复制入口</button></div></article>`;
     }).join("");
     $$('[data-switch-project]').forEach(button => button.onclick = () => switchProject(button.dataset.switchProject));
     $$('[data-project-documents]').forEach(button=>button.onclick=async()=>{if(button.dataset.projectDocuments!==state.activeProjectId)await switchProject(button.dataset.projectDocuments);location.hash="documents";});
@@ -501,6 +516,48 @@
     $$('[data-delete-project]').forEach(button=>button.onclick=()=>deleteProject(button.dataset.deleteProject));
     $$('[data-copy-project]').forEach(button => button.onclick = () => openProjectDialog(state.projects.find(item=>item.id===button.dataset.copyProject),"copy"));
     $$('[data-copy-project-link]').forEach(button => button.onclick = () => { const project=state.projects.find(item=>item.id===button.dataset.copyProjectLink); const url=new URL(location.href); url.searchParams.set("event",project.slug); url.hash="portal"; navigator.clipboard?.writeText(url.toString()).then(()=>toast("项目入口已复制")).catch(()=>toast(url.toString())); });
+    $$('[data-project-registration-open]').forEach(input=>input.onchange=()=>toggleProjectRegistration(input.dataset.projectRegistrationOpen,input.checked,input));
+  }
+
+  async function toggleProjectRegistration(projectId, enabled, control=null) {
+    const project=state.projects.find(item=>item.id===projectId); if(!project)return;
+    if(enabled&&!project.templateImported){if(control)control.checked=false;return toast("请先进入项目并导入报名表模板","error");}
+    if(control)control.disabled=true;
+    try{
+      if(backend){const{error}=await backend.rpc("set_registration_open",{p_meeting_id:projectId,p_open:enabled});if(error)throw error;}
+      project.registrationOpen=enabled;
+      if(projectId===state.activeProjectId)state.settings.registrationOpen=enabled;
+      saveState();renderProjects();renderSettings();route();toast(enabled?"报名开关已开启，可新增报名":"报名开关已关闭，已报名修改和查询不受影响");
+    }catch(error){if(control)control.checked=!enabled;toast(error.message||"报名开关更新失败","error");}
+    finally{if(control)control.disabled=false;}
+  }
+  function toggleRegistrationOpen(event){toggleProjectRegistration(state.activeProjectId,event.target.checked,event.target);}
+
+  async function toggleManagerEdit(event){
+    const enabled=event.target.checked;event.target.disabled=true;
+    try{
+      if(backend){const{error}=await backend.rpc("set_manager_attendee_edit",{p_meeting_id:backendMeetingId,p_enabled:enabled});if(error)throw error;}
+      state.settings.managerEditEnabled=enabled;const project=currentProject();if(project)project.managerEditEnabled=enabled;saveState();renderSettings();toast(enabled?"管理员参会资料编辑权限已开启":"管理员已恢复为只读权限");
+    }catch(error){event.target.checked=!enabled;toast(error.message||"权限更新失败","error");}
+    finally{event.target.disabled=false;}
+  }
+
+  async function openRegistrantTransfer(){
+    if(!backend)return toast("填报人移交仅在正式环境可用","error");
+    if(!canManage()&&!isSystemAdmin())return deny();
+    const dialog=$("#transferRegistrantDialog"),form=$("#transferRegistrantForm"),errorBox=$("#transferRegistrantError");errorBox.textContent="";
+    const{data,error}=await backend.from("registrants").select("id,display_name,employee_no,region,active").eq("meeting_id",backendMeetingId).eq("active",true).order("display_name");
+    if(error)return toast(error.message,"error");
+    if(!data?.length)return toast("当前项目还没有可移交的填报人","error");
+    const options=data.map(item=>`<option value="${item.id}">${escapeHtml(item.display_name)} · ${escapeHtml(item.employee_no)} · ${escapeHtml(item.region)}</option>`).join("");
+    form.elements.fromRegistrant.innerHTML=`<option value="">请选择原填报人</option>${options}`;form.elements.toRegistrant.innerHTML=`<option value="">请选择新填报人</option>${options}`;dialog.showModal();
+  }
+  async function submitRegistrantTransfer(event){
+    event.preventDefault();const form=event.currentTarget,errorBox=$("#transferRegistrantError"),button=form.querySelector('button[type="submit"]');const data=Object.fromEntries(new FormData(form));
+    if(!data.fromRegistrant||!data.toRegistrant||data.fromRegistrant===data.toRegistrant){errorBox.textContent="请选择不同的原填报人和新填报人";return;}
+    if(!confirm("确认移交？移交后旧填报人将立即失去这些参会人员的操作权限。"))return;
+    button.disabled=true;errorBox.textContent="";
+    try{const{data:count,error}=await backend.rpc("transfer_registrant_attendees",{p_meeting_id:backendMeetingId,p_from_registrant:data.fromRegistrant,p_to_registrant:data.toRegistrant});if(error)throw error;$("#transferRegistrantDialog").close();await loadBackendState(backendMeetingId);renderAll();toast(`已移交 ${count||0} 条参会人员数据`);}catch(error){errorBox.textContent=error.message||"移交失败";}finally{button.disabled=false;}
   }
 
   async function documentApi(path, options = {}) {
@@ -594,7 +651,7 @@
   }
 
   function renderCounts() {
-    const list = visibleAttendees();
+    const list = activeVisibleAttendees();
     const pending = list.filter(a => a.approval === "pending").length;
     const unread = state.notifications.filter(n => !n.read).length;
     $("#navAttendeeCount").textContent = list.length;
@@ -604,7 +661,7 @@
   }
 
   function renderDashboard() {
-    const list = visibleAttendees(); const pending = list.filter(a => a.approval === "pending").length;
+    const list = activeVisibleAttendees(); const pending = list.filter(a => a.approval === "pending").length;
     const assigned = list.filter(a => a.transport?.pickup?.driver && a.transport.pickup.driver !== "待分配").length;
     const metrics = [
       ["已报名人数", list.length, `名额 ${state.settings.capacity} 人`, "♟", "#f9dfe2"],
@@ -636,16 +693,17 @@
     $("#rosterScope").textContent = currentUser().role === "sales" ? `仅显示 ${currentUser().name} 负责的参会者。` : "显示本会议全部参会者。";
     $("#importRoster").classList.toggle("is-hidden", currentUser().role !== "ops");
     $("#auditTravel").classList.toggle("is-hidden", !canManage());
-    const progressSelect=(a,field,options)=>`<select class="progress-select ${a[field]==="complete"||a[field]==="ticketed"?"done":""}" data-progress-field="${field}" data-attendee-id="${a.id}" ${isLocked(a)?"disabled":""}>${options.map(([value,label])=>`<option value="${value}" ${a[field]===value?"selected":""}>${label}</option>`).join("")}</select>`;
+    $("#transferRegistrant").classList.toggle("is-hidden",!canManage()&&!isSystemAdmin());
+    const progressSelect=(a,field,options)=>`<select class="progress-select ${a[field]==="complete"||a[field]==="ticketed"?"done":""}" data-progress-field="${field}" data-attendee-id="${a.id}" ${isLocked(a)||!canEditAttendeeData()||a.businessStatus==="cancelled"?"disabled":""}>${options.map(([value,label])=>`<option value="${value}" ${a[field]===value?"selected":""}>${label}</option>`).join("")}</select>`;
     const segmentBadge=(a,segment,label)=>{ const status=segmentApproval(a,segment); const text=status==="approved"?"已审批":status==="pending"?"待审批":status==="rejected"?"已退回":"无需审批"; return `<span class="segment-status ${status}">${label}·${text}</span>`; };
-    $("#attendeeTableBody").innerHTML = list.map(a => `<tr><td><div class="person-cell"><span class="person-avatar">${escapeHtml(a.name[0])}</span><div><span class="cell-primary">${escapeHtml(a.name)}</span><span class="cell-secondary">${escapeHtml(a.phone.slice(0,3))}****${escapeHtml(a.phone.slice(-4))}</span></div></div></td><td><span class="cell-primary">${escapeHtml(a.hospital)}</span><span class="cell-secondary">${escapeHtml(a.department)} · ${escapeHtml(a.title)}</span></td><td>${escapeHtml(a.venue)}</td><td><span class="cell-primary">${escapeHtml(a.outNo)}</span><span class="cell-secondary">${fmtDate(a.outDate)} ${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</span></td><td><span class="cell-primary">${escapeHtml(a.returnNo)}</span><span class="cell-secondary">${fmtDate(a.returnDate)} ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</span></td><td>${progressSelect(a,"privacyLetterStatus",[["pending","待沟通"],["sent","已发送"],["complete","已完成"]])}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><div class="approval-status-stack">${segmentBadge(a,"outbound","去程")}${segmentBadge(a,"return","返程")}</div></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`).join("");
+    $("#attendeeTableBody").innerHTML = list.map(a => `<tr class="${a.businessStatus==="cancelled"?"cancelled-row":""}"><td><div class="person-cell"><span class="person-avatar">${escapeHtml(a.name[0])}</span><div><span class="cell-primary">${escapeHtml(a.name)}${a.businessStatus==="cancelled"?' <em class="cancelled-label">已取消</em>':""}</span><span class="cell-secondary">${escapeHtml(a.phone.slice(0,3))}****${escapeHtml(a.phone.slice(-4))}</span></div></div></td><td><span class="cell-primary">${escapeHtml(a.hospital)}</span><span class="cell-secondary">${escapeHtml(a.department)} · ${escapeHtml(a.title)}</span></td><td>${escapeHtml(a.venue)}</td><td><span class="cell-primary">${escapeHtml(a.outNo)}</span><span class="cell-secondary">${fmtDate(a.outDate)} ${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</span></td><td><span class="cell-primary">${escapeHtml(a.returnNo)}</span><span class="cell-secondary">${fmtDate(a.returnDate)} ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</span></td><td>${progressSelect(a,"privacyLetterStatus",[["pending","待沟通"],["sent","已发送"],["complete","已完成"]])}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><div class="approval-status-stack">${segmentBadge(a,"outbound","去程")}${segmentBadge(a,"return","返程")}</div></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`).join("");
     $$('[data-progress-field]').forEach(select=>select.onchange=()=>updateProgressField(select));
     $("#attendeeEmpty").classList.toggle("is-hidden", !!list.length); bindDynamicButtons();
   }
 
   function updateProgressField(select) {
     const a=state.attendees.find(item=>item.id===select.dataset.attendeeId); if(!a||isLocked(a)) return renderAttendeeTable();
-    if(currentUser().role==="sales"&&a.ownerId!==currentUser().id) return deny();
+    if(!canEditAttendeeData()||(currentUser().role==="sales"&&a.ownerId!==currentUser().id)) return deny();
     const field=select.dataset.progressField; const previous=a[field]||"pending"; const next=select.value; if(previous===next)return;
     if(field==="ticketStatus"&&["processing","ticketed","changed"].includes(next)) { const blockers=ticketApprovalBlockers(a); if(blockers.length){ select.value=previous; const labels=blockers.map(segment=>segment==="outbound"?"去程":"返程").join("、"); return toast(`${a.name}的${labels}行程尚未审批通过，不能进行出票`,"error"); } }
     const labels={pending:"待处理",sent:"已发送",complete:"已完成",processing:"出票中",ticketed:"已出票",changed:"改签",refunded:"已退票"};
@@ -653,15 +711,15 @@
   }
 
   function renderApprovals() {
-    const list = visibleAttendees().filter(a => ["outbound","return"].some(segment=>["pending","rejected"].includes(segmentApproval(a,segment))));
-    const segmentRow=(a,segment)=>{ const outbound=segment==="outbound"; const status=segmentApproval(a,segment); const risks=evaluateSegmentRisks(a)[segment]; if(status==="normal")return""; return `<div class="segment-approval-row"><div><span class="segment-status ${status}">${outbound?"去程":"返程"} · ${status==="approved"?"已审批":status==="rejected"?"已退回":"待审批"}</span><strong>${escapeHtml(outbound?`${a.outFrom} → ${a.outTo} · ${a.outNo}`:`${a.returnFrom} → ${a.returnTo} · ${a.returnNo}`)}</strong><small>${risks.map(escapeHtml).join("；")}</small></div><div class="segment-actions"><button class="button button-secondary" data-reject="${a.id}" data-segment="${segment}" ${canManage()?"":"disabled"}>退回</button><button class="button button-primary" data-approve="${a.id}" data-segment="${segment}" ${canManage()?"":"disabled"}>审批通过</button></div></div>`; };
+    const list = activeVisibleAttendees().filter(a => ["outbound","return"].some(segment=>["pending","rejected"].includes(segmentApproval(a,segment))));
+    const segmentRow=(a,segment)=>{ const outbound=segment==="outbound"; const status=segmentApproval(a,segment); const risks=evaluateSegmentRisks(a)[segment]; if(status==="normal")return""; return `<div class="segment-approval-row"><div><span class="segment-status ${status}">${outbound?"去程":"返程"} · ${status==="approved"?"已审批":status==="rejected"?"已退回":"待审批"}</span><strong>${escapeHtml(outbound?`${a.outFrom} → ${a.outTo} · ${a.outNo}`:`${a.returnFrom} → ${a.returnTo} · ${a.returnNo}`)}</strong><small>${risks.map(escapeHtml).join("；")}</small></div><div class="segment-actions"><button class="button button-secondary" data-reject="${a.id}" data-segment="${segment}" ${canEditAttendeeData()?"":"disabled"}>退回</button><button class="button button-primary" data-approve="${a.id}" data-segment="${segment}" ${canEditAttendeeData()?"":"disabled"}>审批通过</button></div></div>`; };
     $("#approvalBoard").innerHTML = list.length ? list.map(a => `<article class="panel approval-card segment-approval-card"><span class="status status-pending">分段审批</span><h3>${escapeHtml(a.name)}</h3><div class="approval-meta">${escapeHtml(a.hospital)} · 负责人 ${escapeHtml(userName(a.ownerId))}</div><div class="segment-approval-list">${segmentRow(a,"outbound")}${segmentRow(a,"return")}</div></article>`).join("") : `<article class="panel empty-state" style="grid-column:1/-1">没有待审批的异常行程</article>`;
     bindDynamicButtons();
   }
 
   function renderTransport() {
     const query = $("#transportSearch").value.trim().toLowerCase();
-    const list = visibleAttendees().filter(a => !query || [a.name,a.outNo,a.returnNo,a.transport?.pickup?.batchName,a.transport?.dropoff?.batchName].join(" ").toLowerCase().includes(query));
+    const list = activeVisibleAttendees().filter(a => !query || [a.name,a.outNo,a.returnNo,a.transport?.pickup?.batchName,a.transport?.dropoff?.batchName].join(" ").toLowerCase().includes(query));
     renderTransportBatches(list);
     $("#newPickupBatch").classList.toggle("is-hidden",!canManage()); $("#newDropoffBatch").classList.toggle("is-hidden",!canManage()); $("#autoArrangeTransport").classList.toggle("is-hidden",!canManage());
     const cards = [];
@@ -818,7 +876,7 @@
   function renderLocks() {
     $("#masterLock").checked = state.locks.master; $("#masterLock").disabled = !canManage();
     $("#columnLocks").innerHTML = COLUMN_LOCKS.map(([key,label]) => `<label class="lock-chip"><input type="checkbox" data-column-lock="${key}" ${state.locks.columns.includes(key) ? "checked" : ""} ${canManage() ? "" : "disabled"}/> ${label}</label>`).join("");
-    $("#rowLocks").innerHTML = visibleAttendees().map(a => `<div class="row-lock-item"><span class="person-avatar">${escapeHtml(a.name[0])}</span><p><strong>${escapeHtml(a.name)}</strong><small>${escapeHtml(a.hospital)} · ${escapeHtml(userName(a.ownerId))}</small></p><label class="switch"><input type="checkbox" data-row-lock="${a.id}" ${state.locks.rows.includes(a.id) ? "checked" : ""} ${canManage() ? "" : "disabled"}/><span></span></label></div>`).join("");
+    $("#rowLocks").innerHTML = visibleAttendees().map(a => `<div class="row-lock-item"><span class="person-avatar">${escapeHtml(a.name[0])}</span><p><strong>${escapeHtml(a.name)}</strong><small>${escapeHtml(a.hospital)} · ${escapeHtml(userName(a.ownerId))}</small></p><label class="switch"><input type="checkbox" data-row-lock="${a.id}" ${state.locks.rows.includes(a.id) ? "checked" : ""} ${canEditAttendeeData() ? "" : "disabled"}/><span></span></label></div>`).join("");
     $$('[data-column-lock]').forEach(input => input.addEventListener("change", () => toggleArrayValue(state.locks.columns, input.dataset.columnLock, input.checked, "列锁定规则")));
     $$('[data-row-lock]').forEach(input => input.addEventListener("change", () => toggleArrayValue(state.locks.rows, input.dataset.rowLock, input.checked, `${state.attendees.find(a => a.id === input.dataset.rowLock)?.name}的报名信息`)));
   }
@@ -838,12 +896,16 @@
     form.elements.mismatchRule.checked = state.settings.mismatchRule; form.elements.departureRule.checked = state.settings.departureRule;
     const fieldNames = {fieldTitle:"title",fieldHcpId:"hcpId",fieldAccommodation:"accommodation",fieldFlight:"flight",fieldMslContact:"mslContact",fieldRemarks:"remarks"};
     Object.entries(fieldNames).forEach(([name,key]) => form.elements[name].checked = state.settings.fieldConfig[key] !== false);
-    const template=state.settings.registrationTemplate?.columns?.length ? state.settings.registrationTemplate : standardTemplate();
+    const template=state.settings.registrationTemplate?.columns?.length ? state.settings.registrationTemplate : {columns:[]};
     const customCount=template.columns.filter(column=>column.custom).length;
-    $("#templateStatus").innerHTML=`<strong>${escapeHtml(state.settings.templateName||"标准31列报名模板")}</strong><small>${template.columns.filter(column=>column.key!=="sequence").length} 个报名字段${customCount?` · ${customCount} 个自定义字段`:""}</small>`;
-    $("#templateColumns").innerHTML=template.columns.filter(column=>column.key!=="sequence").map(column=>`<span class="${column.custom?"custom":""}">${escapeHtml(column.header.replace(/\s+/g," "))}${column.required?" *":""}</span>`).join("");
+    $("#templateStatus").innerHTML=state.settings.templateImported?`<strong>${escapeHtml(state.settings.templateName||"已导入报名模板")}</strong><small>${template.columns.filter(column=>column.key!=="sequence").length} 个报名字段${customCount?` · ${customCount} 个自定义字段`:""}</small>`:`<strong>尚未导入报名模板</strong><small>导入后才能开启项目报名</small>`;
+    $("#templateColumns").innerHTML=template.columns.length?template.columns.filter(column=>column.key!=="sequence").map(column=>`<span class="${column.custom?"custom":""}">${escapeHtml(column.header.replace(/\s+/g," "))}${column.required?" *":""}</span>`).join(""):`<span>等待导入 Excel / CSV 模板</span>`;
     $$('input,textarea,select,button[type="submit"]', form).forEach(input => input.disabled = !canManage() && input.id !== "resetDemo");
-    $("#projectTemplateFile").disabled=!canManage(); $("#resetProjectTemplate").disabled=!canManage();
+    $("#projectTemplateFile").disabled=!canManage(); $("#resetProjectTemplate").disabled=!canManage()||!state.settings.templateImported||state.settings.registrationOpen;
+    $("#registrationOpenSwitch").checked=!!state.settings.registrationOpen;$("#registrationOpenSwitch").disabled=!canManage()||(!state.settings.templateImported&&!state.settings.registrationOpen);
+    $("#registrationOpenStatus").textContent=state.settings.registrationOpen?"报名开放":"报名关闭";$("#registrationOpenStatus").className=`status ${state.settings.registrationOpen?"status-ok":"status-locked"}`;
+    $("#registrationOpenHint").textContent=state.settings.templateImported?(state.settings.registrationOpen?"当前允许公开端新增报名":"关闭后仍可更改已报名和查询参会信息"):"必须先导入报名表模板";
+    $("#managerEditSwitch").checked=!!state.settings.managerEditEnabled;$("#managerEditSwitch").disabled=!(isSystemAdmin()||currentProject()?.ownerUserId===state.currentUserId);
     $("#resetDemo").classList.toggle("is-hidden", !!backend);
   }
 
@@ -856,7 +918,7 @@
 
   function openAttendee(id) {
     const a = state.attendees.find(item => item.id === id); if (!a) return;
-    const locked = isLocked(a); const canEdit = !locked && (canManage() || a.ownerId === currentUser().id);
+    const locked = isLocked(a); const canEdit = !locked && canEditAttendeeData() && (canManage() || isSystemAdmin() || a.ownerId === currentUser().id);
     $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">ATTENDEE DETAIL</span><h2>${escapeHtml(a.name)}</h2><p>${escapeHtml(a.hospital)} · ${escapeHtml(a.department)} · ${escapeHtml(userName(a.ownerId))}负责</p></div><div class="detail-body"><div class="detail-grid"><div class="detail-block"><small>手机号</small><strong>${escapeHtml(a.phone)}</strong></div><div class="detail-block"><small>客户编号</small><strong>${escapeHtml(a.hcpId)}</strong></div><div class="detail-block"><small>去程</small><strong>${escapeHtml(a.outNo)} · ${fmtDate(a.outDate)} ${escapeHtml(a.outDeparture)}</strong></div><div class="detail-block"><small>返程</small><strong>${escapeHtml(a.returnNo)} · ${fmtDate(a.returnDate)} ${escapeHtml(a.returnDeparture)}</strong></div><div class="detail-block"><small>去程路线</small><strong>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</strong></div><div class="detail-block"><small>返程路线</small><strong>${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</strong></div></div>${verificationDetails(a)}${a.risks.length ? `<div class="risk-preview warning">${a.risks.map(r => `△ ${escapeHtml(r)}`).join("<br>")}</div>` : `<div class="risk-preview ok">✓ 当前行程符合预设规则</div>`}<div class="detail-actions">${canEdit ? `<button class="button button-primary" id="editTripButton">修改行程</button>` : `<span class="status status-locked">${locked ? "名单已锁定" : "无修改权限"}</span>`}<button class="button button-secondary" id="closeDetailButton">关闭</button></div></div>`;
     const dialog = $("#attendeeDialog"); dialog.showModal(); $("#closeDetailButton").onclick = () => dialog.close(); if (canEdit) $("#editTripButton").onclick = () => showTripEditor(a);
   }
@@ -871,8 +933,8 @@
     };
   }
 
-  function approveAttendee(id,segment="outbound") { if (!canManage()) return deny(); const a = state.attendees.find(item => item.id === id); const key=segment==="return"?"returnApproval":"outboundApproval"; a[key]="approved"; syncAggregateApproval(a); addNotification("approval", `${a.name}的${segment==="return"?"返程":"去程"}异常行程已由${currentUser().name}审批通过`); saveState(); renderAll(); toast(`${segment==="return"?"返程":"去程"}行程已审批通过`); }
-  function rejectAttendee(id,segment="outbound") { if (!canManage()) return deny(); const a = state.attendees.find(item => item.id === id); const key=segment==="return"?"returnApproval":"outboundApproval"; a[key]="rejected"; syncAggregateApproval(a); addNotification("approval", `${currentUser().name}退回了${a.name}的${segment==="return"?"返程":"去程"}异常行程，请负责人修改`); saveState(); renderAll(); toast("已退回负责人修改"); }
+  function approveAttendee(id,segment="outbound") { if (!canEditAttendeeData()) return deny(); const a = state.attendees.find(item => item.id === id); const key=segment==="return"?"returnApproval":"outboundApproval"; a[key]="approved"; syncAggregateApproval(a); addNotification("approval", `${a.name}的${segment==="return"?"返程":"去程"}异常行程已由${currentUser().name}审批通过`); saveState(); renderAll(); toast(`${segment==="return"?"返程":"去程"}行程已审批通过`); }
+  function rejectAttendee(id,segment="outbound") { if (!canEditAttendeeData()) return deny(); const a = state.attendees.find(item => item.id === id); const key=segment==="return"?"returnApproval":"outboundApproval"; a[key]="rejected"; syncAggregateApproval(a); addNotification("approval", `${currentUser().name}退回了${a.name}的${segment==="return"?"返程":"去程"}异常行程，请负责人修改`); saveState(); renderAll(); toast("已退回负责人修改"); }
   function deny() { toast("当前身份没有此操作权限", "error"); renderAll(); }
 
   function editTransport(id, type) {
@@ -911,7 +973,7 @@
       const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"project-info",meeting:currentEventSlug()}) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "读取项目失败");
-      publicProjectConfig = payload.project || null; applyPublicProject(publicProjectConfig); $("#publicProjectSelector").classList.add("is-hidden"); $("#publicRegistrationResult").innerHTML=""; submit.disabled=false;
+      publicProjectConfig = payload.project || null; applyPublicProject(publicProjectConfig); $("#publicProjectSelector").classList.add("is-hidden"); $("#publicRegistrationResult").innerHTML=""; submit.disabled=!publicProjectConfig?.newRegistrationAllowed;
     } catch (error) {
       await loadAvailablePublicProjects(error.message);
     }
@@ -921,13 +983,13 @@
     const response=await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`,{method:"POST",headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey},body:JSON.stringify({action:"list-projects"})});
     const payload=await response.json(); const projects=payload.projects || []; const submit=$("#publicRegistrationForm").querySelector('button[type="submit"]');
     if (!response.ok || !projects.length) { $("#publicProjectName").textContent="暂无可用项目"; $("#publicRegistrationResult").innerHTML=`<div class="lookup-error">${escapeHtml(payload.error || reason)}，请联系会务负责人。</div>`; submit.disabled=true; return; }
-    if (projects.length===1) { const url=new URL(location.href); url.searchParams.set("event",projects[0].slug); history.replaceState(null,"",url); publicProjectConfig=projects[0]; applyPublicProject(projects[0]); submit.disabled=false; return; }
+    if (projects.length===1) { const url=new URL(location.href); url.searchParams.set("event",projects[0].slug); history.replaceState(null,"",url); publicProjectConfig=projects[0]; applyPublicProject(projects[0]); submit.disabled=!projects[0].newRegistrationAllowed; return; }
     $("#publicProjectName").textContent="请选择要报名的项目"; $("#publicRegistrationResult").innerHTML=`<div class="lookup-error">${escapeHtml(reason)}。请选择项目后再进入报名名单。</div>`;
     const selector=$("#publicProjectSelector"); selector.innerHTML=`<option value="">请选择项目</option>${projects.map(project=>`<option value="${escapeHtml(project.slug)}">${escapeHtml(project.name)}</option>`).join("")}`; selector.classList.remove("is-hidden"); selector.onchange=()=>{ if(!selector.value)return; const url=new URL(location.href); url.searchParams.set("event",selector.value); history.replaceState(null,"",url); publicProjectConfig=null; loadPublicProjectInfo(); }; submit.disabled=true;
   }
 
   function submitRegistration(event) {
-    event.preventDefault(); if (state.locks.master) return toast("全名单已锁定，不能新增报名", "error");
+    event.preventDefault(); if(!activeManagementOpen())return toast("项目报名与行程模块尚未开放","error");if(!canEditAttendeeData())return toast("当前账号仅有查看权限，请由原始填报人修改或开启管理员编辑权限","error");if (state.locks.master) return toast("全名单已锁定，不能新增报名", "error");
     const data = Object.fromEntries(new FormData(event.currentTarget)); data.phone = normalizePhone(data.phone); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");
     if (state.attendees.some(a => a.phone === data.phone)) return toast("该手机号已存在报名记录", "error");
     data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); refreshTravelApprovals(data); data.privacyLetterStatus="pending"; data.ticketStatus="pending"; data.customFields={}; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point: "会议酒店大堂" } };
@@ -937,54 +999,58 @@
   async function submitPublicRegistration(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    const result = $("#publicRegistrationResult");
+    const mode=form.id==="publicManageForm"?"manage":"register";
+    const result = mode==="manage"?$("#publicManageResult"):$("#publicRegistrationResult");
     const submit = form.querySelector('button[type="submit"]');
     const data = Object.fromEntries(new FormData(form));
-    const phone = normalizePhone(data.phone);
-    if (phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的 11 位手机号。</div>`; return; }
+    if(!String(data.region||"").trim()||!String(data.name||"").trim()||!String(data.employeeNo||"").trim()){result.innerHTML=`<div class="lookup-error">请完整填写大区、姓名和员工编号。</div>`;return;}
+    if(mode==="register"&&!publicProjectConfig?.newRegistrationAllowed){result.innerHTML=`<div class="lookup-error">当前项目已暂停新增报名，您可使用“更改已报名”或“参会信息查询”。</div>`;return;}
     if (!window.APP_CONFIG?.supabaseUrl) { result.innerHTML = `<div class="lookup-error">报名服务暂不可用，请联系会务负责人。</div>`; return; }
     submit.disabled = true; submit.textContent = "正在进入…";
     try {
       const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, {
         method:"POST",
         headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey},
-        body:JSON.stringify({action:"registrant-login",meeting:currentEventSlug(),region:data.region,name:data.name,phone}),
+        body:JSON.stringify({action:"registrant-login",meeting:currentEventSlug(),region:data.region,name:data.name,employeeNo:data.employeeNo,mode}),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "进入失败");
-      publicAuthSession = { region:data.region.trim(), name:data.name.trim(), phone }; publicProjectConfig = payload.project || publicProjectConfig; publicRegistrantAttendees = payload.attendees || []; applyPublicProject(publicProjectConfig);
-      enterRegistrantWorkspace();
+      publicAuthSession = { ...payload.registrant, sessionToken:payload.sessionToken, mode }; publicProjectConfig = payload.project || publicProjectConfig; publicRegistrantAttendees = payload.attendees || []; applyPublicProject(publicProjectConfig);
+      enterRegistrantWorkspace(mode);
     } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
-    finally { submit.disabled = false; submit.innerHTML = `进入我的报名名单 <span>→</span>`; }
+    finally { submit.disabled = false; submit.innerHTML = mode==="manage"?`查看我提交的报名 <span>→</span>`:`进入报名填报页面 <span>→</span>`; }
   }
 
-  function enterRegistrantWorkspace() {
-    $("#publicRegistrationResult").innerHTML = ""; $("#publicAuthStep").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.remove("is-hidden"); $(".portal-card").classList.add("expanded");
-    $("#publicRegistrantIdentity").textContent = `${publicAuthSession.region} · ${publicAuthSession.name} · ${publicAuthSession.phone}`;
+  function enterRegistrantWorkspace(mode="register") {
+    $("#publicRegistrationResult").innerHTML = "";$("#publicManageResult").innerHTML=""; $("#publicAuthStep").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.remove("is-hidden"); $(".portal-card").classList.add("expanded","workspace-mode");$('[data-portal-panel="register"]').classList.remove("is-hidden");$('[data-portal-panel="manage"]').classList.add("is-hidden");
+    $("#publicRegistrantIdentity").textContent = `${publicAuthSession.region} · ${publicAuthSession.name} · 员工编号 ${publicAuthSession.employeeNo}`;
     $("#publicRegistrantProject").textContent = `当前项目：${publicProjectConfig?.name || currentEventSlug()}`;
-    $("#newPublicAttendee").disabled=!!publicProjectConfig?.masterLocked;
+    $("#newPublicAttendee").classList.toggle("is-hidden",mode==="manage");$("#newPublicAttendee").disabled=mode==="manage"||!publicProjectConfig?.newRegistrationAllowed||!!publicProjectConfig?.masterLocked;
     renderPublicAttendeeList(); closePublicAttendeeEditor();
-    if (!publicRegistrantAttendees.length) openPublicAttendeeEditor();
+    if (mode==="register"&&!publicRegistrantAttendees.length&&publicProjectConfig?.newRegistrationAllowed) openPublicAttendeeEditor();
     scrollTo({top:0,behavior:"smooth"});
   }
 
   function renderPublicAttendeeList() {
     const list=$("#publicAttendeeList");
-    if (!publicRegistrantAttendees.length) { list.innerHTML=`<div class="public-attendee-empty"><strong>本项目还没有您提交的参会人员</strong><small>点击“新增参会人员”开始填写报名表</small></div>`; return; }
-    list.innerHTML=publicRegistrantAttendees.map(attendee=>`<article class="public-attendee-card"><div class="public-attendee-card-main"><strong>${escapeHtml(attendee.name || "未命名参会人员")}</strong><small>${escapeHtml(attendee.hospital || "医院待填写")} · ${escapeHtml(attendee.venue || "会场待选择")} · ${escapeHtml(attendee.phone || "手机号待填写")}</small><span class="status ${attendee.rowLocked ? "status-locked" : attendee.approval === "pending" ? "status-pending" : "status-ok"}">${attendee.rowLocked ? "名单已锁定" : attendee.approval === "pending" ? "行程待审批" : "可修改"}</span></div><button class="button button-secondary" type="button" data-edit-public-attendee="${escapeHtml(attendee.id)}">${attendee.rowLocked ? "查看" : "修改 / 更新"}</button></article>`).join("");
+    if (!publicRegistrantAttendees.length) { list.innerHTML=`<div class="public-attendee-empty"><strong>暂无您提交的参会报名数据</strong><small>${publicAuthSession?.mode==="manage"?"请确认填报人身份，或联系会务负责人进行数据移交":"点击“新增参会人员”开始填写报名表"}</small></div>`; return; }
+    list.innerHTML=publicRegistrantAttendees.map(attendee=>`<article class="public-attendee-card ${attendee.businessStatus==="cancelled"?"cancelled":""}"><div class="public-attendee-card-main"><strong>${escapeHtml(attendee.name || "未命名参会人员")}</strong><small>${escapeHtml(attendee.hospital || "医院待填写")} · ${escapeHtml(attendee.venue || "会场待选择")} · ${escapeHtml(attendee.phone || "手机号待填写")}</small><span class="status ${attendee.businessStatus==="cancelled"||attendee.rowLocked ? "status-locked" : attendee.approval === "pending" ? "status-pending" : "status-ok"}">${attendee.businessStatus==="cancelled"?"已取消报名":attendee.rowLocked ? "名单已锁定" : attendee.approval === "pending" ? "行程待审批" : "可修改"}</span></div><div class="public-attendee-actions"><button class="button button-secondary" type="button" data-edit-public-attendee="${escapeHtml(attendee.id)}">${attendee.businessStatus==="cancelled"||attendee.rowLocked ? "查看" : "修改 / 更新"}</button>${attendee.businessStatus!=="cancelled"&&!attendee.rowLocked?`<button class="text-button danger" type="button" data-cancel-public-attendee="${escapeHtml(attendee.id)}">取消报名</button>`:""}</div></article>`).join("");
     $$('[data-edit-public-attendee]',list).forEach(button=>button.addEventListener("click",()=>openPublicAttendeeEditor(publicRegistrantAttendees.find(item=>item.id===button.dataset.editPublicAttendee))));
+    $$('[data-cancel-public-attendee]',list).forEach(button=>button.addEventListener("click",()=>cancelPublicAttendee(button.dataset.cancelPublicAttendee)));
   }
 
   function openPublicAttendeeEditor(attendee = null) {
+    if(!attendee&&!canOpenNewRegistration()&&window.APP_CONFIG?.mode!=="production")return toast("当前项目未开放新增报名","error");
+    if(!attendee&&!publicProjectConfig?.newRegistrationAllowed&&window.APP_CONFIG?.mode==="production")return toast("当前项目已暂停新增报名","error");
     const form = $("#publicFullRegistrationForm");
     form.reset(); form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=false); form.querySelector('button[type="submit"]').classList.remove("is-hidden");
     publicEditingAttendeeId = attendee?.id || null;
     const aliases = { attendeeType:"attendeeType", name:"name", city:"city", hospital:"hospital", department:"department", title:"title", venue:"venue", sex:"sex", idNumber:"idNumber", phone:"phone", hcpId:"hcpId", accommodation:"accommodation", flight:"flight", region:"region", contactName:"contactName", contactMobile:"contactMobile", mslContact:"mslContact", remarks:"remarks", outDate:"outDate", outFrom:"outFrom", outTo:"outTo", outNo:"outNo", outDeparture:"outDeparture", outArrival:"outArrival", returnDate:"returnDate", returnFrom:"returnFrom", returnTo:"returnTo", returnNo:"returnNo", returnDeparture:"returnDeparture", returnArrival:"returnArrival" };
     Object.entries(aliases).forEach(([field,key]) => { if (form.elements[field]) form.elements[field].value = attendee?.[key] ?? (field === "attendeeType" ? "HCP" : ""); });
-    form.elements.region.value = publicAuthSession.region; form.elements.contactName.value = publicAuthSession.name; form.elements.contactMobile.value = publicAuthSession.phone;
+    form.elements.region.value = publicAuthSession.region; form.elements.contactName.value = publicAuthSession.name; form.elements.contactMobile.value = attendee?.contactMobile||"";
     applyPublicTemplate(publicProjectConfig?.registrationTemplate, publicProjectConfig?.templateName, attendee?.customFields||{});
     applyPublicFieldConfig(publicProjectConfig?.fieldConfig || {});
-    const locked=!!attendee?.rowLocked || !!publicProjectConfig?.masterLocked; form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=locked || input.readOnly); form.querySelector('button[type="submit"]').classList.toggle("is-hidden",locked);
+    const locked=attendee?.businessStatus==="cancelled"||!!attendee?.rowLocked || !!publicProjectConfig?.masterLocked; form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=locked || input.readOnly); form.querySelector('button[type="submit"]').classList.toggle("is-hidden",locked);
     $("#publicEditorTitle").textContent=attendee ? `${locked ? "查看" : "修改"}参会人员：${attendee.name}` : "新增参会人员";
     $("#publicFullRegistrationResult").innerHTML=""; $("#publicAttendeeEditor").classList.remove("is-hidden");
     $("#publicAttendeeEditor").scrollIntoView({behavior:"smooth",block:"start"});
@@ -1000,6 +1066,9 @@
     const footer=$(".public-footer"); if (footer) footer.textContent = project.servicePhone ? `会务服务台 ${project.servicePhone} · 工作时间 08:00–21:00` : "会务服务台 · 工作时间 08:00–21:00";
     const venueSelect=$("#publicFullRegistrationForm").elements.venue;
     if (venueSelect && project.venues?.length) { const selected=venueSelect.value; venueSelect.innerHTML=`<option value="">请选择</option>${project.venues.map(venue=>`<option>${escapeHtml(venue)}</option>`).join("")}`; venueSelect.value=project.venues.includes(selected) ? selected : ""; }
+    const registrationTab=$('[data-portal-tab="register"]');if(registrationTab){registrationTab.disabled=!project.newRegistrationAllowed;registrationTab.title=project.newRegistrationAllowed?"进入报名":"当前项目已暂停新增报名";}
+    const registrationSubmit=$("#publicRegistrationForm")?.querySelector('button[type="submit"]');if(registrationSubmit)registrationSubmit.disabled=!project.newRegistrationAllowed;
+    const currentPublicRoute=(location.hash||"#portal").slice(1);if(!project.newRegistrationAllowed&&["portal","register"].includes(currentPublicRoute)&&!publicAuthSession){history.replaceState(null,"",`${location.pathname}${location.search}#manage`);setPortalTab("manage");$("#publicManageResult").innerHTML=`<div class="lookup-error">当前项目已暂停新增报名；更改已报名和参会信息查询仍可正常使用。</div>`;}
     applyPublicTemplate(project.registrationTemplate,project.templateName,{});
   }
 
@@ -1033,7 +1102,7 @@
   }
 
   function resetPublicRegistrationStep() {
-    publicAuthSession=null; publicRegistrantAttendees=[]; publicEditingAttendeeId=null; const form=$("#publicFullRegistrationForm"); form.reset(); form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=false); form.querySelector('button[type="submit"]').classList.remove("is-hidden"); $("#publicAttendeeEditor").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.add("is-hidden"); $("#publicAuthStep").classList.remove("is-hidden"); $(".portal-card").classList.remove("expanded"); $("#publicFullRegistrationResult").innerHTML="";
+    publicAuthSession=null; publicRegistrantAttendees=[]; publicEditingAttendeeId=null; const form=$("#publicFullRegistrationForm"); form.reset(); form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=false); form.querySelector('button[type="submit"]').classList.remove("is-hidden"); $("#publicAttendeeEditor").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.add("is-hidden"); $("#publicAuthStep").classList.remove("is-hidden"); $(".portal-card").classList.remove("expanded","workspace-mode"); $("#publicFullRegistrationResult").innerHTML="";
   }
 
   async function submitPublicFullRegistration(event) {
@@ -1041,16 +1110,21 @@
     const form = event.currentTarget; const result = $("#publicFullRegistrationResult"); const submit = form.querySelector('button[type="submit"]');
     const details = Object.fromEntries(new FormData(form));
     details.customFields={}; Object.keys(details).filter(key=>key.startsWith("custom__")).forEach(key=>{ details.customFields[key.slice(8)]=details[key]; delete details[key]; });
-    details.phone = normalizePhone(details.phone); details.region=publicAuthSession.region; details.contactName=publicAuthSession.name; details.contactMobile=publicAuthSession.phone;
+    details.phone = normalizePhone(details.phone); details.region=publicAuthSession.region; details.contactName=publicAuthSession.name;details.contactMobile=normalizePhone(details.contactMobile);
     if (details.phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的参会人员手机号。</div>`; return; }
     submit.disabled = true; submit.textContent = "正在保存…";
     try {
-      const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"save-attendee",meeting:currentEventSlug(),phone:publicAuthSession.phone,registrantName:publicAuthSession.name,registrantRegion:publicAuthSession.region,attendeeId:publicEditingAttendeeId,details}) });
+      const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"save-attendee",meeting:currentEventSlug(),sessionToken:publicAuthSession.sessionToken,attendeeId:publicEditingAttendeeId,details}) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "提交失败");
       const index=publicRegistrantAttendees.findIndex(item=>item.id===payload.attendee.id); if(index>=0) publicRegistrantAttendees[index]=payload.attendee; else publicRegistrantAttendees.unshift(payload.attendee);
       renderPublicAttendeeList(); toast(payload.needsApproval ? "参会人员已保存，异常行程已提交审批" : "参会人员信息已保存"); closePublicAttendeeEditor();
     } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
     finally { submit.disabled = false; if (!submit.classList.contains("is-hidden")) submit.textContent = "保存参会人员信息"; }
+  }
+
+  async function cancelPublicAttendee(attendeeId){
+    const attendee=publicRegistrantAttendees.find(item=>item.id===attendeeId);if(!attendee||!confirm(`确认取消“${attendee.name}”的报名？记录会保留用于统计对账。`))return;
+    try{const response=await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`,{method:"POST",headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey},body:JSON.stringify({action:"cancel-attendee",meeting:currentEventSlug(),sessionToken:publicAuthSession.sessionToken,attendeeId})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"取消失败");attendee.businessStatus="cancelled";renderPublicAttendeeList();toast("报名已取消，历史记录已保留");}catch(error){toast(error.message||"取消报名失败","error");}
   }
 
   async function queryTransport(event) {
@@ -1065,7 +1139,7 @@
         if (!payload.found) { result.innerHTML = `<div class="lookup-error">未查询到该手机号的行程，请确认号码或联系会务服务台。</div>`; return; }
         const pickup = payload.transports?.find(item => item.direction === "pickup") || {};
         const dropoff = payload.transports?.find(item => item.direction === "dropoff") || {};
-        result.innerHTML = renderLookupResult(payload.attendee.name, payload.outbound, payload.returnTrip, pickup, dropoff);
+        result.innerHTML = renderLookupResult(payload.attendee, payload.outbound, payload.returnTrip, pickup, dropoff, payload.project);
         lastLookupSchedule = buildLookupSchedule(payload.attendee.name, pickup, dropoff);
         $("#addCalendarButton")?.addEventListener("click", downloadCalendar);
       } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
@@ -1076,12 +1150,13 @@
     const outbound = { number:a.outNo, from:a.outFrom, to:a.outTo, date:`${a.outDate} ${a.outArrival} 到达` };
     const returnTrip = { number:a.returnNo, from:a.returnFrom, to:a.returnTo, date:`${a.returnDate} ${a.returnDeparture} 出发` };
     const pickup = a.transport?.pickup || {}; const dropoff = a.transport?.dropoff || {};
-    result.innerHTML = renderLookupResult(maskName(a.name), outbound, returnTrip, pickup, dropoff);
+    result.innerHTML = renderLookupResult({name:maskName(a.name),venue:a.venue,accommodation:a.accommodation==="Y"?"需要住宿":"无需住宿",hotel:a.customFields?.hotel||"待公布"}, outbound, returnTrip, pickup, dropoff, state.settings);
     lastLookupSchedule = buildLookupSchedule(a.name, pickup, dropoff);
     $("#addCalendarButton")?.addEventListener("click", downloadCalendar);
   }
 
-  function renderLookupResult(name, outbound = {}, returnTrip = {}, pickup = {}, dropoff = {}) {
+  function renderLookupResult(attendeeInfo, outbound = {}, returnTrip = {}, pickup = {}, dropoff = {}, project = {}) {
+    const info=typeof attendeeInfo==="string"?{name:attendeeInfo}:attendeeInfo||{};const name=info.name||"参会人员";
     const displayTime = value => { if (!value) return "待公布"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("zh-CN",{hour12:false}); };
     const card = (label, trip, t) => {
       const staff = isStaffTransport({...t,driver:t.driver || t.driver_name});
@@ -1089,7 +1164,7 @@
       const vehicle = staff ? "无需司机及车辆信息" : (t.vehicle || "待分配");
       return `<div class="result-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="result-route"><div><small>工作人员 / 司机</small><strong>${escapeHtml(driver)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div><div><small>${label}时间</small><strong>${escapeHtml(displayTime(t.time || t.service_time))}</strong></div><div><small>集合点</small><strong>${escapeHtml(t.point || t.meeting_point || "待公布")}</strong></div>${t.terminal?`<div><small>机场 / 高铁站</small><strong>${escapeHtml(t.terminal)}</strong></div>`:""}${t.placard?`<div><small>接机牌</small><strong>${escapeHtml(t.placard)}</strong></div>`:""}</div></div>`;
     };
-    return `<div class="lookup-name">${escapeHtml(name)}，你的安排如下</div>${card("接机",outbound,pickup)}${card("送机",returnTrip,dropoff)}<div class="calendar-action"><strong>还差一步：开启手机自动提醒</strong><span>受手机隐私规则限制，网页不能静默写入日历。请点击并在系统弹窗中确认“添加全部”。</span><button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">加入手机日历 · 接送前 30 分钟提醒</button></div>`;
+    return `<div class="lookup-name">${escapeHtml(name)}，你的参会安排如下</div><div class="participant-info-card"><div><small>会议</small><strong>${escapeHtml(project.name||project.eventName||"待公布")}</strong></div><div><small>会议日期</small><strong>${escapeHtml([project.startDate,project.endDate].filter(Boolean).join(" — ")||"待公布")}</strong></div><div><small>会场</small><strong>${escapeHtml(info.venue||"待公布")}</strong></div><div><small>住宿安排</small><strong>${escapeHtml(info.accommodation||"待公布")} · ${escapeHtml(info.hotel||"待公布")}</strong></div></div>${card("接机",outbound,pickup)}${card("送机",returnTrip,dropoff)}<div class="calendar-action"><strong>还差一步：开启手机自动提醒</strong><span>受手机隐私规则限制，网页不能静默写入日历。请点击并在系统弹窗中确认“添加全部”。</span><button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">加入手机日历 · 接送前 30 分钟提醒</button></div>`;
   }
 
   function buildLookupSchedule(name, pickup = {}, dropoff = {}) {
@@ -1181,14 +1256,18 @@
       const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false});
       const headers=(rows.find(row=>row.filter(value=>cleanCell(value)).length>=2)||[]).map(cleanCell);
       if (headers.length<2) throw new Error("没有识别到模板表头");
-      state.settings.templateName=file.name; state.settings.registrationTemplate=templateFromHeaders(headers);
+      const template=templateFromHeaders(headers);
+      if(backend){const{error}=await backend.rpc("save_project_registration_template",{p_meeting_id:backendMeetingId,p_template_name:file.name,p_template:template});if(error)throw error;}
+      state.settings.templateName=file.name; state.settings.registrationTemplate=template;state.settings.templateImported=true;const project=currentProject();if(project)project.templateImported=true;
       addNotification("change",`${currentUser().name}为当前项目启用了报名模板：${file.name}`); saveState(); renderSettings(); toast(`模板已启用，共识别 ${headers.length} 列`);
     } catch(error) { toast(error.message||"模板读取失败","error"); }
     finally { $("#projectTemplateFile").value=""; }
   }
-  function resetProjectTemplate() {
-    if (!canManage() || !confirm("恢复当前项目的标准31列报名模板？")) return;
-    state.settings.templateName="标准31列报名模板"; state.settings.registrationTemplate=standardTemplate(); saveState(); renderSettings(); toast("已恢复标准报名模板");
+  async function resetProjectTemplate() {
+    if (!canManage()) return;
+    if(state.settings.registrationOpen)return toast("请先关闭报名开关，再删除模板","error");
+    if (!confirm("确认删除当前项目报名模板？删除后需要重新导入才能开启报名。")) return;
+    try{if(backend){const{error}=await backend.rpc("remove_project_registration_template",{p_meeting_id:backendMeetingId});if(error)throw error;}state.settings.templateName="";state.settings.registrationTemplate={version:1,columns:[]};state.settings.templateImported=false;const project=currentProject();if(project)project.templateImported=false;saveState();renderSettings();renderProjects();toast("报名模板已删除");}catch(error){toast(error.message||"模板删除失败","error");}
   }
   function excelDate(value) {
     if (!value) return "";
@@ -1253,8 +1332,9 @@
   }
 
   function exportExcel() {
+    if(!isSystemAdmin()&&!['ops','client','sales'].includes(currentUser().role))return toast("当前账号没有导出权限","error");
     const columns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns;
-    const headers=[...columns.map(column=>column.header),"隐私沟通函状态","去程审批状态","返程审批状态","出票状态","去程计划时刻核验","返程计划时刻核验"];
+    const headers=[...columns.map(column=>column.header),"报名状态","隐私沟通函状态","去程审批状态","返程审批状态","出票状态","去程计划时刻核验","返程计划时刻核验"];
     const progressLabels={pending:"待处理",sent:"已发送",complete:"已完成",processing:"出票中",ticketed:"已出票",changed:"改签",refunded:"已退票"};
     const segmentLabels={normal:"无需审批",pending:"待审批",approved:"已审批",rejected:"已退回"};
     const rows=visibleAttendees().map((a,i)=>[...columns.map(column=>{
@@ -1262,7 +1342,7 @@
       if(column.key==="contactName") return a.contactName||userName(a.ownerId);
       if(column.key==="contactMobile") return a.contactMobile||state.users.find(u=>u.id===a.ownerId)?.phone||"";
       return column.custom ? a.customFields?.[column.key]||"" : a[column.key]||"";
-    }),progressLabels[a.privacyLetterStatus||"pending"],segmentLabels[segmentApproval(a,"outbound")],segmentLabels[segmentApproval(a,"return")],progressLabels[a.ticketStatus||"pending"],verificationExport(a.customFields?._travelVerification?.outbound),verificationExport(a.customFields?._travelVerification?.return)]);
+    }),a.businessStatus==="cancelled"?"已取消报名":"有效报名",progressLabels[a.privacyLetterStatus||"pending"],segmentLabels[segmentApproval(a,"outbound")],segmentLabels[segmentApproval(a,"return")],progressLabels[a.ticketStatus||"pending"],verificationExport(a.customFields?._travelVerification?.outbound),verificationExport(a.customFields?._travelVerification?.return)]);
     if (window.XLSX) { const ws = XLSX.utils.aoa_to_sheet([headers,...rows]); ws["!cols"] = headers.map((_,i) => ({ wch: i === 0 ? 7 : 18 })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"报名表"); XLSX.writeFile(wb,`${state.settings.slug||"项目"}-报名表-${new Date().toISOString().slice(0,10)}.xlsx`); toast("Excel 已按当前项目模板导出"); }
     else { const csv = [headers,...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n"); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob(["\ufeff",csv],{type:"text/csv"})); link.download = "HEMA-SEM-报名表.csv"; link.click(); toast("已导出兼容 Excel 的 CSV 文件"); }
   }

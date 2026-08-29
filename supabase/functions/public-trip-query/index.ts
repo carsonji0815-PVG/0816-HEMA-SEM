@@ -20,6 +20,7 @@ const hash = async (value: string) => {
 };
 
 const clean = (value: unknown, max = 200) => String(value || "").trim().slice(0, max);
+const normalized = (value: unknown, max = 200) => clean(value, max).replace(/\s+/g, "").toLowerCase();
 const yes = (value: unknown) => ["Y", "true", "1", "是"].includes(String(value));
 const registrationView = (row: Record<string, unknown>) => ({
   attendeeType: row.attendee_type || "HCP", name: row.name || "", city: row.city || "", hospital: row.hospital || "", department: row.department || "", title: row.title || "", venue: row.venue || "", sex: row.sex || "",
@@ -32,7 +33,9 @@ const registrationView = (row: Record<string, unknown>) => ({
 const projectView = (meeting: Record<string, unknown>) => ({
   slug: meeting.slug || "", name: meeting.name || "参会服务", clientName: meeting.client_name || "", venues: meeting.venues || [], servicePhone: meeting.service_phone || "", brandColor: meeting.brand_color || "#5267d9", fieldConfig: meeting.field_config || {}, flightLeadMinutes: meeting.flight_lead_minutes || 120, trainLeadMinutes: meeting.train_lead_minutes || 90,
   startDate: meeting.start_date || "", endDate: meeting.end_date || "", deadline: meeting.deadline || "", masterLocked: !!meeting.master_locked, archiveReady: !!meeting.archive_ready,
-  templateName: meeting.template_name || "标准31列报名模板", registrationTemplate: meeting.registration_template || {},
+  templateName: meeting.template_name || "", registrationTemplate: meeting.registration_template || {}, templateImported:!!meeting.template_imported_at,
+  registrationOpen:!!meeting.registration_open, newRegistrationAllowed:!!meeting.registration_open,
+  managementOpen:!!meeting.registration_open || !!meeting.archive_ready, managerEditEnabled:!!meeting.manager_attendee_edit_enabled,
 });
 
 export default {
@@ -58,60 +61,85 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   const action = clean(payload.action, 50);
   const slug = clean(payload.meeting, 100);
   if (action === "list-projects") {
-    const { data:meetings, error } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready").eq("archive_ready",true).order("start_date",{ascending:false}).limit(50);
+    const { data:meetings, error } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,registration_open,manager_attendee_edit_enabled").or("registration_open.eq.true,archive_ready.eq.true").order("start_date",{ascending:false}).limit(50);
     if (error) return reply({ error:"读取项目列表失败" }, 500);
     return reply({ projects:(meetings || []).map(projectView) });
   }
   if (!slug) return reply({ error: "报名链接缺少项目编号，请使用项目专属二维码或链接" }, 400);
 
-  const { data: meeting } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,allowed_departure_cities,check_city_mismatch,check_departure_city").eq("slug", slug).maybeSingle();
+  const { data: meeting } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,registration_open,manager_attendee_edit_enabled,allowed_departure_cities,check_city_mismatch,check_departure_city").eq("slug", slug).maybeSingle();
   if (!meeting) return reply({ error: "未找到会议" }, 404);
-  if (!meeting.archive_ready) return reply({ error:"项目尚未完成前置文件归档，报名暂未开放" }, 423);
   if (action === "project-info") return reply({ project:projectView(meeting) });
-
-  const phone = clean(payload.phone).replace(/\D/g, "").slice(-11);
-  if (!/^1\d{10}$/.test(phone)) return reply({ error: "请输入正确的手机号" }, 400);
 
   if (action === "register") return reply({ error:"报名页面已更新，请刷新后重新填写" }, 426);
 
   if (action === "registrant-login") {
     const name = clean(payload.name, 50);
     const region = clean(payload.region, 50);
-    if (!name || !region) return reply({ error:"请填写大区和报名负责人姓名" }, 400);
+    const employeeNo = clean(payload.employeeNo, 50);
+    const employeeNoNorm = normalized(employeeNo, 50);
+    const mode = clean(payload.mode, 20) === "manage" ? "manage" : "register";
+    if (!name || !region || !employeeNoNorm) return reply({ error:"请填写大区、姓名和员工编号" }, 400);
+    await db.from("operation_audit_logs").insert({ meeting_id:meeting.id, actor_label:`${name}（${employeeNo}）`, action:"registrant_login", target_type:"registrant", metadata:{ region, name, employeeNo, mode, ipHash } });
+    let { data:registrant, error:registrantError } = await db.from("registrants").select("*").eq("meeting_id",meeting.id).eq("employee_no_norm",employeeNoNorm).maybeSingle();
+    if (registrantError) return reply({ error:"身份校验暂不可用，请稍后重试" },500);
+    if (registrant) {
+      if (normalized(registrant.display_name,50)!==normalized(name,50) || normalized(registrant.region,50)!==normalized(region,50)) return reply({ error:"大区、姓名或员工编号不匹配，请核对后重试" },403);
+      if (!registrant.active) return reply({ error:"该填报人账号已停用，请联系会务负责人" },403);
+    } else {
+      const createResult=await db.from("registrants").insert({meeting_id:meeting.id,region,display_name:name,employee_no:employeeNo,employee_no_norm:employeeNoNorm}).select("*").single();
+      if (createResult.error || !createResult.data) return reply({ error:"填报人身份建立失败，请稍后重试" },500);
+      registrant=createResult.data;
+    }
+    const tokenBytes=crypto.getRandomValues(new Uint8Array(32));
+    const sessionToken=[...tokenBytes].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+    const tokenHash=await hash(sessionToken);
+    const expiresAt=new Date(Date.now()+12*60*60*1000).toISOString();
+    const { error:sessionError }=await db.from("public_registration_sessions").insert({meeting_id:meeting.id,registrant_id:registrant.id,token_hash:tokenHash,expires_at:expiresAt});
+    if (sessionError) return reply({ error:"登录会话创建失败，请稍后重试" },500);
     const { data: attendees, error } = await db.from("attendees").select("*")
-      .eq("meeting_id", meeting.id).eq("contact_mobile", phone).eq("contact_name", name).eq("region", region).order("created_at", { ascending:false });
+      .eq("meeting_id", meeting.id).eq("registrant_id",registrant.id).order("created_at", { ascending:false });
     if (error) return reply({ error:"读取报名名单失败，请稍后重试" }, 500);
-    return reply({ authenticated:true, project:projectView(meeting), attendees:(attendees || []).map(row => ({ id:row.id, rowLocked:!!row.row_locked, approval:row.approval || "normal", ticketStatus:row.ticket_status || "pending", ...registrationView(row) })) });
+    return reply({ authenticated:true, sessionToken, expiresAt, mode, project:projectView(meeting), registrant:{id:registrant.id,region:registrant.region,name:registrant.display_name,employeeNo:registrant.employee_no}, attendees:(attendees || []).map(row => ({ id:row.id, rowLocked:!!row.row_locked, approval:row.approval || "normal", ticketStatus:row.ticket_status || "pending", businessStatus:row.business_status||"active", ...registrationView(row) })) });
   }
 
   if (action === "save-attendee") {
-    const registrantName = clean(payload.registrantName, 50);
-    const registrantRegion = clean(payload.registrantRegion, 50);
+    const sessionToken=clean(payload.sessionToken,200);
+    if (!sessionToken) return reply({error:"报名会话已失效，请重新进入"},401);
+    const sessionHash=await hash(sessionToken);
+    const { data:session }=await db.from("public_registration_sessions").select("id,registrant_id,expires_at,registrants(*)").eq("meeting_id",meeting.id).eq("token_hash",sessionHash).gt("expires_at",new Date().toISOString()).maybeSingle();
+    const registrantRaw=Array.isArray(session?.registrants)?session?.registrants[0]:session?.registrants;
+    const registrant=registrantRaw as Record<string,unknown>|null;
+    if (!session || !registrant || !registrant.active) return reply({error:"报名会话已过期，请重新进入"},401);
+    await db.from("public_registration_sessions").update({last_used_at:new Date().toISOString()}).eq("id",session.id);
     const details = payload.details && typeof payload.details === "object" && !Array.isArray(payload.details) ? payload.details as Record<string,unknown> : {};
     const attendeeId = clean(payload.attendeeId, 100);
     const attendeeName = clean(details.name, 50);
     const attendeePhone = clean(details.phone, 20).replace(/\D/g, "").slice(-11);
-    if (!registrantName || !registrantRegion) return reply({ error:"报名负责人信息已失效，请重新进入" }, 401);
     if (!attendeeName || !/^1\d{10}$/.test(attendeePhone)) return reply({ error:"请填写参会人员姓名和正确的手机号" }, 400);
     if (meeting.master_locked) return reply({ error:"项目名单已锁定，不能新增或修改" }, 423);
-    if (meeting.deadline && new Date(meeting.deadline).getTime() < Date.now()) return reply({ error:"报名已截止，请联系会务负责人" }, 410);
 
     let attendee: Record<string,unknown> | null = null;
     if (attendeeId) {
       const { data } = await db.from("attendees").select("*").eq("id",attendeeId).eq("meeting_id",meeting.id).maybeSingle();
       attendee = data;
-      if (!attendee || clean(attendee.contact_mobile,20) !== phone || clean(attendee.contact_name,50) !== registrantName || clean(attendee.region,50) !== registrantRegion) return reply({ error:"您无权修改该参会人员" }, 403);
+      if (!attendee || attendee.registrant_id !== session.registrant_id) return reply({ error:"您无权修改该参会人员" }, 403);
+      if (attendee.business_status === "cancelled") return reply({ error:"该报名已取消，不能继续修改" },409);
       if (attendee.row_locked) return reply({ error:"该参会人员信息已锁定，不能修改" }, 423);
+    } else {
+      if (!meeting.registration_open) return reply({error:"当前项目已暂停新增报名，您仍可更改已报名或查询参会信息"},423);
+      if (!meeting.template_imported_at) return reply({error:"项目尚未导入报名表模板，暂不能新增报名"},423);
+      if (meeting.deadline && new Date(meeting.deadline).getTime() < Date.now()) return reply({ error:"报名已截止，请联系会务负责人" }, 410);
     }
 
     const requestedCustom = details.customFields && typeof details.customFields === "object" && !Array.isArray(details.customFields) ? details.customFields as Record<string,unknown> : {};
     const allowedCustom = new Set(((meeting.registration_template as {columns?:Array<{key?:string,custom?:boolean}>})?.columns || []).filter(column=>column.custom).map(column=>clean(column.key,80)));
     const customFields = Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)]));
     const values: Record<string,unknown> = {
-      attendee_type:clean(details.attendeeType,30) || "HCP", name:attendeeName, city:clean(details.city,50), hospital:clean(details.hospital,100), department:clean(details.department,100), title:clean(details.title,50), venue:clean(details.venue,50), sex:clean(details.sex,10), id_number:clean(details.idNumber,100), phone:attendeePhone, hcp_id:clean(details.hcpId,100), accommodation:yes(details.accommodation), is_flight:yes(details.flight), region:registrantRegion,
+      attendee_type:clean(details.attendeeType,30) || "HCP", name:attendeeName, city:clean(details.city,50), hospital:clean(details.hospital,100), department:clean(details.department,100), title:clean(details.title,50), venue:clean(details.venue,50), sex:clean(details.sex,10), id_number:clean(details.idNumber,100), phone:attendeePhone, hcp_id:clean(details.hcpId,100), accommodation:yes(details.accommodation), is_flight:yes(details.flight), region:clean(registrant.region,50),
       out_date:clean(details.outDate,10) || null, out_from:clean(details.outFrom,50), out_to:clean(details.outTo,50), out_no:clean(details.outNo,30), out_departure:clean(details.outDeparture,5) || null, out_arrival:clean(details.outArrival,5) || null,
       return_date:clean(details.returnDate,10) || null, return_from:clean(details.returnFrom,50), return_to:clean(details.returnTo,50), return_no:clean(details.returnNo,30), return_departure:clean(details.returnDeparture,5) || null, return_arrival:clean(details.returnArrival,5) || null,
-      contact_name:registrantName, contact_mobile:phone, msl_contact:clean(details.mslContact,50), remarks:clean(details.remarks,500), custom_fields:customFields,
+      contact_name:clean(registrant.display_name,50), contact_mobile:clean(details.contactMobile,20).replace(/\D/g,"").slice(-11), msl_contact:clean(details.mslContact,50), remarks:clean(details.remarks,500), custom_fields:customFields,
     };
     const keyToDb:Record<string,string>={attendeeType:"attendee_type",name:"name",city:"city",hospital:"hospital",department:"department",title:"title",venue:"venue",sex:"sex",idNumber:"id_number",phone:"phone",hcpId:"hcp_id",accommodation:"accommodation",flight:"is_flight",region:"region",outDate:"out_date",outFrom:"out_from",outTo:"out_to",outNo:"out_no",outDeparture:"out_departure",outArrival:"out_arrival",returnDate:"return_date",returnFrom:"return_from",returnTo:"return_to",returnNo:"return_no",returnDeparture:"return_departure",returnArrival:"return_arrival",contactName:"contact_name",contactMobile:"contact_mobile",mslContact:"msl_contact",remarks:"remarks"};
     const configuredColumns=((meeting.registration_template as {columns?:Array<{key?:string,required?:boolean,custom?:boolean}>})?.columns || []);
@@ -140,11 +168,30 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     else {
       const { data:owner } = await db.from("meeting_members").select("user_id").eq("meeting_id",meeting.id).eq("role","ops").order("created_at",{ascending:true}).limit(1).maybeSingle();
       if (!owner) return reply({ error:"会务负责人尚未配置，请稍后再试" }, 503);
-      ({ data:saved, error:saveError } = await db.from("attendees").insert({...updateValues,meeting_id:meeting.id,owner_id:owner.user_id,privacy_letter_status:"pending",ticket_status:"pending"}).select("*").single());
+      ({ data:saved, error:saveError } = await db.from("attendees").insert({...updateValues,meeting_id:meeting.id,owner_id:owner.user_id,registrant_id:session.registrant_id,business_status:"active",privacy_letter_status:"pending",ticket_status:"pending"}).select("*").single());
     }
     if (saveError || !saved) return reply({ error:String(saveError?.message || "").includes("duplicate") ? "该参会人员手机号已在本项目中报名" : "报名保存失败，请稍后重试" }, 500);
-    return reply({ saved:true, attendee:{id:saved.id,rowLocked:!!saved.row_locked,approval:saved.approval||"normal",ticketStatus:saved.ticket_status||"pending",...registrationView(saved)}, needsApproval:aggregateApproval==="pending", project:projectView(meeting) });
+    return reply({ saved:true, attendee:{id:saved.id,rowLocked:!!saved.row_locked,approval:saved.approval||"normal",ticketStatus:saved.ticket_status||"pending",businessStatus:saved.business_status||"active",...registrationView(saved)}, needsApproval:aggregateApproval==="pending", project:projectView(meeting) });
   }
+
+  if (action === "cancel-attendee") {
+    const sessionToken=clean(payload.sessionToken,200); const attendeeId=clean(payload.attendeeId,100);
+    if (!sessionToken || !attendeeId) return reply({error:"请求信息不完整"},400);
+    const sessionHash=await hash(sessionToken);
+    const { data:session }=await db.from("public_registration_sessions").select("id,registrant_id,expires_at").eq("meeting_id",meeting.id).eq("token_hash",sessionHash).gt("expires_at",new Date().toISOString()).maybeSingle();
+    if (!session) return reply({error:"报名会话已过期，请重新进入"},401);
+    const { data:attendee }=await db.from("attendees").select("*").eq("id",attendeeId).eq("meeting_id",meeting.id).eq("registrant_id",session.registrant_id).maybeSingle();
+    if (!attendee) return reply({error:"您无权取消该报名"},403);
+    if (attendee.business_status==="cancelled") return reply({cancelled:true});
+    if (meeting.master_locked || attendee.row_locked) return reply({error:"名单已锁定，不能取消报名"},423);
+    const {error}=await db.from("attendees").update({business_status:"cancelled",cancelled_at:new Date().toISOString(),cancelled_by_registrant_id:session.registrant_id}).eq("id",attendee.id);
+    if (error) return reply({error:"取消报名失败，请稍后重试"},500);
+    return reply({cancelled:true});
+  }
+
+  const phone = clean(payload.phone).replace(/\D/g, "").slice(-11);
+  if (["authenticate","complete-registration"].includes(action)) return reply({error:"旧版报名入口已停用，请刷新页面后使用员工编号进入"},410);
+  if (!/^1\d{10}$/.test(phone)) return reply({ error: "请输入正确的手机号" }, 400);
 
   if (clean(payload.action) === "authenticate") {
     const name = clean(payload.name, 50);
@@ -210,8 +257,8 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   }
 
   const { data: attendee } = await db.from("attendees")
-    .select("id,name,out_date,out_from,out_to,out_no,out_departure,out_arrival,return_date,return_from,return_to,return_no,return_departure,return_arrival")
-    .eq("meeting_id", meeting.id).eq("phone", phone).maybeSingle();
+    .select("id,name,venue,accommodation,custom_fields,out_date,out_from,out_to,out_no,out_departure,out_arrival,return_date,return_from,return_to,return_no,return_departure,return_arrival")
+    .eq("meeting_id", meeting.id).eq("phone", phone).eq("business_status","active").maybeSingle();
   if (!attendee) return reply({ found: false });
   const { data: transports } = await db.from("transports")
     .select("direction,driver_name,staff_name,driver_phone,vehicle,service_time,meeting_point,service_mode,batch_id,batch_name,terminal,placard,capacity,notes,time_strategy")
@@ -221,7 +268,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     found: true,
     meeting: meeting.name,
     project: projectView(meeting),
-    attendee: { name: `${attendee.name.slice(0, 1)}${"*".repeat(Math.max(attendee.name.length - 1, 1))}` },
+    attendee: { name: `${attendee.name.slice(0, 1)}${"*".repeat(Math.max(attendee.name.length - 1, 1))}`, venue:attendee.venue||"待公布", accommodation:attendee.accommodation?"需要住宿":"无需住宿", hotel:(attendee.custom_fields as Record<string,unknown> || {}).hotel || (attendee.custom_fields as Record<string,unknown> || {}).酒店 || "待公布" },
     outbound: { date: attendee.out_date, from: attendee.out_from, to: attendee.out_to, number: attendee.out_no, departure: attendee.out_departure, arrival: attendee.out_arrival },
     returnTrip: { date: attendee.return_date, from: attendee.return_from, to: attendee.return_to, number: attendee.return_no, departure: attendee.return_departure, arrival: attendee.return_arrival },
     transports: (transports || []).map(item => ({ direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy })),

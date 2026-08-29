@@ -566,3 +566,34 @@ table tbody tr:hover { background: #fff7f5; }
 @media (max-width: 760px) {
   .sidebar { box-shadow: 18px 0 48px rgba(80, 38, 32, .16); }
 }
+
+/* Registration control and three public service entries */
+.portal-tabs { grid-template-columns: repeat(3,1fr); }
+.portal-tab[data-portal-tab="manage"].active { color:#fff; background:linear-gradient(135deg,#8f4e6f,#6f3d58); box-shadow:0 9px 20px rgba(123,79,112,.2); }
+.portal-tab:disabled { cursor:not-allowed; color:#aaa09d; background:#e7e1de; box-shadow:none; opacity:.72; }
+.portal-card.workspace-mode .portal-panel[data-portal-panel="register"] { display:block!important; }
+.portal-card.workspace-mode .portal-panel[data-portal-panel="manage"] { display:none!important; }
+.public-attendee-actions { display:flex; align-items:center; gap:9px; }
+.public-attendee-card.cancelled { opacity:.7; background:#f4efec; }
+.participant-info-card { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.participant-info-card > div { padding:11px; border:1px solid #e7dcd7; border-radius:10px; background:#fffdfb; }
+.participant-info-card small,.participant-info-card strong { display:block; }
+.participant-info-card small { color:var(--ink-soft); font-size:8px; }
+.participant-info-card strong { margin-top:4px; font-size:10px; }
+.registration-control-panel { --page-accent:var(--lilly-red); }
+.control-switch-list { display:grid; gap:9px; }
+.permission-switch,.project-registration-switch { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:13px; border:1px solid #eaded9; border-radius:13px; background:#fffaf7; }
+.permission-switch > span:first-child,.project-registration-switch > span:first-child { min-width:0; }
+.permission-switch strong,.permission-switch small,.project-registration-switch strong,.project-registration-switch small { display:block; }
+.permission-switch strong,.project-registration-switch strong { font-size:11px; }
+.permission-switch small,.project-registration-switch small { margin-top:3px; color:var(--ink-soft); font-size:8px; line-height:1.5; }
+.project-registration-switch { margin:12px 0; }
+.cancelled-row { opacity:.7; background:#f7f3f1; }
+.cancelled-label { display:inline-flex; margin-left:5px; padding:2px 5px; border-radius:5px; color:#8c5c56; background:#eadfdb; font-size:7px; font-style:normal; }
+
+@media (max-width:760px) {
+  .portal-tabs { grid-template-columns:1fr; }
+  .portal-tab { min-height:44px; }
+  .public-attendee-actions { align-items:stretch; flex-direction:column; }
+  .participant-info-card { grid-template-columns:1fr; }
+}

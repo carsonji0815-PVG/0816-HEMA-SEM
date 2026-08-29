@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-3" />
+    <link rel="stylesheet" href="styles.css?v=20260829-4" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -22,7 +22,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-3" defer></script>
+    <script src="app.js?v=20260829-4" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -40,8 +40,8 @@
         <div class="lookup-copy">
           <span class="eyebrow">ATTENDEE SERVICE</span>
           <div class="public-project-chip" id="publicProjectChip"><span>◎</span><div><small>当前报名项目</small><strong id="publicProjectName">正在读取项目信息…</strong><select id="publicProjectSelector" class="is-hidden" aria-label="选择报名项目"></select></div></div>
-          <h1 id="publicPortalTitle">报名与接送，<br />一个入口完成。</h1>
-          <p>报名负责人可管理本人提交的多名参会人员；参会人员可用手机号查询接机与送机安排。</p>
+          <h1 id="publicPortalTitle">报名、变更与查询，<br />各自清晰完成。</h1>
+          <p>填报人通过大区、姓名和员工编号进入；参会人员可用本人手机号查询住宿、接送及会议信息。</p>
           <div class="public-project-facts" id="publicProjectFacts">
             <div><span>◷</span><p><small>会议日期</small><strong id="publicProjectDates">读取中…</strong></p></div>
             <div><span>⌖</span><p><small>会议地点</small><strong id="publicProjectVenues">读取中…</strong></p></div>
@@ -53,18 +53,19 @@
         <div class="lookup-card glass-card portal-card">
           <div class="portal-tabs" role="tablist" aria-label="参会服务">
             <button class="portal-tab active" type="button" role="tab" aria-selected="true" data-portal-tab="register"><span>＋</span> 我要报名</button>
-            <button class="portal-tab" type="button" role="tab" aria-selected="false" data-portal-tab="lookup"><span>⌁</span> 查询接送机</button>
+            <button class="portal-tab" type="button" role="tab" aria-selected="false" data-portal-tab="manage"><span>✎</span> 更改已报名</button>
+            <button class="portal-tab" type="button" role="tab" aria-selected="false" data-portal-tab="lookup"><span>⌁</span> 参会信息查询</button>
           </div>
           <div class="portal-panel" data-portal-panel="register">
             <div id="publicAuthStep">
-            <div class="lookup-card-head"><span class="icon-badge">1</span><div><h2>确认报名负责人</h2><p>首次直接进入，以后可恢复本人提交的名单</p></div></div>
+            <div class="lookup-card-head"><span class="icon-badge">1</span><div><h2>确认填报人身份</h2><p>三项信息匹配后进入当前项目报名表</p></div></div>
             <form id="publicRegistrationForm" class="stack-form">
               <label>大区<input name="region" maxlength="50" placeholder="例如：华东大区" required /></label>
-              <label>报名负责人姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入销售或负责人的姓名" required /></label>
-              <label>手机号<div class="phone-input"><span>+86</span><input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="请输入 11 位手机号" required /></div></label>
-              <button class="button button-primary button-block" type="submit">进入我的报名名单 <span>→</span></button>
+              <label>姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入填报人姓名" required /></label>
+              <label>员工编号<input name="employeeNo" maxlength="50" autocomplete="username" placeholder="请输入员工编号" required /></label>
+              <button class="button button-primary button-block" type="submit">进入报名填报页面 <span>→</span></button>
             </form>
-            <p class="form-hint">三项信息仅用于识别报名负责人；无需短信验证码。请妥善保管，知晓三项信息的人可进入该项目名单。</p>
+            <p class="form-hint">登录会话仅对当前项目有效；全部新增记录自动绑定到本次填报人身份。</p>
             <div id="publicRegistrationResult" class="lookup-result" aria-live="polite"></div>
             </div>
             <div id="publicFullRegistrationStep" class="is-hidden">
@@ -89,7 +90,7 @@
                   <label data-template-field="flight" data-config-field="flight">是否航空<select name="flight"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
                   <label data-template-field="region">大区<input name="region" readonly required /></label>
                   <label data-template-field="contactName">销售联系人姓名<input name="contactName" readonly required /></label>
-                  <label data-template-field="contactMobile">销售联系人手机<input name="contactMobile" readonly required /></label>
+                  <label data-template-field="contactMobile">销售联系人手机<input name="contactMobile" inputmode="numeric" maxlength="11" required /></label>
                   <label data-template-field="mslContact" data-config-field="mslContact">MSL 医学部联系人<input name="mslContact" /></label>
                   <label class="span-2" data-template-field="remarks" data-config-field="remarks">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>
                 </div></section>
@@ -110,11 +111,22 @@
               </div>
             </div>
           </div>
+          <div class="portal-panel is-hidden" data-portal-panel="manage">
+            <div class="lookup-card-head"><span class="icon-badge">✎</span><div><h2>更改已报名</h2><p>仅显示并允许修改您本人提交的参会人员</p></div></div>
+            <form id="publicManageForm" class="stack-form">
+              <label>大区<input name="region" maxlength="50" placeholder="例如：华东大区" required /></label>
+              <label>姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入填报人姓名" required /></label>
+              <label>员工编号<input name="employeeNo" maxlength="50" autocomplete="username" placeholder="请输入员工编号" required /></label>
+              <button class="button button-primary button-block" type="submit">查看我提交的报名 <span>→</span></button>
+            </form>
+            <p class="form-hint">没有提交记录时，系统不会展示其他填报人的数据。</p>
+            <div id="publicManageResult" class="lookup-result" aria-live="polite"></div>
+          </div>
           <div class="portal-panel is-hidden" data-portal-panel="lookup">
-            <div class="lookup-card-head"><span class="icon-badge">⌁</span><div><h2>查询接送机</h2><p>输入报名手机号，无需登录</p></div></div>
+            <div class="lookup-card-head"><span class="icon-badge">⌁</span><div><h2>参会信息查询</h2><p>输入参会人员本人手机号，仅返回本人的安排</p></div></div>
             <form id="lookupForm" class="stack-form">
               <label>报名手机号<div class="phone-input"><span>+86</span><input id="lookupPhone" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="请输入 11 位手机号" required /></div></label>
-              <button class="button button-primary button-block" type="submit">查询我的行程 <span>→</span></button>
+              <button class="button button-primary button-block" type="submit">查询我的参会信息 <span>→</span></button>
             </form>
             <p class="form-hint">查询后可一键添加到手机日历，自动提醒接送时间。</p>
             <div id="lookupResult" class="lookup-result" aria-live="polite"></div>
@@ -275,7 +287,7 @@
           </section>
 
           <section class="page" data-page="attendees">
-            <div class="page-heading heading-with-action"><div><span class="eyebrow">ATTENDEE ROSTER</span><h1>参会名单</h1><p id="rosterScope">按当前账号权限展示名单。</p></div><div class="heading-actions"><button class="button button-secondary" id="auditTravel">⌕ 核验行程填写</button><button class="button button-secondary import-list-button" id="importRoster">⇧ 导入名单</button><button class="button button-secondary" id="exportExcel">导出 Excel</button><a class="button button-primary" href="#registration">＋ 新增报名</a></div></div>
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">ATTENDEE ROSTER</span><h1>参会名单</h1><p id="rosterScope">按当前账号权限展示名单。</p></div><div class="heading-actions"><button class="button button-secondary" id="auditTravel">⌕ 核验行程填写</button><button class="button button-secondary import-list-button" id="importRoster">⇧ 导入名单</button><button class="button button-secondary" id="transferRegistrant">⇄ 填报人移交</button><button class="button button-secondary" id="exportExcel">导出 Excel</button><a class="button button-primary" href="#registration">＋ 新增报名</a></div></div>
             <div class="panel table-panel">
               <div class="table-toolbar"><div class="search-box">⌕ <input id="attendeeSearch" placeholder="搜索姓名、城市、医院或航班" /></div><select id="riskFilter"><option value="all">全部状态</option><option value="pending">待审批</option><option value="approved">已通过</option><option value="normal">行程正常</option></select><select id="venueFilter"><option value="all">全部会场</option><option>大连会场</option><option>福州会场</option></select></div>
               <div class="table-wrap"><table><thead><tr><th>参会者</th><th>医院 / 科室</th><th>会场</th><th>去程</th><th>返程</th><th>隐私沟通函</th><th>出票状态</th><th>负责人</th><th>状态</th><th></th></tr></thead><tbody id="attendeeTableBody"></tbody></table></div>
@@ -314,7 +326,8 @@
               <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>参会名额<input name="capacity" type="number" min="1" /></label><label>会务联系电话<input name="servicePhone" /></label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL RULES</span><h2>行程与接送规则</h2></div></div><div class="stack-form"><label>允许的出发城市 <small>用顿号或逗号分隔</small><textarea name="allowedCities" rows="3"></textarea></label><div class="field-grid"><label>航班送机提前分钟<input name="flightLeadMinutes" type="number" min="0" step="10" /></label><label>高铁送站提前分钟<input name="trainLeadMinutes" type="number" min="0" step="10" /></label></div><label>自动接送分组间隔（分钟）<input name="transportGroupMinutes" type="number" min="10" max="180" step="10" /><small>例如 30：同一站点、相邻半小时内的人员归为一个建议批次</small></label><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时提醒</label><label class="check-row"><input name="departureRule" type="checkbox" /> 出发城市不在允许范围时提醒</label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">FORM FIELDS</span><h2>报名字段</h2></div></div><div class="field-toggle-grid"><label class="check-row"><input name="fieldTitle" type="checkbox" /> 显示职称</label><label class="check-row"><input name="fieldHcpId" type="checkbox" /> 显示 HCP ID</label><label class="check-row"><input name="fieldAccommodation" type="checkbox" /> 显示住宿安排</label><label class="check-row"><input name="fieldFlight" type="checkbox" /> 显示是否航空</label><label class="check-row"><input name="fieldMslContact" type="checkbox" /> 显示 MSL 联系人</label><label class="check-row"><input name="fieldRemarks" type="checkbox" /> 显示备注</label></div></article>
-              <article class="panel template-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION TEMPLATE</span><h2>当前项目报名模板</h2></div><button class="text-button" id="resetProjectTemplate" type="button">恢复标准模板</button></div><p class="template-help">上传 Excel / CSV 后，系统读取第一张表的表头。公开报名只显示模板包含的字段，未识别列会自动成为项目补充字段。</p><label class="template-upload"><input id="projectTemplateFile" type="file" accept=".xlsx,.xls,.csv" /><span>⇧</span><strong>选择名单模板</strong><small>模板只保存字段名称和顺序，不会导入名单数据</small></label><div id="templateStatus" class="template-status"></div><div id="templateColumns" class="template-columns"></div></article>
+              <article class="panel registration-control-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION CONTROL</span><h2>报名与管理员权限</h2></div><span class="status" id="registrationOpenStatus">报名关闭</span></div><div class="control-switch-list"><label class="permission-switch"><span><strong>项目报名开放</strong><small id="registrationOpenHint">必须先导入报名表模板</small></span><span class="switch"><input id="registrationOpenSwitch" type="checkbox" /><span></span></span></label><label class="permission-switch"><span><strong>会务 / 客户负责人编辑参会资料</strong><small>默认仅可查看；超级管理员始终拥有维护权限</small></span><span class="switch"><input id="managerEditSwitch" type="checkbox" /><span></span></span></label></div></article>
+              <article class="panel template-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION TEMPLATE</span><h2>当前项目报名模板</h2></div><button class="text-button danger" id="resetProjectTemplate" type="button">删除模板</button></div><p class="template-help">上传 Excel / CSV 后，系统读取第一张表的表头。公开报名只显示模板包含的字段，未识别列会自动成为项目补充字段。报名开放期间不能删除模板。</p><label class="template-upload"><input id="projectTemplateFile" type="file" accept=".xlsx,.xls,.csv" /><span>⇧</span><strong>选择名单模板</strong><small>模板只保存字段名称和顺序，不会导入名单数据</small></label><div id="templateStatus" class="template-status"></div><div id="templateColumns" class="template-columns"></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">ROLES</span><h2>管理员角色</h2></div></div><div class="role-list"><div><span class="role-dot ops"></span><p><strong>会务负责人</strong><small>全量名单、锁定、审批与调度</small></p></div><div><span class="role-dot client"></span><p><strong>会议负责人（客户）</strong><small>查看全部、审批异常行程</small></p></div><div><span class="role-dot sales"></span><p><strong>销售 / 负责人</strong><small>仅管理本人负责的参会者</small></p></div></div></article>
               <div class="settings-actions"><button class="button button-primary" type="submit">保存会议设置</button><button class="button button-ghost" type="button" id="resetDemo">恢复演示数据</button></div>
             </form>
@@ -324,6 +337,7 @@
     </div>
 
     <dialog id="attendeeDialog" class="detail-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div id="attendeeDetail"></div></dialog>
+    <dialog id="transferRegistrantDialog" class="login-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">⇄</span><div><strong>填报人移交</strong><small>移交后旧填报人立即失去操作权限</small></div></div><form id="transferRegistrantForm" class="stack-form"><label>原填报人<select name="fromRegistrant" required></select></label><label>新填报人<select name="toRegistrant" required></select></label><p class="form-hint">新填报人需要至少成功登录过当前项目一次。</p><p class="login-error" id="transferRegistrantError"></p><button class="button button-primary button-block" type="submit">确认移交全部绑定数据</button></form></dialog>
     <dialog id="transportBatchDialog" class="detail-dialog batch-dialog">
       <form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form>
       <div class="detail-head batch-dialog-head"><span class="kicker">TRANSPORT BATCH</span><h2 id="batchDialogTitle">批量接机 / 接站</h2><p>相同工作人员或车辆只填写一次，再批量关联参会者</p></div>

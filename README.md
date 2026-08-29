@@ -26,6 +26,10 @@
 - 统一项目入口：新建时选择内部/外部活动并填写会议编码或合同编号、负责人和活动日期；项目创建后才开放报名和行程管理
 - 集成文件归档：同一项目内收集报价、会务确认单、PO 和供应商确认邮件，并显示最终材料完成状态
 - 文件继续存储在阿里云服务器，使用 SQLite 索引、服务器磁盘和 OSS 异地备份；行程与项目权限继续由 Supabase 管理
+- 项目级报名开放开关：导入报名模板后可绕过报价/确认单前置条件提前开放新增报名；关闭后仍保留已报名修改和参会信息查询
+- 公开入口拆分为“我要报名 / 更改已报名 / 参会信息查询”，填报人以大区、姓名、员工编号建立项目内身份
+- 新报名自动绑定原始填报人，支持管理员移交；取消报名采用软取消，开关、模板、报名、变更、取消和移交均保留审计记录
+- 服务端使用短期随机会话和填报人归属校验拦截 URL/ID 越权；管理员默认只读，可由项目负责人单独开启编辑权限
 
 ## 本地预览
 
@@ -42,7 +46,7 @@ python3 -m http.server 4173
 ### 1. 建立 Supabase 项目
 
 1. 在 Supabase 新建项目。
-2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按文件名顺序执行 `supabase/migrations/` 内的升级脚本。已有项目至少需要执行尚未运行的升级脚本，包括 `2026082004_integrated_project_documents.sql`。
+2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按文件名顺序执行 `supabase/migrations/` 内的升级脚本。已有项目执行尚未运行的升级脚本；本次报名权限更新对应 `2026082901_registration_control_identity_permissions.sql`。
 3. 在 Authentication 创建工作人员邮箱密码账号。
 4. 查询会议 ID：
 
@@ -72,7 +76,7 @@ supabase secrets set QUERY_RATE_SALT=一段足够长的随机字符串
 supabase functions deploy public-trip-query --no-verify-jwt
 ```
 
-公开查询函数只返回脱敏姓名与接送机信息，并按来源地址限制 10 分钟内最多查询 20 次。它不会返回证件号、医院、客户编号或销售资料。
+公开函数只向手机号查询返回脱敏的本人会务信息；报名维护使用短期随机会话，并在服务端校验项目、填报人和参会记录归属。它不会把 service role 密钥暴露给浏览器。
 
 ### 3. 填写前端配置
 
@@ -97,7 +101,8 @@ window.APP_CONFIG = {
 
 - 用三类真实测试账号分别验证可见名单范围。
 - 将演示数据留在演示模式即可；生产模式只读取 Supabase 数据，不会上传本地演示名单。
-- 用无痕窗口测试手机号查询仅显示接送机字段。
+- 用无痕窗口分别测试三个公开入口；关闭报名开关后，“我要报名”应禁用，而“更改已报名”和“参会信息查询”仍可使用。
+- 用两个不同员工编号交叉测试，确认填报人无法读取、修改或取消对方绑定的参会人员。
 - 若公开查询可能遭到批量撞库，建议在 Edge Function 前增加 Cloudflare Turnstile；这不需要短信验证码。
 - 身份证/护照属于敏感个人信息，仅在确有业务依据时收集，设置最短保留期，并在会议结束后按组织要求删除。
 
@@ -112,5 +117,6 @@ window.APP_CONFIG = {
 - `supabase/migrations/20260820_project_templates_transport_batches.sql`：项目报名模板、批量接送、名单进度与详细变更记录升级脚本
 - `supabase/migrations/2026082004_integrated_project_documents.sql`：统一项目基础信息、项目创建门禁和文件归档关联字段
 - `supabase/migrations/20260820_segment_approval_ticket_guard.sql`：去程/返程分段审批与出票前数据库强制校验
-- `supabase/functions/public-trip-query/index.ts`：无短信验证码的手机号查询接口
+- `supabase/migrations/2026082901_registration_control_identity_permissions.sql`：报名开放控制、填报身份绑定、软取消、移交、审计和服务端权限升级脚本
+- `supabase/functions/public-trip-query/index.ts`：报名身份会话、本人报名维护和无短信验证码的参会信息查询接口
 - `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布

@@ -106,6 +106,8 @@
   let lastLookupSchedule = null;
   let publicAuthSession = null;
   let publicProjectConfig = null;
+  let publicProjectLoadedAt = 0;
+  let publicProjectLoadPromise = null;
   let publicRegistrantAttendees = [];
   let publicEditingAttendeeId = null;
   let projectMemberships = [];
@@ -411,7 +413,7 @@
     const isPublic = ["portal", "lookup", "register", "manage"].includes(target);
     $("#adminApp").classList.toggle("is-hidden", isPublic);
     $("#publicPortalView").classList.toggle("is-hidden", !isPublic);
-    if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : target === "manage" ? "manage" : "register"); if (!publicProjectConfig) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
+    if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : target === "manage" ? "manage" : "register"); if (!publicProjectConfig || Date.now()-publicProjectLoadedAt>5000) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
     const requestedRoute = $( `[data-page="${target}"]`) ? target : "dashboard"; const gatedRoutes=new Set(["dashboard","registration","attendees","approvals","transport"]); let routeName = !state.activeProjectId && requestedRoute !== "projects" ? "projects" : requestedRoute;
     if(state.activeProjectId&&gatedRoutes.has(routeName)&&!activeManagementOpen())routeName="documents";
     if (routeName !== requestedRoute) { history.replaceState(null,"",state.activeProjectId?"#documents":"#projects"); toast(state.activeProjectId?"请先在项目管理中完成项目建档文件，再继续报名和行程管理":"请先新建项目，再进行报名和行程管理", "error"); }
@@ -482,6 +484,11 @@
     $("#backToPublicAuth").addEventListener("click", closePublicAttendeeEditor);
     $("#newPublicAttendee").addEventListener("click", () => openPublicAttendeeEditor());
     $$('[data-portal-tab]').forEach(button => button.addEventListener("click", () => { location.hash = button.dataset.portalTab === "lookup" ? "lookup" : button.dataset.portalTab === "manage" ? "manage" : "portal"; }));
+    const refreshPublicProject=()=>{const routeName=(location.hash||"").slice(1).split("?")[0];if(["portal","register","manage","lookup"].includes(routeName)&&!publicAuthSession&&Date.now()-publicProjectLoadedAt>3000)loadPublicProjectInfo();};
+    window.addEventListener("focus",refreshPublicProject);
+    window.addEventListener("pageshow",refreshPublicProject);
+    window.addEventListener("online",refreshPublicProject);
+    document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")refreshPublicProject();});
     $("#resetDemo").addEventListener("click", () => { if (!confirm("确认恢复全部演示数据？")) return; state = initialState(); saveState(); populateUsers(); populateProjects(); renderAll(); toast("已恢复演示数据"); });
   }
 
@@ -967,6 +974,8 @@
 
   async function loadPublicProjectInfo() {
     if (!window.APP_CONFIG?.supabaseUrl) return;
+    if(publicProjectLoadPromise)return publicProjectLoadPromise;
+    publicProjectLoadPromise=(async()=>{
     const submit=$("#publicRegistrationForm").querySelector('button[type="submit"]'); submit.disabled=true;
     try {
       if (!currentEventSlug()) throw new Error("请选择报名项目");
@@ -976,7 +985,11 @@
       publicProjectConfig = payload.project || null; applyPublicProject(publicProjectConfig); $("#publicProjectSelector").classList.add("is-hidden"); $("#publicRegistrationResult").innerHTML=""; submit.disabled=!publicProjectConfig?.newRegistrationAllowed;
     } catch (error) {
       await loadAvailablePublicProjects(error.message);
+    } finally {
+      publicProjectLoadedAt=Date.now();
     }
+    })();
+    try{return await publicProjectLoadPromise;}finally{publicProjectLoadPromise=null;}
   }
 
   async function loadAvailablePublicProjects(reason="请选择报名项目") {

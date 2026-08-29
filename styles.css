@@ -248,15 +248,18 @@ tbody tr { transition: background .15s; } tbody tr:hover { background: #fafbf8; 
   --canvas: #f6f2ef;
   --card: rgba(255, 253, 251, .96);
   --line: #e7ded9;
-  --green: #c91f2c;
-  --green-2: #a81723;
+  --green: #D52B1E;
+  --green-2: #D52B1E;
   --mint: #f9dfe2;
   --coral: #df6555;
   --amber: #b07a2b;
   --lavender: #ece3eb;
-  --lilly-red: #c91f2c;
-  --lilly-red-bright: #e1252f;
-  --lilly-wine: #57151d;
+  --lilly-red: #D52B1E;
+  --lilly-red-75: #F36A50;
+  --lilly-red-50: #FF9E87;
+  --lilly-red-25: #FFCFC1;
+  --lilly-red-bright: #F36A50;
+  --lilly-wine: #D52B1E;
   --lilly-plum: #7b4f70;
   --lilly-ivory: #fffaf6;
   --medical-blue: #526d88;
@@ -464,4 +467,102 @@ table tbody tr:hover { background: #fff7f5; }
   .lilly-brand-public .brand-product { display: none; }
   .public-header .text-link { margin-top: 16px; }
   .public-project-facts { grid-template-columns: 1fr; }
+}
+
+/* Brandbook sidebar refinement · PMS 485 */
+.sidebar {
+  color: var(--ink);
+  background:
+    linear-gradient(180deg, #fff 0%, #fff 68%, #fff8f5 100%);
+  border-right: 1px solid var(--lilly-red-25);
+  box-shadow: 12px 0 38px rgba(110, 63, 55, .065);
+}
+.lilly-brand-sidebar {
+  min-height: 78px;
+  padding: 0 3px 14px;
+  border-bottom-color: var(--lilly-red-25);
+}
+.lilly-brand-sidebar .lilly-logo-frame {
+  width: 108px;
+  height: 64px;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.lilly-brand-sidebar .lilly-logo {
+  mix-blend-mode: multiply;
+}
+.lilly-brand-sidebar .brand-product strong {
+  color: #422d29;
+}
+.lilly-brand-sidebar .brand-product small {
+  color: var(--lilly-red);
+  opacity: .72;
+}
+.event-switcher {
+  border-color: var(--lilly-red-25);
+  background: #fff8f5;
+  box-shadow: none;
+}
+.event-switcher small { color: #8d6d67; opacity: 1; }
+.event-switcher select { color: #412d29; }
+.event-switcher select option { color: #412d29; }
+.sidebar .project-mini-icon { background: var(--lilly-red); }
+.project-manage-link {
+  color: var(--lilly-red);
+  background: #ffe9e3;
+}
+.side-nav p { color: #9a756e; opacity: 1; }
+.side-nav a {
+  color: #695653;
+}
+.side-nav a > span {
+  color: #a7837d;
+  opacity: 1;
+}
+.side-nav a:hover {
+  color: #3f2c28;
+  background: #fff4f1;
+}
+.side-nav a:hover > span { color: var(--lilly-red-75); }
+.side-nav a.active {
+  color: #7e2018;
+  background: linear-gradient(90deg, rgba(255,207,193,.72), rgba(255,238,233,.78));
+  box-shadow: inset 4px 0 var(--lilly-red);
+}
+.side-nav a.active > span { color: var(--lilly-red); }
+.side-nav b {
+  color: #7e2018;
+  background: #ffe7e0;
+}
+.side-nav .alert-count {
+  color: #fff;
+  background: var(--lilly-red-75);
+}
+.sidebar-footer {
+  border-top-color: var(--lilly-red-25);
+}
+.sidebar-footer a {
+  color: #7e2018;
+  background: #fff2ee;
+}
+.demo-badge {
+  color: #9a756e;
+  background: #fff8f5;
+}
+
+.button-primary,
+.page .button-primary { box-shadow: 0 10px 24px rgba(213,43,30,.2); }
+.button-primary:hover { background: #b82419; }
+.portal-tab[data-portal-tab="register"].active {
+  background: linear-gradient(135deg, var(--lilly-red), var(--lilly-red-75));
+  box-shadow: 0 9px 20px rgba(213,43,30,.22);
+}
+.avatar { background: linear-gradient(135deg, var(--lilly-red), var(--lilly-red-75)); }
+
+@media (max-width: 760px) {
+  .sidebar { box-shadow: 18px 0 48px rgba(80, 38, 32, .16); }
 }

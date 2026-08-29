@@ -140,7 +140,7 @@
   };
   const projectVisual = project => {
     const icons = ["✦","◈","✚","◎","⌁","◇","✺","⬡"];
-    const colors = ["#c91f2c","#7b4f70","#df6555","#b07a2b","#397a73","#a8435b","#526d88","#667080"];
+    const colors = ["#D52B1E","#7b4f70","#df6555","#b07a2b","#397a73","#a8435b","#526d88","#667080"];
     const seed = [...String(project?.slug || project?.name || "project")].reduce((sum,char)=>sum+char.charCodeAt(0),0);
     return { icon:icons[seed%icons.length], color:colors[seed%colors.length] };
   };
@@ -616,7 +616,7 @@
     $("#progressCount").textContent = list.length; const percent = Math.min(100, Math.round(list.length / state.settings.capacity * 100));
     $("#progressBar").style.width = `${percent}%`; $("#progressPercent").textContent = `${percent}%`;
     const cityCounts = Object.entries(list.reduce((acc,a) => (acc[a.city] = (acc[a.city] || 0) + 1, acc), {})).sort((a,b) => b[1] - a[1]).slice(0,4);
-    const max = Math.max(...cityCounts.map(([,v]) => v), 1); const colors = ["#c91f2c", "#397a73", "#b07a2b", "#7b4f70"];
+    const max = Math.max(...cityCounts.map(([,v]) => v), 1); const colors = ["#D52B1E", "#397a73", "#b07a2b", "#7b4f70"];
     $("#cityBars").innerHTML = cityCounts.map(([city,count],i) => `<div class="city-bar"><span>${escapeHtml(city)}</span><div><i style="width:${count/max*100}%;--bar-color:${colors[i]}"></i></div><strong>${count}</strong></div>`).join("") || `<div class="empty-state">暂无报名</div>`;
     const risks = list.filter(a => a.approval === "pending").slice(0,3);
     $("#attentionList").innerHTML = risks.length ? risks.map(a => `<div class="attention-item"><span class="attention-icon">△</span><div><strong>${escapeHtml(a.name)} · ${escapeHtml(a.risks[0] || "异常行程")}</strong><small>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)} / ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</small></div><button data-open-attendee="${a.id}">处理 →</button></div>`).join("") : `<div class="empty-state">暂无待处理事项</div>`;

@@ -314,6 +314,7 @@
       else if (!["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
     }
     populateUsers(); populateProjects(); bindNavigation(); bindForms(); bindControls(); route(); renderAll();
+    window.setInterval(renderGreeting,60000);
     window.addEventListener("hashchange", route);
     window.addEventListener("scroll", () => $(".topbar")?.classList.toggle("scrolled", scrollY > 4));
     setTimeout(renderQr, 400);
@@ -588,9 +589,21 @@
     $$('[data-portal-panel]').forEach(panel => panel.classList.toggle("is-hidden", panel.dataset.portalPanel !== tab));
   }
 
+  function greetingForHour(hour=new Date().getHours()) {
+    if(hour>=5&&hour<11)return "早上好";
+    if(hour>=11&&hour<14)return "中午好";
+    if(hour>=14&&hour<18)return "下午好";
+    return "晚上好";
+  }
+
+  function renderGreeting() {
+    $("#greetingText").textContent=greetingForHour();
+    $("#greetingName").textContent=currentUser().name;
+  }
+
   function renderAll() {
     const user = currentUser();
-    $("#greetingName").textContent = user.name;
+    renderGreeting();
     $("#userAvatar").textContent = user.name.slice(0, 1);
     const visual=projectVisual(currentProject()); $("#activeProjectIcon").textContent=visual.icon; $("#activeProjectIcon").style.setProperty("--project-accent",visual.color); document.documentElement.style.setProperty("--project-accent",visual.color);
     renderRegistrationOwner(); renderCounts(); renderDashboard(); renderAttendeeTable(); renderApprovals(); renderTransport(); renderLocks(); renderNotifications(); renderSettings(); renderProjects(); renderDocuments(); renderQr();

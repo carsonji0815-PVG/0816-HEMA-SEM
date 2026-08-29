@@ -102,6 +102,7 @@
   let activeTransportFilter = "all";
   let activeQuotaRole = "听众";
   let incompleteRosterOnly = false;
+  let cancelledRosterView = false;
   const selectedAttendeeIds = new Set();
   let backend = null;
   let backendMeetingId = null;
@@ -526,6 +527,7 @@
     $("#riskFilter").addEventListener("change", renderAttendeeTable);
     $("#venueFilter").addEventListener("change", renderAttendeeTable);
     $("#toggleIncompleteFilter").addEventListener("click",()=>{incompleteRosterOnly=!incompleteRosterOnly;renderAttendeeTable();});
+    $("#toggleCancelledRoster").addEventListener("click",()=>{cancelledRosterView=!cancelledRosterView;selectedAttendeeIds.clear();renderAttendeeTable();});
     $("#deleteSelectedAttendees").addEventListener("click",deleteSelectedAttendees);
     $("#transportSearch").addEventListener("input", renderTransport);
     $("#newPickupBatch").addEventListener("click", () => openTransportBatch("pickup"));
@@ -557,6 +559,7 @@
     $("#masterLock").addEventListener("change", event => { if (!canManage()) return deny(); state.locks.master = event.target.checked; addNotification("lock", `${currentUser().name}${event.target.checked ? "锁定" : "解锁"}了全部名单`); saveState(); renderAll(); });
     $("#copyRegistrationLink").addEventListener("click", copyRegistrationLink);
     $("#configureQuotas").addEventListener("click", openQuotaConfiguration);
+    $("#editQuotasFromSettings").addEventListener("click", openQuotaConfiguration);
     $("#quotaRoleFilter").addEventListener("change",event=>{activeQuotaRole=event.target.value;renderRegistrationProgress();});
     $("#addQuotaRow").addEventListener("click",()=>appendQuotaConfigRow());
     $("#cancelQuotaConfig").addEventListener("click",()=>$("#quotaDialog").close());
@@ -789,7 +792,7 @@
   function quotaConfigOptions(key,value) { const configured=state.settings.registrationQuotas||[];const source=key==="venue"?[...(state.settings.venues||[]).map(normalizeVenueLabel),...configured.map(item=>normalizeVenueLabel(item.venue)),...activeVisibleAttendees().map(item=>normalizeVenueLabel(item.venue))]:key==="region"?[...configured.map(item=>normalizeQuotaRegion(item.region)),...activeVisibleAttendees().map(item=>normalizeQuotaRegion(item.region))]:[...configured.map(item=>normalizeQuotaRole(item.role)),...activeVisibleAttendees().map(item=>normalizeQuotaRole(item.attendeeType))];const options=[...new Set(source.filter(Boolean))];if(value&&!options.includes(value))options.unshift(value);return options.map(option=>`<option value="${escapeHtml(option)}" ${option===value?"selected":""}>${escapeHtml(option)}</option>`).join(""); }
   function appendQuotaConfigRow(item={venue:normalizeVenueLabel(state.settings.venues?.[0])||normalizeVenueLabel(activeVisibleAttendees()[0]?.venue)||"",region:normalizeQuotaRegion(activeVisibleAttendees()[0]?.region),role:activeQuotaRole,quota:0}) { const row=document.createElement("div");row.className="quota-config-row";row.innerHTML=`<select name="quotaVenue" aria-label="会场">${quotaConfigOptions("venue",normalizeVenueLabel(item.venue))}</select><select name="quotaRegion" aria-label="大区">${quotaConfigOptions("region",normalizeQuotaRegion(item.region))}</select><select name="quotaRole" aria-label="角色">${quotaConfigOptions("role",normalizeQuotaRole(item.role))}</select><input name="quotaValue" type="number" min="0" step="1" value="${quotaNumber(item.quota)}" aria-label="分配名额"/><button type="button" class="quota-remove-row">删除</button>`;row.querySelector(".quota-remove-row").onclick=()=>row.remove();$("#quotaConfigRows").append(row); }
   function openQuotaConfiguration() { if(!canManage())return deny();$("#quotaConfigRows").innerHTML="";(state.settings.registrationQuotas||[]).forEach(appendQuotaConfigRow);if(!$("#quotaConfigRows").children.length)appendQuotaConfigRow();$("#quotaFormError").textContent="";$("#quotaDialog").showModal(); }
-  async function saveQuotaConfiguration(event) { event.preventDefault();if(!canManage())return deny();const button=event.currentTarget.querySelector('button[type="submit"]');const rows=$$(".quota-config-row",event.currentTarget).map(row=>({venue:normalizeVenueLabel(row.querySelector('[name="quotaVenue"]').value),region:normalizeQuotaRegion(row.querySelector('[name="quotaRegion"]').value),role:normalizeQuotaRole(row.querySelector('[name="quotaRole"]').value),quota:quotaNumber(row.querySelector('[name="quotaValue"]').value)}));const seen=new Set();if(rows.some(row=>!row.venue||!row.region||!row.role))return $("#quotaFormError").textContent="请完整填写每一行名额配置";if(rows.some(row=>{const key=quotaKey(row.venue,row.region,row.role);if(seen.has(key))return true;seen.add(key);return false;}))return $("#quotaFormError").textContent="同一会场、大区和角色不能重复配置";button.disabled=true;try{if(backend){const fieldConfig={...state.settings.fieldConfig,registrationQuotas:rows};const{error}=await backend.from("meetings").update({field_config:fieldConfig}).eq("id",backendMeetingId);if(error)throw error;}state.settings.registrationQuotas=rows;addNotification("change",`${currentUser().name}更新了报名名额配置，共${rows.length}项`);localStorage.setItem(STORAGE_KEY,JSON.stringify(state));$("#quotaDialog").close();renderRegistrationProgress();toast("名额配置已保存");}catch(error){$("#quotaFormError").textContent=error.message||"名额保存失败";}finally{button.disabled=false;} }
+  async function saveQuotaConfiguration(event) { event.preventDefault();if(!canManage())return deny();const button=event.currentTarget.querySelector('button[type="submit"]');const rows=$$(".quota-config-row",event.currentTarget).map(row=>({venue:normalizeVenueLabel(row.querySelector('[name="quotaVenue"]').value),region:normalizeQuotaRegion(row.querySelector('[name="quotaRegion"]').value),role:normalizeQuotaRole(row.querySelector('[name="quotaRole"]').value),quota:quotaNumber(row.querySelector('[name="quotaValue"]').value)}));const seen=new Set();if(rows.some(row=>!row.venue||!row.region||!row.role))return $("#quotaFormError").textContent="请完整填写每一行名额配置";if(rows.some(row=>{const key=quotaKey(row.venue,row.region,row.role);if(seen.has(key))return true;seen.add(key);return false;}))return $("#quotaFormError").textContent="同一会场、大区和角色不能重复配置";button.disabled=true;try{if(backend){const fieldConfig={...state.settings.fieldConfig,registrationQuotas:rows};const{error}=await backend.from("meetings").update({field_config:fieldConfig}).eq("id",backendMeetingId);if(error)throw error;}state.settings.registrationQuotas=rows;addNotification("change",`${currentUser().name}更新了报名名额配置，共${rows.length}项`);localStorage.setItem(STORAGE_KEY,JSON.stringify(state));$("#quotaDialog").close();renderAll();toast("名额配置已保存，报名进度已重新统计");}catch(error){$("#quotaFormError").textContent=error.message||"名额保存失败";}finally{button.disabled=false;} }
 
   function renderDashboard() {
     const list = activeVisibleAttendees(); const pending = list.filter(a => a.approval === "pending").length;
@@ -814,19 +817,22 @@
     return visibleAttendees().filter(a => {
       const haystack = [a.name,a.city,a.hospital,a.department,a.outNo,a.returnNo].join(" ").toLowerCase();
       const hasMissing=templateColumns.some(column=>{const value=column.custom?a.customFields?.[column.key]:a[column.key];return value===null||value===undefined||String(value).trim()==="";});
-      return (!query || haystack.includes(query)) && (risk === "all" || a.approval === risk) && (venue === "all" || normalizeVenueLabel(a.venue) === venue) && (!incompleteRosterOnly||hasMissing);
+      const matchesArchive=cancelledRosterView?a.businessStatus==="cancelled":a.businessStatus!=="cancelled";
+      return matchesArchive && (!query || haystack.includes(query)) && (risk === "all" || a.approval === risk) && (venue === "all" || normalizeVenueLabel(a.venue) === venue) && (!incompleteRosterOnly||hasMissing);
     });
   }
-  function syncRosterVenueFilter(){const select=$("#venueFilter");const previous=normalizeVenueLabel(select.value)||"all";const actual=[...new Set(visibleAttendees().map(a=>normalizeVenueLabel(a.venue)).filter(Boolean))];const fallback=(state.settings.venues||[]).map(normalizeVenueLabel).filter(Boolean);const values=[...new Set(actual.length?actual:fallback)].sort((a,b)=>a.localeCompare(b,"zh-CN"));select.innerHTML=`<option value="all">全部会场</option>${values.map(value=>`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;select.value=values.includes(previous)?previous:"all";}
+  function syncRosterVenueFilter(){const select=$("#venueFilter");const previous=normalizeVenueLabel(select.value)||"all";const scoped=visibleAttendees().filter(a=>cancelledRosterView?a.businessStatus==="cancelled":a.businessStatus!=="cancelled");const actual=[...new Set(scoped.map(a=>normalizeVenueLabel(a.venue)).filter(Boolean))];const fallback=(state.settings.venues||[]).map(normalizeVenueLabel).filter(Boolean);const values=[...new Set(actual.length?actual:fallback)].sort((a,b)=>a.localeCompare(b,"zh-CN"));select.innerHTML=`<option value="all">全部会场</option>${values.map(value=>`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;select.value=values.includes(previous)?previous:"all";}
   function renderAttendeeTable() {
     syncRosterVenueFilter();
     const list = getFilteredAttendees();
     const templateColumns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns;
-    $("#rosterScope").textContent = currentUser().role === "sales" ? `仅显示 ${currentUser().name} 负责的参会者。` : "显示本会议全部参会者。";
+    $("#rosterScope").textContent = cancelledRosterView ? "已删除或已取消报名的人员归档；完整保留报名模板全部字段。" : currentUser().role === "sales" ? `仅显示 ${currentUser().name} 负责的有效参会者。` : "显示本会议当前有效参会者，不包含已删除或已取消报名。";
     $("#importRoster").classList.toggle("is-hidden", currentUser().role !== "ops");
     $("#auditTravel").classList.toggle("is-hidden", !canManage());
     $("#transferRegistrant").classList.toggle("is-hidden",!canManage()&&!isSystemAdmin());
     $("#toggleIncompleteFilter").classList.toggle("active",incompleteRosterOnly);$("#toggleIncompleteFilter").textContent=incompleteRosterOnly?"✓ 仅看未填写":"筛选未填写";
+    const cancelledCount=visibleAttendees().filter(a=>a.businessStatus==="cancelled").length;$("#cancelledRosterCount").textContent=cancelledCount;$("#toggleCancelledRoster").classList.toggle("active",cancelledRosterView);$("#toggleCancelledRoster").innerHTML=cancelledRosterView?`← 返回参会名单 <span id="cancelledRosterCount">${cancelledCount}</span>`:`查看已删除报名 <span id="cancelledRosterCount">${cancelledCount}</span>`;
+    $("#deleteSelectedAttendees").classList.toggle("is-hidden",cancelledRosterView);
     const progressSelect=(a,field,options)=>`<select class="progress-select ${["electronic","paper","ticketed"].includes(a[field])?"done":""}" data-progress-field="${field}" data-attendee-id="${a.id}" ${isLocked(a)||!canEditAttendeeData()||a.businessStatus==="cancelled"?"disabled":""}>${options.map(([value,label])=>`<option value="${value}" ${a[field]===value?"selected":""}>${label}</option>`).join("")}</select>`;
     const privacyControl=a=>`<div class="privacy-progress-control">${progressSelect(a,"privacyLetterStatus",[["pending","未完成"],["electronic","已完成（隐私沟通函电子版）"],["paper","已完成（隐私沟通函纸质版）"]])}${a.privacyLetterStatus==="paper"?`<div class="privacy-file-actions">${a.privacyLetterFilePath?`<button type="button" data-download-privacy-letter="${a.id}" title="${escapeHtml(a.privacyLetterFileName)}">查看附件</button>`:`<span>缺少纸质版附件</span>`}<button type="button" data-upload-privacy-letter="${a.id}">${a.privacyLetterFilePath?"替换":"上传"}</button></div>`:""}</div>`;
     const segmentBadge=(a,segment,label)=>{ const status=segmentApproval(a,segment); const text=status==="approved"?"已审批":status==="pending"?"待审批":status==="rejected"?"已退回":"无需审批"; return `<span class="segment-status ${status}">${label}·${text}</span>`; };
@@ -842,7 +848,7 @@
     $$('[data-progress-field]').forEach(select=>select.onchange=()=>updateProgressField(select));
     $$('[data-upload-privacy-letter]').forEach(button=>button.onclick=()=>requestPrivacyLetterUpload(state.attendees.find(item=>item.id===button.dataset.uploadPrivacyLetter)));
     $$('[data-download-privacy-letter]').forEach(button=>button.onclick=()=>downloadPrivacyLetter(state.attendees.find(item=>item.id===button.dataset.downloadPrivacyLetter)));
-    $("#attendeeEmpty").classList.toggle("is-hidden", !!list.length); bindDynamicButtons();
+    $("#attendeeEmpty").textContent=cancelledRosterView?"暂无已删除或已取消报名人员":"没有符合条件的当前参会人员";$("#attendeeEmpty").classList.toggle("is-hidden", !!list.length); bindDynamicButtons();
     updateSelectedAttendeeControls();
   }
 
@@ -1076,8 +1082,23 @@
     $("#registrationOpenStatus").textContent=state.settings.registrationOpen?"报名开放":"报名关闭";$("#registrationOpenStatus").className=`status ${state.settings.registrationOpen?"status-ok":"status-locked"}`;
     $("#registrationOpenHint").textContent=state.settings.templateImported?(state.settings.registrationOpen?"当前允许公开端新增报名":"关闭后仍可更改已报名和查询参会信息"):"必须先导入报名表模板";
     $("#managerEditSwitch").checked=!!state.settings.managerEditEnabled;$("#managerEditSwitch").disabled=!(isSystemAdmin()||currentProject()?.ownerUserId===state.currentUserId);
+    renderSettingsQuotaSummary();
     renderSystemStaffDirectory();
     $("#resetDemo").classList.toggle("is-hidden", !!backend);
+  }
+
+  function renderSettingsQuotaSummary() {
+    const rows=state.settings.registrationQuotas||[];
+    const total=rows.reduce((sum,row)=>sum+quotaNumber(row.quota),0);
+    const capacity=quotaNumber(state.settings.capacity);
+    const difference=capacity-total;
+    const venues=new Set(rows.map(row=>normalizeVenueLabel(row.venue)).filter(Boolean)).size;
+    const regions=new Set(rows.map(row=>normalizeQuotaRegion(row.region)).filter(Boolean)).size;
+    const status=$("#quotaSettingsStatus");
+    status.textContent=!rows.length?"尚未配置":difference===0?"分配完成":difference>0?`待分配 ${difference}`:`超配 ${Math.abs(difference)}`;
+    status.className=`status ${!rows.length?"status-locked":difference===0?"status-ok":difference>0?"status-pending":"status-alert"}`;
+    $("#quotaSettingsSummary").innerHTML=`<div><small>会议总名额</small><strong>${capacity}</strong></div><div><small>已分配名额</small><strong>${total}</strong></div><div><small>涉及会场</small><strong>${venues}</strong></div><div><small>涉及大区</small><strong>${regions}</strong></div>`;
+    $("#editQuotasFromSettings").disabled=!canManage();
   }
 
   function bindDynamicButtons() {

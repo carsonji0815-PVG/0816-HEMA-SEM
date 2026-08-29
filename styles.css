@@ -407,7 +407,8 @@ table tbody tr:hover { background: #fff7f5; }
 }
 .public-header { padding-bottom: 18px; border-bottom: 1px solid rgba(201,31,44,.12); }
 .lilly-brand-public { gap: 15px; }
-.lilly-brand-public .lilly-logo-frame { width: 145px; height: 76px; padding: 5px; border-radius: 15px; }
+.lilly-brand-public .lilly-logo-frame { width: 145px; height: 76px; padding: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.lilly-brand-public .lilly-logo { mix-blend-mode: multiply; }
 .lilly-brand-public .brand-product strong { max-width: none; color: #3f292b; font-size: 14px; }
 .lilly-brand-public .brand-product small { color: #8e5c61; font-size: 8px; opacity: 1; }
 .public-header .text-link { color: var(--lilly-red); font-weight: 700; }

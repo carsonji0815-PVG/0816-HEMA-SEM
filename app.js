@@ -752,7 +752,7 @@
     $("#topNoticeCount").textContent = unread;
   }
 
-  const normalizeQuotaRole = value => /主席|主持|讲者|讨论嘉宾|组长|嘉宾|chair|moderator|speaker|panelist/i.test(String(value||"").trim()) ? "嘉宾" : "听众";
+  const normalizeQuotaRole = value => /主席|主持|讲者|讨论嘉宾|组长|嘉宾|chair|moderator|speaker|panelist/i.test(String(value||"").trim()) ? "角色嘉宾" : "听众";
   const normalizeQuotaRegion = value => String(value||"").trim()||"未填写大区";
   const quotaKey = (venue,region,role) => [normalizeVenueLabel(venue),normalizeQuotaRegion(region),normalizeQuotaRole(role)].join("|");
   const quotaNumber = value => Math.max(0,Math.round(Number(value)||0));
@@ -765,11 +765,14 @@
     const configured=normalizedQuotaConfiguration();
     const actualMap=new Map(); activeVisibleAttendees().forEach(attendee=>{const key=quotaKey(attendee.venue,attendee.region,attendee.attendeeType);actualMap.set(key,(actualMap.get(key)||0)+1);});
     const rows=configured.filter(item=>item.role===role).map(item=>{const actual=actualMap.get(quotaKey(item.venue,item.region,item.role))||0;actualMap.delete(quotaKey(item.venue,item.region,item.role));return{...item,actual};});
-    for(const[key,actual]of actualMap){const[venue,region,itemRole]=key.split("|");if(itemRole===role)rows.push({venue,region,role:itemRole,quota:0,actual});}
     return rows.map(item=>{const gap=item.actual-item.quota;const remaining=Math.max(item.quota-item.actual,0);const percent=item.quota?item.actual/item.quota*100:item.actual?100:0;return{...item,gap,remaining,percent};});
   }
+  function unmatchedQuotaAttendeeCount(role=activeQuotaRole) {
+    const configuredKeys=new Set(normalizedQuotaConfiguration().filter(item=>item.role===role).map(item=>quotaKey(item.venue,item.region,item.role)));
+    return activeVisibleAttendees().filter(attendee=>normalizeQuotaRole(attendee.attendeeType)===role&&!configuredKeys.has(quotaKey(attendee.venue,attendee.region,attendee.attendeeType))).length;
+  }
   function quotaRoleOptions() {
-    return ["听众","嘉宾"];
+    return ["听众","角色嘉宾"];
   }
   const quotaState = row => row.gap<0?["shortage","缺口"]:row.gap>0?["over","超额"]:row.quota?["complete","达标"]:["neutral","持平"];
   function renderRegistrationProgress() {
@@ -778,11 +781,11 @@
     $("#quotaRoleTabs").innerHTML=roles.map(role=>`<button type="button" class="${role===activeQuotaRole?"active":""}" data-quota-role="${escapeHtml(role)}">${escapeHtml(role)}</button>`).join("");
     $$('[data-quota-role]').forEach(button=>button.onclick=()=>{activeQuotaRole=button.dataset.quotaRole;renderRegistrationProgress();});
     $("#configureQuotas").classList.toggle("is-hidden",!canManage());
-    const rows=registrationQuotaRows();const quotaConfigured=(state.settings.registrationQuotas||[]).some(item=>normalizeQuotaRole(item.role)===activeQuotaRole);const quota=rows.reduce((sum,row)=>sum+row.quota,0);const actual=rows.reduce((sum,row)=>sum+row.actual,0);const gap=actual-quota;const remaining=Math.max(quota-actual,0);const percent=quota?actual/quota*100:0;
+    const rows=registrationQuotaRows();const quotaConfigured=(state.settings.registrationQuotas||[]).some(item=>normalizeQuotaRole(item.role)===activeQuotaRole);const quota=rows.reduce((sum,row)=>sum+row.quota,0);const actual=rows.reduce((sum,row)=>sum+row.actual,0);const unmatched=unmatchedQuotaAttendeeCount();const totalActual=actual+unmatched;const gap=actual-quota;const remaining=Math.max(quota-actual,0);const percent=quota?actual/quota*100:0;
     const summaryCards=quotaConfigured?[
-      ["分配名额",quota,"当前类别目标","quota"],["实际报名",actual,"直接读取当前有效名单","actual"],[gap<0?"名额缺口":"名额差额",gap<0?remaining:`+${gap}`,gap<0?"仍需继续报名":"已达到或超过目标",gap<0?"shortage":"over"],["完成率",`${percent.toFixed(1)}%`,`${actual} / ${quota||0}`,"rate"],
+      ["分配名额",quota,"当前类别目标","quota"],["实际报名",actual,unmatched?`另有 ${unmatched} 人的大区或会场未匹配配置`:"已匹配当前名额配置","actual"],[gap<0?"名额缺口":"名额差额",gap<0?remaining:`+${gap}`,gap<0?"仍需继续报名":"已达到或超过目标",gap<0?"shortage":"over"],["完成率",`${percent.toFixed(1)}%`,`${actual} / ${quota||0}`,"rate"],
     ]:[
-      ["分配名额","未配置","点击右上角配置名额","quota"],["实际报名",actual,"直接读取当前有效名单","actual"],["涉及会场",new Set(rows.map(row=>row.venue)).size,"来自名单中的会场字段","over"],["统计类别",activeQuotaRole,"与名单类别保持一致","rate"],
+      ["分配名额","未配置","点击右上角配置名额","quota"],["实际报名",totalActual,"配置名额后按预设大区匹配","actual"],["未匹配人数",unmatched,"不会自动生成非预设大区","over"],["统计类别",activeQuotaRole,"仅统计已配置名额范围","rate"],
     ];
     $("#quotaSummary").innerHTML=summaryCards.map(([label,value,note,type])=>`<div class="quota-summary-item ${type}"><small>${label}</small><strong>${escapeHtml(String(value))}</strong><span>${note}</span></div>`).join("");
     const byVenue=[...new Set(rows.map(row=>row.venue))].map(venue=>{const list=rows.filter(row=>row.venue===venue);const venueQuota=list.reduce((sum,row)=>sum+row.quota,0);const venueActual=list.reduce((sum,row)=>sum+row.actual,0);return{venue,quota:venueQuota,actual:venueActual,gap:venueActual-venueQuota,percent:venueQuota?venueActual/venueQuota*100:0};});
@@ -796,9 +799,9 @@
     $("#quotaProgressBody").innerHTML=venues.map(venue=>{const list=ordered.filter(row=>row.venue===venue);return list.map(detailRow).join("")+summaryRow(`${venue}${activeQuotaRole}小计`,list);}).join("")+summaryRow(`${activeQuotaRole}合计`,ordered,true);
   }
 
-  function quotaConfigOptions(key,value) { const configured=state.settings.registrationQuotas||[];const source=key==="venue"?[...(state.settings.venues||[]).map(normalizeVenueLabel),...configured.map(item=>normalizeVenueLabel(item.venue)),...activeVisibleAttendees().map(item=>normalizeVenueLabel(item.venue))]:key==="role"?["听众","嘉宾"]:[...configured.map(item=>normalizeQuotaRegion(item.region)),...activeVisibleAttendees().map(item=>normalizeQuotaRegion(item.region))];const options=[...new Set(source.filter(Boolean))];if(value&&!options.includes(value))options.unshift(value);return options.map(option=>`<option value="${escapeHtml(option)}" ${option===value?"selected":""}>${escapeHtml(option)}</option>`).join(""); }
+  function quotaConfigOptions(key,value) { const configured=state.settings.registrationQuotas||[];const source=key==="venue"?[...(state.settings.venues||[]).map(normalizeVenueLabel),...configured.map(item=>normalizeVenueLabel(item.venue)),...activeVisibleAttendees().map(item=>normalizeVenueLabel(item.venue))]:key==="role"?["听众","角色嘉宾"]:[...configured.map(item=>normalizeQuotaRegion(item.region)),...activeVisibleAttendees().map(item=>normalizeQuotaRegion(item.region))];const options=[...new Set(source.filter(Boolean))];if(value&&!options.includes(value))options.unshift(value);return options.map(option=>`<option value="${escapeHtml(option)}" ${option===value?"selected":""}>${escapeHtml(option)}</option>`).join(""); }
   const parseQuotaRegions = value => String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean);
-  function quotaRegionChoices(extra=[]) { const configured=state.settings.registrationQuotas||[];return[...new Set([...extra,...(state.settings.quotaRegions||[]),...configured.map(item=>normalizeQuotaRegion(item.region)),...activeVisibleAttendees().map(item=>normalizeQuotaRegion(item.region))].map(value=>String(value||"").trim()).filter(Boolean))]; }
+  function quotaRegionChoices(extra=[]) { const configured=state.settings.registrationQuotas||[];return[...new Set([...extra,...(state.settings.quotaRegions||[]),...configured.map(item=>normalizeQuotaRegion(item.region))].map(value=>String(value||"").trim()).filter(Boolean))]; }
   function renderQuotaRegionOptions(extra=[]) { $("#quotaRegionOptions").innerHTML=quotaRegionChoices(extra).map(region=>`<option value="${escapeHtml(region)}"></option>`).join(""); }
   function appendQuotaConfigRow(item={venue:normalizeVenueLabel(state.settings.venues?.[0])||normalizeVenueLabel(activeVisibleAttendees()[0]?.venue)||"",region:state.settings.quotaRegions?.[0]||normalizeQuotaRegion(activeVisibleAttendees()[0]?.region),role:activeQuotaRole,quota:0}) { const row=document.createElement("div");row.className="quota-config-row";row.innerHTML=`<select name="quotaVenue" aria-label="会场">${quotaConfigOptions("venue",normalizeVenueLabel(item.venue))}</select><input name="quotaRegion" list="quotaRegionOptions" value="${escapeHtml(normalizeQuotaRegion(item.region))}" placeholder="选择或输入大区" aria-label="大区"/><select name="quotaRole" aria-label="角色">${quotaConfigOptions("role",normalizeQuotaRole(item.role))}</select><input name="quotaValue" type="number" min="0" step="1" value="${quotaNumber(item.quota)}" aria-label="分配名额"/><button type="button" class="quota-remove-row">删除</button>`;row.querySelector(".quota-remove-row").onclick=()=>row.remove();$("#quotaConfigRows").append(row); }
   function openQuotaConfiguration() { if(!canManage())return deny();$("#quotaRegionPresets").value=(state.settings.quotaRegions||[]).join("、");renderQuotaRegionOptions();$("#quotaConfigRows").innerHTML="";normalizedQuotaConfiguration().forEach(appendQuotaConfigRow);if(!$("#quotaConfigRows").children.length)appendQuotaConfigRow();$("#quotaFormError").textContent="";$("#quotaDialog").showModal(); }
@@ -1266,7 +1269,7 @@
 
   function applyPublicProject(project = {}) {
     if (!project) return;
-    document.title = `礼来会议管理平台 · ${project.name || "参会服务"}`;
+    document.title = "礼来会议管理平台";
     $("#publicProjectName").textContent=project.name || "参会服务";
     const dateText=project.startDate ? `${fmtDate(project.startDate)}${project.endDate && project.endDate !== project.startDate ? ` — ${fmtDate(project.endDate)}` : ""}` : "待公布";
     $("#publicProjectDates").textContent=dateText; $("#publicProjectVenues").textContent=(project.venues || []).map(normalizeVenueLabel).filter(Boolean).join(" / ") || "待公布"; $("#publicProjectClient").textContent=project.clientName || project.name || "待公布";

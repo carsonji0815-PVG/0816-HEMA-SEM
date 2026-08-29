@@ -680,6 +680,17 @@
   }
 
   const comparableStation = value => String(value||"").replace(/(?:火车)?站$/u,"").replace(/\s+/g,"").trim();
+  const verificationProviderLabel = check => check?.source?.label || ({aerodatabox:"AeroDataBox（API.Market）",juhe_flight_dynamic:"聚合数据·全球航班动态",aliyun_train:"阿里云市场·聚合数据",train:"高铁计划接口",flight:"航班计划接口"}[check?.provider] || check?.provider || "计划时刻接口");
+  const verifiedArrivalTime = match => match?.arrival ? `${match.arrival}${Number(match.arrivalDayOffset)>0?`+${match.arrivalDayOffset}`:""}` : "—";
+  function verificationExport(check) {
+    if(!check)return"未核验"; const match=check.match; const schedule=match?`${match.departure||"—"}-${verifiedArrivalTime(match)}`:"未查询到计划"; const warnings=check.warnings?.length?`；${check.warnings.join("；")}`:"";
+    return `${schedule}｜${verificationProviderLabel(check)}｜${check.checkedAt?new Date(check.checkedAt).toLocaleString("zh-CN",{hour12:false}):"时间未知"}${warnings}`;
+  }
+  function verificationDetails(attendee) {
+    const checks=attendee.customFields?._travelVerification||{}; if(!checks.outbound&&!checks.return)return"";
+    const card=(segment,label)=>{const check=checks[segment];if(!check)return`<div><small>${label}计划核验</small><strong>尚未核验</strong></div>`;const match=check.match;const source=verificationProviderLabel(check);const checked=check.checkedAt?new Date(check.checkedAt).toLocaleString("zh-CN",{hour12:false}):"时间未知";const reference=check.source?.referenceUrl?` · <a href="${escapeHtml(check.source.referenceUrl)}" target="_blank" rel="noopener">查看公开参考</a>`:"";return`<div><small>${label}计划核验</small><strong>${match?`${escapeHtml(match.departure||"—")} → ${escapeHtml(verifiedArrivalTime(match))}`:"未查询到计划时刻"}</strong><span>${escapeHtml(source)} · ${escapeHtml(checked)}${reference}</span></div>`;};
+    return `<div class="detail-grid verification-grid">${card("outbound","去程")}${card("return","返程")}</div>`;
+  }
   function travelVerificationWarnings(attendee, segment, result) {
     const flight=result?.mode==="flight"; const service=flight?"航班":"车次";
     if(!result?.found||!result.match)return result?.warnings||[`未查询到该${service}的计划时刻`];
@@ -706,7 +717,7 @@
         if(journeys.length){
           const payload=await documentApi(`/api/integrated/projects/${backendMeetingId}/travel/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({journeys})});
           apiChecked=payload.results?.length||0; cacheHits=payload.usage?.cacheHits||0;
-          (payload.results||[]).forEach(result=>{if((result.warnings||[]).some(warning=>/尚未配置/.test(warning)))return;const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={provider:result.provider||result.mode,checkedAt:result.fetchedAt||new Date().toISOString(),match:result.match||null,warnings:travelVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
+          (payload.results||[]).forEach(result=>{if((result.warnings||[]).some(warning=>/尚未配置/.test(warning)))return;const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={provider:result.provider||result.mode,source:result.source||null,checkedAt:result.fetchedAt||result.source?.checkedAt||new Date().toISOString(),match:result.match||null,warnings:travelVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
         }
       }
     } catch(error) {
@@ -846,7 +857,7 @@
   function openAttendee(id) {
     const a = state.attendees.find(item => item.id === id); if (!a) return;
     const locked = isLocked(a); const canEdit = !locked && (canManage() || a.ownerId === currentUser().id);
-    $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">ATTENDEE DETAIL</span><h2>${escapeHtml(a.name)}</h2><p>${escapeHtml(a.hospital)} · ${escapeHtml(a.department)} · ${escapeHtml(userName(a.ownerId))}负责</p></div><div class="detail-body"><div class="detail-grid"><div class="detail-block"><small>手机号</small><strong>${escapeHtml(a.phone)}</strong></div><div class="detail-block"><small>客户编号</small><strong>${escapeHtml(a.hcpId)}</strong></div><div class="detail-block"><small>去程</small><strong>${escapeHtml(a.outNo)} · ${fmtDate(a.outDate)} ${escapeHtml(a.outDeparture)}</strong></div><div class="detail-block"><small>返程</small><strong>${escapeHtml(a.returnNo)} · ${fmtDate(a.returnDate)} ${escapeHtml(a.returnDeparture)}</strong></div><div class="detail-block"><small>去程路线</small><strong>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</strong></div><div class="detail-block"><small>返程路线</small><strong>${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</strong></div></div>${a.risks.length ? `<div class="risk-preview warning">${a.risks.map(r => `△ ${escapeHtml(r)}`).join("<br>")}</div>` : `<div class="risk-preview ok">✓ 当前行程符合预设规则</div>`}<div class="detail-actions">${canEdit ? `<button class="button button-primary" id="editTripButton">修改行程</button>` : `<span class="status status-locked">${locked ? "名单已锁定" : "无修改权限"}</span>`}<button class="button button-secondary" id="closeDetailButton">关闭</button></div></div>`;
+    $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">ATTENDEE DETAIL</span><h2>${escapeHtml(a.name)}</h2><p>${escapeHtml(a.hospital)} · ${escapeHtml(a.department)} · ${escapeHtml(userName(a.ownerId))}负责</p></div><div class="detail-body"><div class="detail-grid"><div class="detail-block"><small>手机号</small><strong>${escapeHtml(a.phone)}</strong></div><div class="detail-block"><small>客户编号</small><strong>${escapeHtml(a.hcpId)}</strong></div><div class="detail-block"><small>去程</small><strong>${escapeHtml(a.outNo)} · ${fmtDate(a.outDate)} ${escapeHtml(a.outDeparture)}</strong></div><div class="detail-block"><small>返程</small><strong>${escapeHtml(a.returnNo)} · ${fmtDate(a.returnDate)} ${escapeHtml(a.returnDeparture)}</strong></div><div class="detail-block"><small>去程路线</small><strong>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</strong></div><div class="detail-block"><small>返程路线</small><strong>${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</strong></div></div>${verificationDetails(a)}${a.risks.length ? `<div class="risk-preview warning">${a.risks.map(r => `△ ${escapeHtml(r)}`).join("<br>")}</div>` : `<div class="risk-preview ok">✓ 当前行程符合预设规则</div>`}<div class="detail-actions">${canEdit ? `<button class="button button-primary" id="editTripButton">修改行程</button>` : `<span class="status status-locked">${locked ? "名单已锁定" : "无修改权限"}</span>`}<button class="button button-secondary" id="closeDetailButton">关闭</button></div></div>`;
     const dialog = $("#attendeeDialog"); dialog.showModal(); $("#closeDetailButton").onclick = () => dialog.close(); if (canEdit) $("#editTripButton").onclick = () => showTripEditor(a);
   }
 
@@ -855,7 +866,8 @@
     $("#cancelEdit").onclick = () => openAttendee(a.id);
     $("#tripEditForm").onsubmit = event => {
       event.preventDefault(); const fd = new FormData(event.currentTarget); const changes = []; const changedSegments=new Set(); ["outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival"].forEach(key => { let next = fd.get(key); if(["outFrom","outTo","returnFrom","returnTo"].includes(key))next=normalizeTerminal(next); if (next !== a[key]) { changes.push(`${FIELD_LABELS[key]||key}：${a[key]||"空"} → ${next||"空"}`); changedSegments.add(key.startsWith("return")?"return":"outbound"); a[key] = next; } });
-      refreshTravelApprovals(a,changedSegments); addNotification("change", `${currentUser().name}修改了${a.name}的行程：${changes.join("；")}`); saveState(); $("#attendeeDialog").close(); renderAll(); toast("行程已更新，会务负责人已收到变更提醒");
+      if(changedSegments.size&&a.customFields?._travelVerification){const checks={...a.customFields._travelVerification};changedSegments.forEach(segment=>delete checks[segment]);a.customFields={...a.customFields,_travelVerification:checks};}
+      refreshTravelApprovals(a,changedSegments); addNotification("change", `${currentUser().name}修改了${a.name}的行程：${changes.join("；")}`); saveState(); $("#attendeeDialog").close(); renderAll(); toast("行程已更新，原核验结果已失效并通知会务负责人重新核验");
     };
   }
 
@@ -1242,7 +1254,7 @@
 
   function exportExcel() {
     const columns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns;
-    const headers=[...columns.map(column=>column.header),"隐私沟通函状态","去程审批状态","返程审批状态","出票状态"];
+    const headers=[...columns.map(column=>column.header),"隐私沟通函状态","去程审批状态","返程审批状态","出票状态","去程计划时刻核验","返程计划时刻核验"];
     const progressLabels={pending:"待处理",sent:"已发送",complete:"已完成",processing:"出票中",ticketed:"已出票",changed:"改签",refunded:"已退票"};
     const segmentLabels={normal:"无需审批",pending:"待审批",approved:"已审批",rejected:"已退回"};
     const rows=visibleAttendees().map((a,i)=>[...columns.map(column=>{
@@ -1250,7 +1262,7 @@
       if(column.key==="contactName") return a.contactName||userName(a.ownerId);
       if(column.key==="contactMobile") return a.contactMobile||state.users.find(u=>u.id===a.ownerId)?.phone||"";
       return column.custom ? a.customFields?.[column.key]||"" : a[column.key]||"";
-    }),progressLabels[a.privacyLetterStatus||"pending"],segmentLabels[segmentApproval(a,"outbound")],segmentLabels[segmentApproval(a,"return")],progressLabels[a.ticketStatus||"pending"]]);
+    }),progressLabels[a.privacyLetterStatus||"pending"],segmentLabels[segmentApproval(a,"outbound")],segmentLabels[segmentApproval(a,"return")],progressLabels[a.ticketStatus||"pending"],verificationExport(a.customFields?._travelVerification?.outbound),verificationExport(a.customFields?._travelVerification?.return)]);
     if (window.XLSX) { const ws = XLSX.utils.aoa_to_sheet([headers,...rows]); ws["!cols"] = headers.map((_,i) => ({ wch: i === 0 ? 7 : 18 })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"报名表"); XLSX.writeFile(wb,`${state.settings.slug||"项目"}-报名表-${new Date().toISOString().slice(0,10)}.xlsx`); toast("Excel 已按当前项目模板导出"); }
     else { const csv = [headers,...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n"); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob(["\ufeff",csv],{type:"text/csv"})); link.download = "HEMA-SEM-报名表.csv"; link.click(); toast("已导出兼容 Excel 的 CSV 文件"); }
   }

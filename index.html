@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="无服务器行程报名、审批与接送机管理工具" />
     <meta name="theme-color" content="#D52B1E" />
-    <title>礼来会议行程管理平台 · HEMA SEM</title>
+    <title>礼来会议管理平台 · HEMA SEM</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-16" />
+    <link rel="stylesheet" href="styles.css?v=20260829-17" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
@@ -23,7 +23,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-16" defer></script>
+    <script src="app.js?v=20260829-17" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -33,7 +33,7 @@
       <header class="public-header">
         <a class="brand brand-dark lilly-brand lilly-brand-public" href="#portal" aria-label="礼来参会服务入口">
           <span class="lilly-logo-frame"><img class="lilly-logo" src="assets/lilly-logo-red.png" alt="礼来 Lilly" /></span>
-          <span class="brand-product"><strong>会议行程管理平台</strong><small>Meeting Journey Desk</small></span>
+          <span class="brand-product"><strong>礼来会议管理平台</strong><small>Lilly Meeting Management</small></span>
         </a>
         <a class="text-link" href="#dashboard">管理员入口 →</a>
       </header>
@@ -41,7 +41,7 @@
         <div class="lookup-copy">
           <span class="eyebrow">ATTENDEE SERVICE</span>
           <div class="public-project-chip" id="publicProjectChip"><span>◎</span><div><small>会议名称</small><strong id="publicProjectName">正在读取项目信息…</strong><select id="publicProjectSelector" class="is-hidden" aria-label="选择报名项目"></select></div></div>
-          <h1 id="publicPortalTitle">会议行程管理平台</h1>
+          <h1 id="publicPortalTitle">礼来会议管理平台</h1>
           <aside class="public-entry-reminder" aria-label="报名与查询重要提醒">
             <div class="public-entry-reminder-title"><span>!</span><div><small>IMPORTANT NOTICE</small><strong>报名与查询提醒</strong></div></div>
             <ul>
@@ -146,9 +146,9 @@
 
     <div class="app-shell" id="adminApp">
       <aside class="sidebar">
-        <a class="brand lilly-brand lilly-brand-sidebar" href="#dashboard" aria-label="礼来会议行程管理平台">
+        <a class="brand lilly-brand lilly-brand-sidebar" href="#dashboard" aria-label="礼来会议管理平台">
           <span class="lilly-logo-frame"><img class="lilly-logo" src="assets/lilly-logo-red.png" alt="礼来 Lilly" /></span>
-          <span class="brand-product"><strong>会议行程管理平台</strong><small>Meeting Journey Desk</small></span>
+          <span class="brand-product"><strong>礼来会议管理平台</strong><small>Lilly Meeting Management</small></span>
         </a>
         <div class="event-switcher">
           <span class="project-mini-icon" id="activeProjectIcon">✦</span>
@@ -397,7 +397,7 @@
     </dialog>
     <dialog id="projectDialog" class="login-dialog project-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">项</span><div><strong id="projectDialogTitle">新建项目</strong><small id="projectDialogHint">创建后先完成项目建档文件，再开展报名与行程管理</small></div></div><form id="projectForm" class="stack-form"><input type="hidden" name="editId" /><label>活动类型<select name="activityType" id="projectActivityType" required><option value="external">外部活动</option><option value="internal">内部活动</option></select></label><label id="projectIdentifierLabel">会议编码<input name="identifier" required placeholder="例如：EL2026-0820" /></label><label>活动名称<input name="name" required placeholder="例如：2026 血液高峰论坛" /></label><label>活动负责人<input name="activityOwner" required placeholder="请输入负责人姓名" /></label><label>活动日期<input name="activityDate" type="date" required /></label><label>项目链接标识<input name="slug" required pattern="[a-z0-9-]+" placeholder="例如：blood-forum-2026" /><small>用于报名链接，仅使用小写字母、数字和短横线</small></label><label id="projectCopyField">复制行程配置<select name="sourceId" id="projectCopySource"><option value="">不复制，使用默认设置</option></select></label><p id="projectFormError" class="login-error"></p><button class="button button-primary button-block" id="projectSubmitButton" type="submit">创建项目并进入建档</button></form></dialog>
     <dialog id="loginDialog" class="login-dialog">
-      <div class="login-brand login-brand-lilly"><span class="lilly-logo-frame"><img class="lilly-logo" src="assets/lilly-logo-red.png" alt="礼来 Lilly" /></span><div><strong>会议行程管理平台</strong><small>管理员安全登录</small></div></div>
+      <div class="login-brand login-brand-lilly"><span class="lilly-logo-frame"><img class="lilly-logo" src="assets/lilly-logo-red.png" alt="礼来 Lilly" /></span><div><strong>礼来会议管理平台</strong><small>管理员安全登录</small></div></div>
       <form id="loginForm" class="stack-form">
         <label>工作邮箱<input name="email" type="email" autocomplete="username" required placeholder="name@grandchinamice.com" /></label>
         <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>

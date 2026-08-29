@@ -1235,7 +1235,7 @@
 
   function applyPublicProject(project = {}) {
     if (!project) return;
-    document.title = `行程台 · ${project.name || "参会服务"}`;
+    document.title = `礼来会议管理平台 · ${project.name || "参会服务"}`;
     $("#publicProjectName").textContent=project.name || "参会服务";
     const dateText=project.startDate ? `${fmtDate(project.startDate)}${project.endDate && project.endDate !== project.startDate ? ` — ${fmtDate(project.endDate)}` : ""}` : "待公布";
     $("#publicProjectDates").textContent=dateText; $("#publicProjectVenues").textContent=(project.venues || []).map(normalizeVenueLabel).filter(Boolean).join(" / ") || "待公布"; $("#publicProjectClient").textContent=project.clientName || project.name || "待公布";

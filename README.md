@@ -1,4 +1,4 @@
-# 行程台 Journey Desk
+# 礼来会议管理平台
 
 面向医疗会议的报名、异常行程审批、名单锁定和接送机查询工具。前端为纯 HTML/CSS/JavaScript，可部署到 GitHub Pages；正式数据、账号权限和审计记录使用 Supabase 托管服务，不需要自建或维护服务器。
 

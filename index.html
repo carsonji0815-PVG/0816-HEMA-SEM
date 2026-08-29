@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-18" />
+    <link rel="stylesheet" href="styles.css?v=20260829-19" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
@@ -23,7 +23,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-18" defer></script>
+    <script src="app.js?v=20260829-19" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -389,6 +389,8 @@
       <form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form>
       <div class="detail-head quota-dialog-head"><span class="kicker">QUOTA ALLOCATION</span><h2>配置报名名额</h2><p>按会场、大区和角色设置分配名额，报名进度将自动统计。</p></div>
       <form class="detail-body quota-config-form" id="quotaForm">
+        <label class="quota-region-preset">项目预设大区 <small>使用顿号或逗号分隔；也可在下方每一行直接输入新大区</small><input id="quotaRegionPresets" name="quotaRegionPresets" placeholder="例如：华北大区、华南大区、沪苏皖" /></label>
+        <datalist id="quotaRegionOptions"></datalist>
         <div class="quota-config-heading"><span>会场</span><span>大区</span><span>角色</span><span>名额</span><span></span></div>
         <div id="quotaConfigRows" class="quota-config-rows"></div>
         <button class="button button-secondary quota-add-row" id="addQuotaRow" type="button">＋ 增加一行</button>

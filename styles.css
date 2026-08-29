@@ -763,6 +763,9 @@ table tbody tr:hover { background: #fff7f5; }
 .quota-dialog { width:min(920px,calc(100vw - 28px)); }
 .quota-dialog-head { background:linear-gradient(120deg,#17395e,#2f5d82); }
 .quota-config-form { background:#fffdfb; }
+.quota-region-preset { display:block; margin-bottom:18px; padding:14px 15px; border:1px solid #d9e2e9; border-radius:13px; color:#314b61; background:#f4f8fb; font-weight:700; }
+.quota-region-preset small { display:block; margin:4px 0 9px; color:#7a8a96; font-size:8px; font-weight:500; }
+.quota-region-preset input { margin:0; background:#fff; }
 .quota-config-heading,.quota-config-row { display:grid; grid-template-columns:1fr 1.35fr 1.45fr 90px 48px; gap:8px; align-items:center; }
 .quota-config-heading { padding:0 2px 7px; color:#8e7e80; font-size:8px; font-weight:700; }
 .quota-config-rows { display:grid; gap:7px; max-height:390px; overflow:auto; }

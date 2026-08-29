@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-21" />
+    <link rel="stylesheet" href="styles.css?v=20260829-22" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
@@ -23,7 +23,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-21" defer></script>
+    <script src="app.js?v=20260829-22" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -223,7 +223,7 @@
             <div class="metric-grid" id="metricGrid"></div>
             <div class="dashboard-grid">
               <article class="panel span-12 quota-progress-panel">
-                <div class="panel-heading quota-panel-heading"><div><span class="kicker">REGISTRATION PROGRESS</span><h2>报名进度</h2><p>按会场、角色和大区核对名额完成情况</p></div><div class="quota-panel-actions"><select id="quotaRoleFilter" aria-label="筛选角色"></select><button class="button button-secondary" id="configureQuotas" type="button">调整名额</button><a href="#attendees">查看名单 →</a></div></div>
+                <div class="panel-heading quota-panel-heading"><div><span class="kicker">REGISTRATION PROGRESS</span><h2>报名进度</h2><p>听众按名额核对完成情况，角色嘉宾按实际报名统计</p></div><div class="quota-panel-actions"><select id="quotaRoleFilter" aria-label="筛选角色"></select><button class="button button-secondary" id="configureQuotas" type="button">调整听众名额</button><a href="#attendees">查看名单 →</a></div></div>
                 <div class="quota-summary" id="quotaSummary"></div>
                 <div class="quota-overview-grid"><section class="venue-progress-section"><div class="quota-section-title"><strong>会场报名进度</strong><small>实际报名 / 分配名额</small></div><div id="quotaVenueProgress" class="quota-venue-progress"></div></section><section class="quota-alert-section"><div class="quota-alert-block"><div class="quota-section-title"><strong>缺口预警 TOP</strong><small>优先跟进</small></div><div id="quotaShortageList" class="quota-alert-list"></div></div><div class="quota-alert-block"><div class="quota-section-title"><strong>超额提醒 TOP</strong><small>关注资源调整</small></div><div id="quotaOverList" class="quota-alert-list"></div></div></section></div>
                 <div class="quota-detail-head"><div><strong>报名统计</strong><small>Gap = 实际报名 − 分配名额</small></div><div id="quotaRoleTabs" class="quota-role-tabs"></div></div>
@@ -336,7 +336,7 @@
               <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>会议总名额 <small>用于校验各分组名额合计</small><input name="capacity" type="number" min="1" /></label><label>会务联系电话<input name="servicePhone" /></label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL RULES</span><h2>行程与接送规则</h2></div></div><div class="stack-form"><label>允许的出发城市 <small>用顿号或逗号分隔</small><textarea name="allowedCities" rows="3"></textarea></label><div class="field-grid"><label>航班送机提前分钟<input name="flightLeadMinutes" type="number" min="0" step="10" /></label><label>高铁送站提前分钟<input name="trainLeadMinutes" type="number" min="0" step="10" /></label></div><label>自动接送分组间隔（分钟）<input name="transportGroupMinutes" type="number" min="10" max="180" step="10" /><small>例如 30：同一站点、相邻半小时内的人员归为一个建议批次</small></label><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时提醒</label><label class="check-row"><input name="departureRule" type="checkbox" /> 出发城市不在允许范围时提醒</label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">FORM FIELDS</span><h2>报名字段</h2></div></div><div class="field-toggle-grid"><label class="check-row"><input name="fieldTitle" type="checkbox" /> 显示职称</label><label class="check-row"><input name="fieldHcpId" type="checkbox" /> 显示 HCP ID</label><label class="check-row"><input name="fieldAccommodation" type="checkbox" /> 显示住宿安排</label><label class="check-row"><input name="fieldFlight" type="checkbox" /> 显示是否航空</label><label class="check-row"><input name="fieldMslContact" type="checkbox" /> 显示 MSL 联系人</label><label class="check-row"><input name="fieldRemarks" type="checkbox" /> 显示备注</label></div></article>
-              <article class="panel quota-settings-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION QUOTA</span><h2>会议报名名额</h2><p>按会场、大区和参会角色预先分配；报名期间仍可随时调整。</p></div><span class="status" id="quotaSettingsStatus">尚未配置</span></div><div class="quota-settings-summary" id="quotaSettingsSummary"></div><div class="quota-settings-actions"><p>报名进度看板直接读取这里的名额配置和当前有效名单，调整后立即重新统计。</p><button class="button button-secondary" id="editQuotasFromSettings" type="button">设置 / 调整分组名额</button></div></article>
+              <article class="panel quota-settings-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION QUOTA</span><h2>会议报名名额</h2><p>按会场和大区分配听众名额；角色嘉宾不设名额限制，按实际报名统计。</p></div><span class="status" id="quotaSettingsStatus">尚未配置</span></div><div class="quota-settings-summary" id="quotaSettingsSummary"></div><div class="quota-settings-actions"><p>报名进度看板直接读取这里的听众名额和当前有效名单，调整后立即重新统计。</p><button class="button button-secondary" id="editQuotasFromSettings" type="button">设置 / 调整听众名额</button></div></article>
               <article class="panel registration-control-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION CONTROL</span><h2>报名与会务权限</h2></div><span class="status" id="registrationOpenStatus">报名关闭</span></div><div class="control-switch-list"><label class="permission-switch"><span><strong>项目报名开放</strong><small id="registrationOpenHint">必须先导入报名表模板</small></span><span class="switch"><input id="registrationOpenSwitch" type="checkbox" /><span></span></span></label><label class="permission-switch"><span><strong>会务负责人编辑参会资料</strong><small>默认仅可查看；超级管理员始终拥有最高维护权限</small></span><span class="switch"><input id="managerEditSwitch" type="checkbox" /><span></span></span></label></div></article>
               <article class="panel system-staff-panel is-hidden" id="systemStaffPanel"><div class="panel-heading"><div><span class="kicker">SYSTEM ACCOUNTS</span><h2>会务负责人账号</h2><p>仅超级管理员可为当前项目开放或回收会务负责人权限。</p></div><span class="status status-normal">白名单制</span></div><div id="systemStaffList" class="system-staff-list"></div></article>
               <article class="panel template-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION TEMPLATE</span><h2>当前项目报名模板</h2></div><button class="text-button danger" id="resetProjectTemplate" type="button">删除模板</button></div><p class="template-help">上传 Excel / CSV 后，系统读取第一张表的表头。公开报名只显示模板包含的字段，未识别列会自动成为项目补充字段。报名开放期间不能删除模板。</p><label class="template-upload"><input id="projectTemplateFile" type="file" accept=".xlsx,.xls,.csv" /><span>⇧</span><strong>选择名单模板</strong><small>模板只保存字段名称和顺序，不会导入名单数据</small></label><div id="templateStatus" class="template-status"></div><div id="templateColumns" class="template-columns"></div></article>
@@ -387,7 +387,7 @@
     </dialog>
     <dialog id="quotaDialog" class="detail-dialog quota-dialog">
       <form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form>
-      <div class="detail-head quota-dialog-head"><span class="kicker">QUOTA ALLOCATION</span><h2>配置报名名额</h2><p>按会场、大区和角色设置分配名额，报名进度将自动统计。</p></div>
+      <div class="detail-head quota-dialog-head"><span class="kicker">QUOTA ALLOCATION</span><h2>配置听众报名名额</h2><p>按会场和大区设置听众名额；角色嘉宾不限额并按实际报名统计。</p></div>
       <form class="detail-body quota-config-form" id="quotaForm">
         <label class="quota-region-preset">项目预设大区 <small>使用顿号或逗号分隔；也可在下方每一行直接输入新大区</small><input id="quotaRegionPresets" name="quotaRegionPresets" placeholder="例如：华北大区、华南大区、沪苏皖" /></label>
         <datalist id="quotaRegionOptions"></datalist>

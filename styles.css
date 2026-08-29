@@ -769,6 +769,7 @@ table tbody tr:hover { background: #fff7f5; }
 .quota-status.over { color:#8e5715; background:#ffefce; }
 .quota-status.complete { color:#35506a; background:#e5edf3; }
 .quota-status.neutral { color:#817375; background:#efebe9; }
+.quota-status.unlimited { color:#315f66; background:#dceceb; }
 .quota-dialog { width:min(920px,calc(100vw - 28px)); }
 .quota-dialog-head { background:linear-gradient(120deg,#17395e,#2f5d82); }
 .quota-config-form { background:#fffdfb; }

@@ -6,8 +6,8 @@
 
 - 按《报名表模版》31 列采集并导出 `.xlsx`
 - 二维码/链接报名
-- 会务负责人、会议负责人（客户）、销售负责人三种角色
-- 销售仅可查看本人负责的参会者（Supabase RLS 服务端强制）
+- 管理端采用固定邮箱白名单：超级管理员始终拥有全部权限，会务负责人仅进入获授权项目
+- 参会报名、已报名修改及本人信息查询使用独立参会端，不使用管理端邮箱登录
 - 名单全局锁、按行锁、按字段组锁
 - 行程城市不一致、非预设出发城市自动待审批
 - 报名和行程变更记录、会务提醒
@@ -46,25 +46,23 @@ python3 -m http.server 4173
 ### 1. 建立 Supabase 项目
 
 1. 在 Supabase 新建项目。
-2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按文件名顺序执行 `supabase/migrations/` 内的升级脚本。已有项目执行尚未运行的升级脚本；本次报名权限更新对应 `2026082901_registration_control_identity_permissions.sql`。
-3. 在 Authentication 创建工作人员邮箱密码账号。
+2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按文件名顺序执行 `supabase/migrations/` 内的升级脚本。已有项目执行尚未运行的升级脚本；本次管理端权限更新对应 `2026082903_system_staff_allowlist.sql`。
+3. 在 Authentication 仅为下列管理邮箱创建密码账号。其他邮箱即使拥有 Auth 账号，也会被数据库和前端同时拒绝进入管理端：
+
+   - `jll@grandchinamice.com`：季亮亮，超级管理员
+   - `shenxy@grandchinamice.com`：沈祥雨，会务负责人
+   - `chenyan@grandchinamice.com`：陈艳，会务负责人
+   - `zhucy@grandchinamice.com`：朱宸玥，会务负责人
+   - `zhuby@grandchinamice.com`：朱冰焰，会务负责人
+   - `zhanh@grandchinamice.com`：占慧，会务负责人
+   - `yml@grandchinamice.com`：易敏丽，会务负责人
 4. 查询会议 ID：
 
 ```sql
 select id from public.meetings where slug = 'hema-sem-2026';
 ```
 
-5. 为每个账号建立角色资料。将下面 UUID 和资料替换为真实值：
-
-```sql
-insert into public.profiles (user_id, meeting_id, display_name, phone, role)
-values
-  ('会务账号UUID', '会议UUID', '会务负责人姓名', '手机号', 'ops'),
-  ('客户账号UUID', '会议UUID', '客户会议负责人姓名', '手机号', 'client'),
-  ('销售账号UUID', '会议UUID', '销售姓名', '手机号', 'sales');
-```
-
-首次执行多项目升级脚本会自动把上述账号复制到 `meeting_members`。之后会务负责人可在“项目管理”中新建或复制项目；每个二维码使用 `?event=项目编号#portal` 区分项目。
+5. 超级管理员登录后，在“项目设置 → 会务负责人账号”为当前项目分配或回收会务负责人权限。超级管理员不能被回收，且始终可查看和维护全部项目。每个参会二维码使用 `?event=项目编号#portal` 区分项目。
 
 ### 2. 部署公开查询函数
 
@@ -99,7 +97,7 @@ window.APP_CONFIG = {
 
 ## 上线前检查
 
-- 用三类真实测试账号分别验证可见名单范围。
+- 用超级管理员、已授权会务负责人、未授权邮箱分别验证全部权限、项目隔离和登录拦截。
 - 将演示数据留在演示模式即可；生产模式只读取 Supabase 数据，不会上传本地演示名单。
 - 用无痕窗口分别测试三个公开入口；关闭报名开关后，“我要报名”应禁用，而“更改已报名”和“参会信息查询”仍可使用。
 - 用两个不同员工编号交叉测试，确认填报人无法读取、修改或取消对方绑定的参会人员。
@@ -118,5 +116,6 @@ window.APP_CONFIG = {
 - `supabase/migrations/2026082004_integrated_project_documents.sql`：统一项目基础信息、项目创建门禁和文件归档关联字段
 - `supabase/migrations/20260820_segment_approval_ticket_guard.sql`：去程/返程分段审批与出票前数据库强制校验
 - `supabase/migrations/2026082901_registration_control_identity_permissions.sql`：报名开放控制、填报身份绑定、软取消、移交、审计和服务端权限升级脚本
+- `supabase/migrations/2026082903_system_staff_allowlist.sql`：管理端固定邮箱白名单、超级管理员兜底权限与项目级会务负责人分配
 - `supabase/functions/public-trip-query/index.ts`：报名身份会话、本人报名维护和无短信验证码的参会信息查询接口
 - `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布

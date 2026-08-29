@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-15" />
+    <link rel="stylesheet" href="styles.css?v=20260829-16" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
@@ -23,7 +23,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-15" defer></script>
+    <script src="app.js?v=20260829-16" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -336,9 +336,10 @@
               <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>参会名额<input name="capacity" type="number" min="1" /></label><label>会务联系电话<input name="servicePhone" /></label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL RULES</span><h2>行程与接送规则</h2></div></div><div class="stack-form"><label>允许的出发城市 <small>用顿号或逗号分隔</small><textarea name="allowedCities" rows="3"></textarea></label><div class="field-grid"><label>航班送机提前分钟<input name="flightLeadMinutes" type="number" min="0" step="10" /></label><label>高铁送站提前分钟<input name="trainLeadMinutes" type="number" min="0" step="10" /></label></div><label>自动接送分组间隔（分钟）<input name="transportGroupMinutes" type="number" min="10" max="180" step="10" /><small>例如 30：同一站点、相邻半小时内的人员归为一个建议批次</small></label><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时提醒</label><label class="check-row"><input name="departureRule" type="checkbox" /> 出发城市不在允许范围时提醒</label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">FORM FIELDS</span><h2>报名字段</h2></div></div><div class="field-toggle-grid"><label class="check-row"><input name="fieldTitle" type="checkbox" /> 显示职称</label><label class="check-row"><input name="fieldHcpId" type="checkbox" /> 显示 HCP ID</label><label class="check-row"><input name="fieldAccommodation" type="checkbox" /> 显示住宿安排</label><label class="check-row"><input name="fieldFlight" type="checkbox" /> 显示是否航空</label><label class="check-row"><input name="fieldMslContact" type="checkbox" /> 显示 MSL 联系人</label><label class="check-row"><input name="fieldRemarks" type="checkbox" /> 显示备注</label></div></article>
-              <article class="panel registration-control-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION CONTROL</span><h2>报名与管理员权限</h2></div><span class="status" id="registrationOpenStatus">报名关闭</span></div><div class="control-switch-list"><label class="permission-switch"><span><strong>项目报名开放</strong><small id="registrationOpenHint">必须先导入报名表模板</small></span><span class="switch"><input id="registrationOpenSwitch" type="checkbox" /><span></span></span></label><label class="permission-switch"><span><strong>会务 / 客户负责人编辑参会资料</strong><small>默认仅可查看；超级管理员始终拥有维护权限</small></span><span class="switch"><input id="managerEditSwitch" type="checkbox" /><span></span></span></label></div></article>
+              <article class="panel registration-control-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION CONTROL</span><h2>报名与会务权限</h2></div><span class="status" id="registrationOpenStatus">报名关闭</span></div><div class="control-switch-list"><label class="permission-switch"><span><strong>项目报名开放</strong><small id="registrationOpenHint">必须先导入报名表模板</small></span><span class="switch"><input id="registrationOpenSwitch" type="checkbox" /><span></span></span></label><label class="permission-switch"><span><strong>会务负责人编辑参会资料</strong><small>默认仅可查看；超级管理员始终拥有最高维护权限</small></span><span class="switch"><input id="managerEditSwitch" type="checkbox" /><span></span></span></label></div></article>
+              <article class="panel system-staff-panel is-hidden" id="systemStaffPanel"><div class="panel-heading"><div><span class="kicker">SYSTEM ACCOUNTS</span><h2>会务负责人账号</h2><p>仅超级管理员可为当前项目开放或回收会务负责人权限。</p></div><span class="status status-normal">白名单制</span></div><div id="systemStaffList" class="system-staff-list"></div></article>
               <article class="panel template-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION TEMPLATE</span><h2>当前项目报名模板</h2></div><button class="text-button danger" id="resetProjectTemplate" type="button">删除模板</button></div><p class="template-help">上传 Excel / CSV 后，系统读取第一张表的表头。公开报名只显示模板包含的字段，未识别列会自动成为项目补充字段。报名开放期间不能删除模板。</p><label class="template-upload"><input id="projectTemplateFile" type="file" accept=".xlsx,.xls,.csv" /><span>⇧</span><strong>选择名单模板</strong><small>模板只保存字段名称和顺序，不会导入名单数据</small></label><div id="templateStatus" class="template-status"></div><div id="templateColumns" class="template-columns"></div></article>
-              <article class="panel"><div class="panel-heading"><div><span class="kicker">ROLES</span><h2>管理员角色</h2></div></div><div class="role-list"><div><span class="role-dot ops"></span><p><strong>会务负责人</strong><small>全量名单、锁定、审批与调度</small></p></div><div><span class="role-dot client"></span><p><strong>会议负责人（客户）</strong><small>查看全部、审批异常行程</small></p></div><div><span class="role-dot sales"></span><p><strong>销售 / 负责人</strong><small>仅管理本人负责的参会者</small></p></div></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">PERMISSION LEVELS</span><h2>系统权限层级</h2></div></div><div class="role-list"><div><span class="role-dot admin"></span><p><strong>超级管理员 · 季亮亮</strong><small>始终拥有全部项目、全部名单、设置、锁定、审批、导入导出及账号分配权限</small></p></div><div><span class="role-dot ops"></span><p><strong>会务负责人</strong><small>仅可进入获授权项目；按项目设置执行名单、审批、接送与报名管理</small></p></div><div><span class="role-dot public"></span><p><strong>填报人 / 参会人员</strong><small>通过参会服务入口使用，不属于管理端邮箱账号</small></p></div></div></article>
               <div class="settings-actions"><button class="button button-primary" type="submit">保存会议设置</button><button class="button button-ghost" type="button" id="resetDemo">恢复演示数据</button></div>
             </form>
           </section>
@@ -396,15 +397,14 @@
     </dialog>
     <dialog id="projectDialog" class="login-dialog project-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">项</span><div><strong id="projectDialogTitle">新建项目</strong><small id="projectDialogHint">创建后先完成项目建档文件，再开展报名与行程管理</small></div></div><form id="projectForm" class="stack-form"><input type="hidden" name="editId" /><label>活动类型<select name="activityType" id="projectActivityType" required><option value="external">外部活动</option><option value="internal">内部活动</option></select></label><label id="projectIdentifierLabel">会议编码<input name="identifier" required placeholder="例如：EL2026-0820" /></label><label>活动名称<input name="name" required placeholder="例如：2026 血液高峰论坛" /></label><label>活动负责人<input name="activityOwner" required placeholder="请输入负责人姓名" /></label><label>活动日期<input name="activityDate" type="date" required /></label><label>项目链接标识<input name="slug" required pattern="[a-z0-9-]+" placeholder="例如：blood-forum-2026" /><small>用于报名链接，仅使用小写字母、数字和短横线</small></label><label id="projectCopyField">复制行程配置<select name="sourceId" id="projectCopySource"><option value="">不复制，使用默认设置</option></select></label><p id="projectFormError" class="login-error"></p><button class="button button-primary button-block" id="projectSubmitButton" type="submit">创建项目并进入建档</button></form></dialog>
     <dialog id="loginDialog" class="login-dialog">
-      <div class="login-brand login-brand-lilly"><span class="lilly-logo-frame"><img class="lilly-logo" src="assets/lilly-logo-red.png" alt="礼来 Lilly" /></span><div><strong>会议行程管理平台</strong><small>工作人员安全登录</small></div></div>
+      <div class="login-brand login-brand-lilly"><span class="lilly-logo-frame"><img class="lilly-logo" src="assets/lilly-logo-red.png" alt="礼来 Lilly" /></span><div><strong>会议行程管理平台</strong><small>管理员安全登录</small></div></div>
       <form id="loginForm" class="stack-form">
-        <label>工作邮箱<input name="email" type="email" autocomplete="username" required placeholder="name@company.com" /></label>
+        <label>工作邮箱<input name="email" type="email" autocomplete="username" required placeholder="name@grandchinamice.com" /></label>
         <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>
         <p id="loginError" class="login-error"></p>
         <button class="button button-primary button-block" type="submit">登录管理端</button>
       </form>
-      <p class="login-help">账号由会务负责人在 Supabase 中创建。参会者查询无需登录。</p>
-      <a class="text-link" href="#portal">进入参会服务 →</a>
+      <p class="login-help">管理端仅向超级管理员预设的会务负责人邮箱开放；参会者无需管理端登录。</p>
     </dialog>
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <div class="mobile-overlay" id="mobileOverlay"></div>

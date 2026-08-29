@@ -473,13 +473,29 @@ table tbody tr:hover { background: #fff7f5; }
 .login-dialog { background: #fffaf7; border-top: 5px solid var(--lilly-red); box-shadow: 0 35px 110px rgba(58,18,23,.3); }
 .login-dialog::backdrop { background: rgba(45,18,22,.76); }
 .login-brand-lilly { align-items: center; }
-.login-brand-lilly .lilly-logo-frame { width: 118px; height: 68px; padding: 4px; border-radius: 13px; }
+.login-brand-lilly .lilly-logo-frame { width: 128px; height: 72px; padding: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.login-brand-lilly .lilly-logo { mix-blend-mode: multiply; }
 .login-brand-lilly strong { color: #3b2427; }
 .brand-mark { background: linear-gradient(135deg, var(--lilly-red-bright), #a41824); color: #fff; box-shadow: 0 9px 20px rgba(201,31,44,.2); }
 .detail-head { background: linear-gradient(120deg, #6b1b24, var(--lilly-red)); }
 .import-head { background: linear-gradient(120deg, #6b1b24, var(--lilly-red)); }
 .import-dropzone:hover,.import-dropzone.dragging { border-color: var(--lilly-red); background: #fff2f2; }
 .import-file-icon,.import-file-name > span { background: var(--lilly-red); }
+
+.system-staff-panel { grid-column: 1 / -1; border-top: 4px solid #8f2630; }
+.system-staff-list { display: grid; gap: 10px; }
+.system-staff-row { display: grid; grid-template-columns: 44px minmax(180px,1fr) auto minmax(250px,.9fr); gap: 14px; align-items: center; padding: 14px 16px; border: 1px solid #eadeda; border-radius: 14px; background: #fffdfb; }
+.system-staff-avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; color: #7b3c43; background: #f4e1df; font-size: 14px; font-weight: 800; }
+.system-staff-avatar.admin { color: #fff; background: linear-gradient(135deg,var(--lilly-red-bright),#a21825); }
+.system-staff-main strong,.system-staff-main small { display: block; }
+.system-staff-main strong { color: #402a2d; font-size: 11px; }
+.system-staff-main small { margin-top: 4px; color: #8c7a7c; font-size: 8px; }
+.system-staff-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.system-staff-switch { min-width: 0; margin: 0; padding: 0 0 0 15px; border: 0; border-left: 1px solid #eadeda; background: transparent; }
+.system-staff-switch > span:first-child strong,.system-staff-switch > span:first-child small { display: block; }
+.system-staff-fixed { justify-self: end; color: #9b2631; font-size: 9px; font-weight: 800; }
+.role-dot.admin { background: var(--lilly-red); box-shadow: 0 0 0 5px #f9dfe2; }
+.role-dot.public { background: #5b8a83; box-shadow: 0 0 0 5px #dcebe7; }
 
 @media (max-width: 760px) {
   .app-shell { display: block; }
@@ -493,6 +509,10 @@ table tbody tr:hover { background: #fff7f5; }
   .lilly-brand-public .brand-product small { display: none; }
   .lookup-layout,.portal-layout:has(.portal-card.expanded) { padding-top: 38px; }
   .lookup-copy h1 { font-size: clamp(40px,13vw,54px); }
+  .system-staff-row { grid-template-columns: 42px minmax(0,1fr); }
+  .system-staff-badges,.system-staff-switch,.system-staff-fixed { grid-column: 1 / -1; justify-self: stretch; }
+  .system-staff-badges { justify-content: flex-start; }
+  .system-staff-switch { padding: 12px 0 0; border-left: 0; border-top: 1px solid #eadeda; }
 }
 
 @media (max-width: 440px) {

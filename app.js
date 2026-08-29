@@ -117,6 +117,8 @@
   let pendingImportRows = [];
   let documentState = { folder:null, files:[], user:null, loading:false };
   let projectArchiveStates = {};
+  let staffAccess = { allowed:false, email:"", displayName:"", systemRole:"" };
+  let staffDirectory = [];
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -130,14 +132,14 @@
   const userName = id => state.users.find(user => user.id === id)?.name || "未分配";
   const visibleAttendees = () => currentUser().role === "sales" ? state.attendees.filter(item => item.ownerId === currentUser().id) : state.attendees;
   const activeVisibleAttendees = () => visibleAttendees().filter(item=>item.businessStatus!=="cancelled");
-  const canManage = () => ["ops", "client"].includes(currentUser().role);
+  const canManage = () => isSystemAdmin() || currentUser()?.role === "ops";
   const canEditAttendeeData = () => isSystemAdmin() || currentUser().role === "sales" || (canManage() && !!state.settings.managerEditEnabled);
   // The document service is the authority for archive permissions.  The
   // Journey Desk display name can differ from the archive membership name,
   // so relying on the local label alone incorrectly hid the administrator
   // scenario and final-document options.
-  const isDocumentAdmin = () => documentState.user?.role === "admin" || currentUser()?.name?.trim() === DOCUMENT_ADMIN_NAME;
-  const isSystemAdmin = () => isDocumentAdmin() || currentUser()?.name?.trim() === DOCUMENT_ADMIN_NAME;
+  const isSystemAdmin = () => staffAccess.systemRole === "super_admin";
+  const isDocumentAdmin = () => documentState.user?.role === "admin" || isSystemAdmin();
   const archiveSummary = files => {
     const list=files||[]; const quotation=list.some(file=>file.type==="quotation"); const pendingConfirmation=list.some(file=>file.type==="confirmation"&&file.documentStatus==="pending");
     return { quotation, pendingConfirmation, ready:quotation&&pendingConfirmation };
@@ -150,6 +152,7 @@
   const currentEventSlug = () => new URLSearchParams(location.search).get("event") || window.APP_CONFIG?.eventSlug || state.settings.slug || "";
   const publicProjectUrl = (hash = "portal") => {
     const url = new URL(location.href);
+    url.searchParams.delete("preview");
     url.searchParams.set("event", currentProject().slug || state.settings.slug || currentEventSlug());
     url.hash = hash;
     return url.toString();
@@ -241,14 +244,72 @@
   const approvalRequired = (a,segment) => evaluateSegmentRisks(a)[segment].length>0;
   function ticketApprovalBlockers(a) { return ["outbound","return"].filter(segment=>approvalRequired(a,segment)&&segmentApproval(a,segment)!=="approved"); }
 
+  async function loadStaffAccess() {
+    const {data,error}=await backend.rpc("get_staff_access");
+    if(error)throw new Error("系统账号权限尚未升级，请先执行最新数据库升级");
+    const row=Array.isArray(data)?data[0]:data;
+    if(!row?.allowed)throw new Error("当前邮箱未开放管理系统权限");
+    staffAccess={allowed:true,email:row.email||"",displayName:row.display_name||"",systemRole:row.system_role||"ops"};
+    return staffAccess;
+  }
+
+  async function loadStaffDirectory() {
+    staffDirectory = [];
+    if (!backend || !backendMeetingId || !isSystemAdmin()) return;
+    const { data, error } = await backend.rpc("list_system_staff", { p_meeting_id: backendMeetingId });
+    if (error) throw new Error(`会务负责人账号读取失败：${error.message}`);
+    staffDirectory = Array.isArray(data) ? data : [];
+  }
+
+  function renderSystemStaffDirectory() {
+    const panel = $("#systemStaffPanel");
+    const list = $("#systemStaffList");
+    if (!panel || !list) return;
+    const visible = !!backendMeetingId && isSystemAdmin();
+    panel.classList.toggle("is-hidden", !visible);
+    if (!visible) { list.innerHTML = ""; return; }
+    list.innerHTML = staffDirectory.map(staff => {
+      const isAdmin = staff.system_role === "super_admin";
+      const enabled = isAdmin || !!staff.project_enabled;
+      const accountState = staff.account_created ? "登录账号已创建" : "尚未创建登录账号";
+      return `<div class="system-staff-row">
+        <span class="system-staff-avatar ${isAdmin ? "admin" : ""}">${escapeHtml((staff.display_name || "人").slice(0,1))}</span>
+        <div class="system-staff-main"><strong>${escapeHtml(staff.display_name)}</strong><small>${escapeHtml(staff.email)}</small></div>
+        <div class="system-staff-badges"><span class="status ${staff.account_created ? "status-normal" : "status-locked"}">${accountState}</span>${isAdmin ? `<span class="status status-ok">全部项目 · 最高权限</span>` : ""}</div>
+        ${isAdmin ? `<span class="system-staff-fixed">不可回收</span>` : `<label class="permission-switch system-staff-switch"><span><strong>${enabled ? "已授权当前项目" : "未授权当前项目"}</strong><small>${staff.account_created ? "可随时开放或回收" : "请先在 Supabase 创建账号"}</small></span><span class="switch"><input type="checkbox" data-system-staff-email="${escapeHtml(staff.email)}" ${enabled ? "checked" : ""} ${staff.account_created ? "" : "disabled"}/><span></span></span></label>`}
+      </div>`;
+    }).join("") || `<div class="empty-state">暂无可分配的会务负责人账号</div>`;
+    $$('[data-system-staff-email]', list).forEach(input => input.addEventListener("change", () => toggleProjectStaff(input.dataset.systemStaffEmail, input.checked, input)));
+  }
+
+  async function toggleProjectStaff(email, enabled, input) {
+    if (!backend || !backendMeetingId || !isSystemAdmin()) return deny();
+    input.disabled = true;
+    try {
+      const { error } = await backend.rpc("set_project_staff_member", { p_meeting_id: backendMeetingId, p_email: email, p_enabled: enabled });
+      if (error) throw error;
+      await loadStaffDirectory();
+      renderSystemStaffDirectory();
+      toast(enabled ? "已开放当前项目权限" : "已回收当前项目权限");
+    } catch (error) {
+      input.checked = !enabled;
+      input.disabled = false;
+      toast(`账号权限更新失败：${error.message}`, "error");
+    }
+  }
+
   async function init() {
     bindLogin();
+    const cleanUrl=new URL(location.href);if(cleanUrl.searchParams.has("preview")){cleanUrl.searchParams.delete("preview");history.replaceState(null,"",cleanUrl.toString());}
     const config = window.APP_CONFIG || {};
     if (config.mode === "production" && config.supabaseUrl && config.supabaseAnonKey && window.supabase) {
       backend = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
       const { data } = await backend.auth.getSession();
-      if (data.session) await loadBackendState();
-      else if (!["portal", "lookup", "register"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
+      if (data.session) {
+        try{await loadStaffAccess();await loadBackendState();}
+        catch(error){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=error.message;$("#loginDialog").showModal();}
+      }
+      else if (!["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
     }
     populateUsers(); populateProjects(); bindNavigation(); bindForms(); bindControls(); route(); renderAll();
     window.addEventListener("hashchange", route);
@@ -331,11 +392,13 @@
       event.preventDefault();
       if (!backend) return;
       const form = event.currentTarget;
-      const { error } = await backend.auth.signInWithPassword({ email: form.elements.email.value, password: form.elements.password.value });
-      if (error) { $("#loginError").textContent = "邮箱或密码不正确"; return; }
-      $("#loginError").textContent = "";
-      await loadBackendState();
-      populateUsers(); populateProjects(); renderAll(); $("#loginDialog").close(); location.hash = state.activeProjectId ? "dashboard" : "projects"; route(); toast(state.activeProjectId ? "登录成功" : "登录成功，请先新建项目");
+      const button=form.querySelector('button[type="submit"]');button.disabled=true;
+      const email=String(form.elements.email.value||"").trim().toLowerCase();
+      const { error } = await backend.auth.signInWithPassword({ email, password: form.elements.password.value });
+      if (error) { $("#loginError").textContent = "邮箱或密码不正确"; button.disabled=false; return; }
+      try{$("#loginError").textContent="";await loadStaffAccess();await loadBackendState();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();toast(state.activeProjectId?`登录成功 · ${isSystemAdmin()?"超级管理员":"会务负责人"}`:"登录成功，请先新建项目");}
+      catch(accessError){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=accessError.message||"当前邮箱未开放管理系统权限";}
+      finally{button.disabled=false;}
     });
   }
 
@@ -347,7 +410,7 @@
     const manageableProjects=projectsRes.data||[]; projectMemberships=manageableProjects.map(meeting=>({meeting_id:meeting.id,role:"ops",display_name:profileRes.data.display_name,phone:profileRes.data.phone,meetings:meeting}));
     if (!manageableProjects.length) {
       const blank = initialState(); backendMeetingId = null;
-      state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:profileRes.data.role,label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[profileRes.data.role]||"项目成员",phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
+      state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:"ops",label:isSystemAdmin()?"超级管理员":"会务负责人",phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
       localStorage.removeItem("journey-desk-active-project"); return;
     }
     const savedProjectId = localStorage.getItem("journey-desk-active-project");
@@ -375,10 +438,13 @@
     };
     if (!state.users.some(user => user.id === authData.user.id)) {
       const profileName=profileRes.data.display_name?.trim();
-      state.users.push({id:authData.user.id,name:profileName,role:profileRes.data.role,label:profileName===DOCUMENT_ADMIN_NAME?"系统管理员":"项目负责人",phone:profileRes.data.phone||""});
+      state.users.push({id:authData.user.id,name:profileName,role:"ops",label:isSystemAdmin()?"超级管理员":"会务负责人",phone:profileRes.data.phone||""});
+    } else {
+      const signedInUser=state.users.find(user=>user.id===authData.user.id);signedInUser.role="ops";signedInUser.label=isSystemAdmin()?"超级管理员":"会务负责人";
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     await loadProjectArchiveStates();
+    await loadStaffDirectory();
   }
 
   function fromDbAttendee(row) {
@@ -1010,6 +1076,7 @@
     $("#registrationOpenStatus").textContent=state.settings.registrationOpen?"报名开放":"报名关闭";$("#registrationOpenStatus").className=`status ${state.settings.registrationOpen?"status-ok":"status-locked"}`;
     $("#registrationOpenHint").textContent=state.settings.templateImported?(state.settings.registrationOpen?"当前允许公开端新增报名":"关闭后仍可更改已报名和查询参会信息"):"必须先导入报名表模板";
     $("#managerEditSwitch").checked=!!state.settings.managerEditEnabled;$("#managerEditSwitch").disabled=!(isSystemAdmin()||currentProject()?.ownerUserId===state.currentUserId);
+    renderSystemStaffDirectory();
     $("#resetDemo").classList.toggle("is-hidden", !!backend);
   }
 

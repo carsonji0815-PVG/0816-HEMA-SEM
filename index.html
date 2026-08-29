@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-6" />
+    <link rel="stylesheet" href="styles.css?v=20260829-7" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -22,7 +22,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-6" defer></script>
+    <script src="app.js?v=20260829-7" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -39,9 +39,16 @@
       <main class="lookup-layout portal-layout">
         <div class="lookup-copy">
           <span class="eyebrow">ATTENDEE SERVICE</span>
-          <div class="public-project-chip" id="publicProjectChip"><span>◎</span><div><small>当前报名项目</small><strong id="publicProjectName">正在读取项目信息…</strong><select id="publicProjectSelector" class="is-hidden" aria-label="选择报名项目"></select></div></div>
-          <h1 id="publicPortalTitle">会议行程<br />管理平台</h1>
-          <p>填报人通过大区、姓名和员工编号进入；参会人员可用本人手机号查询住宿、接送及会议信息。</p>
+          <div class="public-project-chip" id="publicProjectChip"><span>◎</span><div><small>会议名称</small><strong id="publicProjectName">正在读取项目信息…</strong><select id="publicProjectSelector" class="is-hidden" aria-label="选择报名项目"></select></div></div>
+          <h1 id="publicPortalTitle">会议行程管理平台</h1>
+          <aside class="public-entry-reminder" aria-label="报名与查询重要提醒">
+            <div class="public-entry-reminder-title"><span>!</span><div><small>IMPORTANT NOTICE</small><strong>报名与查询提醒</strong></div></div>
+            <ul>
+              <li><b>我要报名</b><span>填报人使用大区、姓名和员工编号进入，提交本人负责的参会人员。</span></li>
+              <li><b>更改已报名</b><span>请使用原填报人的相同身份信息进入；可修改或取消本人提交的记录，名单锁定后不可更改。</span></li>
+              <li><b>参会信息查询</b><span>参会人员使用本人手机号查询住宿、接送机及会议信息。</span></li>
+            </ul>
+          </aside>
           <div class="public-project-facts" id="publicProjectFacts">
             <div><span>◷</span><p><small>会议日期</small><strong id="publicProjectDates">读取中…</strong></p></div>
             <div><span>⌖</span><p><small>会议地点</small><strong id="publicProjectVenues">读取中…</strong></p></div>

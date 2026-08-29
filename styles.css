@@ -750,8 +750,8 @@ table tbody tr:hover { background: #fff7f5; }
 .quota-table .quota-subtotal td { color:#294b68; border-top:1px solid #c8d6e0; border-bottom:1px solid #c8d6e0; font-weight:700; }
 .quota-table .quota-grand-total { background:#dce7ef!important; }
 .quota-table .quota-grand-total td { color:#17395e; border-top:2px solid #17395e; font-weight:800; }
-.quota-table .quota-subtotal td:not(:first-child),.quota-table .quota-grand-total td:not(:first-child) { text-align:center; font-variant-numeric:tabular-nums; }
-.quota-table td:nth-child(1),.quota-table td:nth-child(2),.quota-table td:nth-child(3) { text-align:left; }
+.quota-table .quota-subtotal td,.quota-table .quota-grand-total td { text-align:center; font-variant-numeric:tabular-nums; }
+.quota-table td:nth-child(1),.quota-table td:nth-child(2),.quota-table td:nth-child(3) { text-align:center; }
 .quota-table td:nth-child(4),.quota-table td:nth-child(5),.quota-table td:nth-child(6),.quota-table td:nth-child(7),.quota-table td:nth-child(8),.quota-table td:nth-child(9) { text-align:center; font-variant-numeric:tabular-nums; }
 .quota-gap { display:inline-grid; min-width:31px; height:25px; place-items:center; border-radius:8px; font-size:9px; }
 .quota-gap.shortage { color:#b62118; background:#ffe3dd; }

@@ -2,9 +2,7 @@
 
 - 视觉方案：第二种「运营预警型」
 - 视觉来源：`/Users/carson/.codex/generated_images/01a012e2-0819-7700-aaee-8595dc86f3d9/exec-0fb47efc-4724-415d-92bd-9dac2ec50bf5.png`
-- 实现截图：`/tmp/journey-quota-v14.png`
-- 移动端截图：`/tmp/journey-quota-v14-mobile4.png`
-- 并排对比：`/tmp/journey-quota-comparison.png`
+- 实现截图：`/tmp/journey-quota-v14.png`（仅用于布局比对，不作为业务数据依据）
 - 桌面验证视口：1440 × 1800
 - 移动布局验证：Chrome 最小布局视口 500px；模块在 760px 以下切换为双列指标、单列预警与横向滚动明细表
 
@@ -14,6 +12,7 @@
 - 延续现有礼来品牌体系，保留 PMS 485 红色作为风险和品牌强调色，并使用深蓝承载表头、角色切换和统计结构。
 - 已补齐会场小计、角色合计、Gap、剩余名额、完成率与状态标签；未配置或没有超额数据时均有空状态。
 - 名额配置、角色筛选、角色页签和明细横向浏览均可操作；小屏状态没有页面级横向溢出。
+- 业务数据已改为直接读取当前 Supabase 项目的有效名单；固定演示名额、演示身份预览入口均已移除。
 - 代码语法检查及差异空白检查通过。
 
 final result: passed

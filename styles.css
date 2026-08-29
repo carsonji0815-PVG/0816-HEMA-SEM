@@ -734,28 +734,37 @@ table tbody tr:hover { background: #fff7f5; }
 .quota-role-tabs button { min-height:31px; padding:0 13px; border:0; border-radius:8px; color:#7d6d6e; background:transparent; font-size:9px; font-weight:700; }
 .quota-role-tabs button.active { color:#fff; background:var(--quota-navy); box-shadow:0 5px 14px rgba(23,57,94,.2); }
 .quota-table-wrap { min-width:0; max-width:calc(100% - 50px); margin:0 25px 25px; border:1px solid #e5dad5; border-radius:13px; }
-.quota-table { min-width:930px; }
-.quota-table th { padding:11px 13px; color:#fff; background:var(--quota-navy); border-bottom-color:var(--quota-navy); font-size:7px; }
-.quota-table td { padding:12px 13px; color:#514245; font-size:9px; }
+.quota-table { min-width:980px; table-layout:fixed; }
+.quota-table .quota-col-venue { width:12%; }
+.quota-table .quota-col-region { width:15%; }
+.quota-table .quota-col-role { width:12%; }
+.quota-table .quota-col-number { width:10%; }
+.quota-table .quota-col-gap { width:9%; }
+.quota-table .quota-col-rate { width:14%; }
+.quota-table .quota-col-status { width:8%; }
+.quota-table th { padding:12px 10px; color:#fff; background:var(--quota-navy); border-bottom-color:var(--quota-navy); text-align:center; vertical-align:middle; font-size:7px; white-space:nowrap; }
+.quota-table td { height:58px; padding:12px 10px; color:#514245; vertical-align:middle; font-size:9px; }
 .quota-table tbody tr:nth-child(even) { background:#fdf9f6; }
 .quota-table tbody tr:hover { background:#fff2ed; }
 .quota-table .quota-subtotal { background:#edf3f7!important; }
 .quota-table .quota-subtotal td { color:#294b68; border-top:1px solid #c8d6e0; border-bottom:1px solid #c8d6e0; font-weight:700; }
 .quota-table .quota-grand-total { background:#dce7ef!important; }
 .quota-table .quota-grand-total td { color:#17395e; border-top:2px solid #17395e; font-weight:800; }
-.quota-table td:nth-child(4),.quota-table td:nth-child(5),.quota-table td:nth-child(6),.quota-table td:nth-child(7) { text-align:center; font-variant-numeric:tabular-nums; }
+.quota-table .quota-subtotal td:not(:first-child),.quota-table .quota-grand-total td:not(:first-child) { text-align:center; font-variant-numeric:tabular-nums; }
+.quota-table td:nth-child(1),.quota-table td:nth-child(2),.quota-table td:nth-child(3) { text-align:left; }
+.quota-table td:nth-child(4),.quota-table td:nth-child(5),.quota-table td:nth-child(6),.quota-table td:nth-child(7),.quota-table td:nth-child(8),.quota-table td:nth-child(9) { text-align:center; font-variant-numeric:tabular-nums; }
 .quota-gap { display:inline-grid; min-width:31px; height:25px; place-items:center; border-radius:8px; font-size:9px; }
 .quota-gap.shortage { color:#b62118; background:#ffe3dd; }
 .quota-gap.over { color:#8e5715; background:#ffefce; }
 .quota-gap.complete { color:#42596d; background:#e8eef3; }
 .quota-gap.neutral { color:#827577; background:#f0ecea; }
-.quota-rate { min-width:105px; }
-.quota-rate span { display:block; margin-bottom:5px; color:#3e3033; font-size:8px; font-weight:700; }
+.quota-rate { width:100%; max-width:132px; min-width:90px; margin:0 auto; text-align:left; }
+.quota-rate span { display:block; margin-bottom:5px; color:#3e3033; text-align:center; font-size:8px; font-weight:700; }
 .quota-rate i { display:block; height:5px; overflow:hidden; border-radius:5px; background:#ece8e6; }
 .quota-rate i b { display:block; height:100%; border-radius:inherit; background:var(--quota-navy); }
 .quota-rate i b.shortage { background:var(--quota-red); }
 .quota-rate i b.over { background:var(--quota-amber); }
-.quota-status { display:inline-flex; align-items:center; padding:5px 8px; border-radius:8px; font-size:8px; font-weight:700; white-space:nowrap; }
+.quota-status { display:inline-flex; min-width:44px; align-items:center; justify-content:center; padding:5px 8px; border-radius:8px; font-size:8px; font-weight:700; white-space:nowrap; }
 .quota-status.shortage { color:#b62118; background:#ffe3dd; }
 .quota-status.over { color:#8e5715; background:#ffefce; }
 .quota-status.complete { color:#35506a; background:#e5edf3; }

@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-19" />
+    <link rel="stylesheet" href="styles.css?v=20260829-20" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
@@ -23,7 +23,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-19" defer></script>
+    <script src="app.js?v=20260829-20" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -226,8 +226,8 @@
                 <div class="panel-heading quota-panel-heading"><div><span class="kicker">REGISTRATION PROGRESS</span><h2>报名进度</h2><p>按会场、角色和大区核对名额完成情况</p></div><div class="quota-panel-actions"><select id="quotaRoleFilter" aria-label="筛选角色"></select><button class="button button-secondary" id="configureQuotas" type="button">调整名额</button><a href="#attendees">查看名单 →</a></div></div>
                 <div class="quota-summary" id="quotaSummary"></div>
                 <div class="quota-overview-grid"><section class="venue-progress-section"><div class="quota-section-title"><strong>会场报名进度</strong><small>实际报名 / 分配名额</small></div><div id="quotaVenueProgress" class="quota-venue-progress"></div></section><section class="quota-alert-section"><div class="quota-alert-block"><div class="quota-section-title"><strong>缺口预警 TOP</strong><small>优先跟进</small></div><div id="quotaShortageList" class="quota-alert-list"></div></div><div class="quota-alert-block"><div class="quota-section-title"><strong>超额提醒 TOP</strong><small>关注资源调整</small></div><div id="quotaOverList" class="quota-alert-list"></div></div></section></div>
-                <div class="quota-detail-head"><div><strong>分组明细</strong><small>Gap = 实际报名 − 分配名额</small></div><div id="quotaRoleTabs" class="quota-role-tabs"></div></div>
-                <div class="table-wrap quota-table-wrap"><table class="quota-table"><thead><tr><th>会场</th><th>大区</th><th>角色</th><th>分配名额</th><th>实际报名</th><th>Gap</th><th>剩余名额</th><th>完成率</th><th>状态</th></tr></thead><tbody id="quotaProgressBody"></tbody></table></div>
+                <div class="quota-detail-head"><div><strong>报名统计</strong><small>Gap = 实际报名 − 分配名额</small></div><div id="quotaRoleTabs" class="quota-role-tabs"></div></div>
+                <div class="table-wrap quota-table-wrap"><table class="quota-table"><colgroup><col class="quota-col-venue"/><col class="quota-col-region"/><col class="quota-col-role"/><col class="quota-col-number"/><col class="quota-col-number"/><col class="quota-col-gap"/><col class="quota-col-number"/><col class="quota-col-rate"/><col class="quota-col-status"/></colgroup><thead><tr><th>会场</th><th>大区</th><th>会议角色</th><th>分配名额</th><th>实际报名</th><th>Gap</th><th>剩余名额</th><th>完成率</th><th>状态</th></tr></thead><tbody id="quotaProgressBody"></tbody></table></div>
               </article>
               <article class="panel span-4 qr-panel">
                 <div class="panel-heading"><div><span class="kicker">REGISTRATION</span><h2>扫码报名</h2></div></div>

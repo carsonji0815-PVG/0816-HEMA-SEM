@@ -100,6 +100,8 @@
 
   let state = loadState();
   let activeTransportFilter = "all";
+  let incompleteRosterOnly = false;
+  const selectedAttendeeIds = new Set();
   let backend = null;
   let backendMeetingId = null;
   let syncTimer = null;
@@ -452,6 +454,8 @@
     $("#attendeeSearch").addEventListener("input", renderAttendeeTable);
     $("#riskFilter").addEventListener("change", renderAttendeeTable);
     $("#venueFilter").addEventListener("change", renderAttendeeTable);
+    $("#toggleIncompleteFilter").addEventListener("click",()=>{incompleteRosterOnly=!incompleteRosterOnly;renderAttendeeTable();});
+    $("#deleteSelectedAttendees").addEventListener("click",deleteSelectedAttendees);
     $("#transportSearch").addEventListener("input", renderTransport);
     $("#newPickupBatch").addEventListener("click", () => openTransportBatch("pickup"));
     $("#newDropoffBatch").addEventListener("click", () => openTransportBatch("dropoff"));
@@ -691,26 +695,45 @@
 
   function getFilteredAttendees() {
     const query = $("#attendeeSearch").value.trim().toLowerCase(); const risk = $("#riskFilter").value; const venue = $("#venueFilter").value;
+    const templateColumns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns.filter(column=>column.key!=="sequence");
     return visibleAttendees().filter(a => {
       const haystack = [a.name,a.city,a.hospital,a.department,a.outNo,a.returnNo].join(" ").toLowerCase();
-      return (!query || haystack.includes(query)) && (risk === "all" || a.approval === risk) && (venue === "all" || a.venue === venue);
+      const hasMissing=templateColumns.some(column=>{const value=column.custom?a.customFields?.[column.key]:a[column.key];return value===null||value===undefined||String(value).trim()==="";});
+      return (!query || haystack.includes(query)) && (risk === "all" || a.approval === risk) && (venue === "all" || a.venue === venue) && (!incompleteRosterOnly||hasMissing);
     });
   }
+  function syncRosterVenueFilter(){const select=$("#venueFilter");const previous=select.value||"all";const actual=[...new Set(visibleAttendees().map(a=>String(a.venue||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"zh-CN"));const values=actual.length?actual:state.settings.venues||[];select.innerHTML=`<option value="all">全部会场</option>${values.map(value=>`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;select.value=values.includes(previous)?previous:"all";}
   function renderAttendeeTable() {
+    syncRosterVenueFilter();
     const list = getFilteredAttendees();
+    const templateColumns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns;
     $("#rosterScope").textContent = currentUser().role === "sales" ? `仅显示 ${currentUser().name} 负责的参会者。` : "显示本会议全部参会者。";
     $("#importRoster").classList.toggle("is-hidden", currentUser().role !== "ops");
     $("#auditTravel").classList.toggle("is-hidden", !canManage());
     $("#transferRegistrant").classList.toggle("is-hidden",!canManage()&&!isSystemAdmin());
+    $("#toggleIncompleteFilter").classList.toggle("active",incompleteRosterOnly);$("#toggleIncompleteFilter").textContent=incompleteRosterOnly?"✓ 仅看未填写":"筛选未填写";
     const progressSelect=(a,field,options)=>`<select class="progress-select ${["electronic","paper","ticketed"].includes(a[field])?"done":""}" data-progress-field="${field}" data-attendee-id="${a.id}" ${isLocked(a)||!canEditAttendeeData()||a.businessStatus==="cancelled"?"disabled":""}>${options.map(([value,label])=>`<option value="${value}" ${a[field]===value?"selected":""}>${label}</option>`).join("")}</select>`;
     const privacyControl=a=>`<div class="privacy-progress-control">${progressSelect(a,"privacyLetterStatus",[["pending","未完成"],["electronic","已完成（隐私沟通函电子版）"],["paper","已完成（隐私沟通函纸质版）"]])}${a.privacyLetterStatus==="paper"?`<div class="privacy-file-actions">${a.privacyLetterFilePath?`<button type="button" data-download-privacy-letter="${a.id}" title="${escapeHtml(a.privacyLetterFileName)}">查看附件</button>`:`<span>缺少纸质版附件</span>`}<button type="button" data-upload-privacy-letter="${a.id}">${a.privacyLetterFilePath?"替换":"上传"}</button></div>`:""}</div>`;
     const segmentBadge=(a,segment,label)=>{ const status=segmentApproval(a,segment); const text=status==="approved"?"已审批":status==="pending"?"待审批":status==="rejected"?"已退回":"无需审批"; return `<span class="segment-status ${status}">${label}·${text}</span>`; };
-    $("#attendeeTableBody").innerHTML = list.map(a => `<tr class="${a.businessStatus==="cancelled"?"cancelled-row":""}"><td><div class="person-cell"><span class="person-avatar">${escapeHtml(a.name[0])}</span><div><span class="cell-primary">${escapeHtml(a.name)}${a.businessStatus==="cancelled"?' <em class="cancelled-label">已取消</em>':""}</span><span class="cell-secondary">${escapeHtml(a.phone.slice(0,3))}****${escapeHtml(a.phone.slice(-4))}</span></div></div></td><td><span class="cell-primary">${escapeHtml(a.hospital)}</span><span class="cell-secondary">${escapeHtml(a.department)} · ${escapeHtml(a.title)}</span></td><td>${escapeHtml(a.venue)}</td><td><span class="cell-primary">${escapeHtml(a.outNo)}</span><span class="cell-secondary">${fmtDate(a.outDate)} ${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</span></td><td><span class="cell-primary">${escapeHtml(a.returnNo)}</span><span class="cell-secondary">${fmtDate(a.returnDate)} ${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</span></td><td>${privacyControl(a)}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><div class="approval-status-stack">${segmentBadge(a,"outbound","去程")}${segmentBadge(a,"return","返程")}</div></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`).join("");
+    const templateHeader=column=>escapeHtml(column.header||column.key||"未命名字段").replaceAll("\n","<br>");
+    const templateValue=(attendee,column,index)=>{if(column.key==="sequence")return String(index+1);if(column.key==="contactName")return attendee.contactName||"";if(column.key==="contactMobile")return attendee.contactMobile||"";return column.custom?attendee.customFields?.[column.key]??"":attendee[column.key]??"";};
+    const templateCell=(attendee,column,index)=>{const raw=templateValue(attendee,column,index);const empty=raw===null||raw===undefined||String(raw).trim()==="";const display=empty?"未填写":String(raw);return `<td class="template-data-cell" data-template-key="${escapeHtml(column.key||"")}" title="${escapeHtml(display)}"><span class="${empty?"template-empty":""}">${escapeHtml(display)}</span></td>`;};
+    const selectable=list.filter(a=>a.businessStatus!=="cancelled"&&!isLocked(a)&&canEditAttendeeData()&&(currentUser().role!=="sales"||a.ownerId===currentUser().id));
+    const allSelected=selectable.length>0&&selectable.every(a=>selectedAttendeeIds.has(a.id));
+    $("#attendeeTableHead").innerHTML=`<th class="roster-check-cell"><input id="selectVisibleAttendees" type="checkbox" aria-label="全选当前名单" ${allSelected?"checked":""} ${selectable.length?"":"disabled"}></th>${templateColumns.map(column=>`<th data-template-key="${escapeHtml(column.key||"")}">${templateHeader(column)}</th>`).join("")}<th>报名状态</th><th>隐私沟通函</th><th>出票状态</th><th>负责人</th><th>行程审批</th><th>操作</th>`;
+    $("#attendeeTableBody").innerHTML = list.map((a,index) => {const selectableRow=a.businessStatus!=="cancelled"&&!isLocked(a)&&canEditAttendeeData()&&(currentUser().role!=="sales"||a.ownerId===currentUser().id);return `<tr class="${a.businessStatus==="cancelled"?"cancelled-row":""}"><td class="roster-check-cell"><input type="checkbox" data-select-attendee="${a.id}" aria-label="选择${escapeHtml(a.name)}" ${selectedAttendeeIds.has(a.id)?"checked":""} ${selectableRow?"":"disabled"}></td>${templateColumns.map(column=>templateCell(a,column,index)).join("")}<td><span class="status ${a.businessStatus==="cancelled"?"status-pending":"status-normal"}">${a.businessStatus==="cancelled"?"已取消报名":"有效报名"}</span></td><td>${privacyControl(a)}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><div class="approval-status-stack">${segmentBadge(a,"outbound","去程")}${segmentBadge(a,"return","返程")}</div></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`;}).join("");
+    $("#selectVisibleAttendees").onchange=event=>{selectable.forEach(a=>event.target.checked?selectedAttendeeIds.add(a.id):selectedAttendeeIds.delete(a.id));renderAttendeeTable();};
+    $$('[data-select-attendee]').forEach(input=>input.onchange=()=>{input.checked?selectedAttendeeIds.add(input.dataset.selectAttendee):selectedAttendeeIds.delete(input.dataset.selectAttendee);updateSelectedAttendeeControls();});
     $$('[data-progress-field]').forEach(select=>select.onchange=()=>updateProgressField(select));
     $$('[data-upload-privacy-letter]').forEach(button=>button.onclick=()=>requestPrivacyLetterUpload(state.attendees.find(item=>item.id===button.dataset.uploadPrivacyLetter)));
     $$('[data-download-privacy-letter]').forEach(button=>button.onclick=()=>downloadPrivacyLetter(state.attendees.find(item=>item.id===button.dataset.downloadPrivacyLetter)));
     $("#attendeeEmpty").classList.toggle("is-hidden", !!list.length); bindDynamicButtons();
+    updateSelectedAttendeeControls();
   }
+
+  function updateSelectedAttendeeControls(){for(const id of [...selectedAttendeeIds])if(!state.attendees.some(a=>a.id===id&&a.businessStatus!=="cancelled"))selectedAttendeeIds.delete(id);const count=selectedAttendeeIds.size;$("#selectedAttendeeCount").textContent=count;$("#deleteSelectedAttendees").disabled=!count||!canEditAttendeeData();}
+
+  async function deleteSelectedAttendees(){const attendees=state.attendees.filter(a=>selectedAttendeeIds.has(a.id)&&a.businessStatus!=="cancelled"&&!isLocked(a)&&(currentUser().role!=="sales"||a.ownerId===currentUser().id));if(!attendees.length)return toast("没有可删除的已选名单","error");if(!confirm(`确认删除所选 ${attendees.length} 条报名？记录将标记为“已取消报名”并保留审计历史。`))return;const ids=attendees.map(a=>a.id);try{if(backend){const{error}=await backend.from("attendees").update({business_status:"cancelled",cancelled_at:new Date().toISOString()}).in("id",ids).eq("meeting_id",backendMeetingId);if(error)throw error;}attendees.forEach(a=>a.businessStatus="cancelled");addNotification("change",`${currentUser().name}删除所选名单：${attendees.map(a=>a.name).join("、")}（已转为取消报名）`);selectedAttendeeIds.clear();saveState();renderAll();toast(`已删除 ${attendees.length} 条名单，审计记录已保留`);}catch(error){toast(error.message||"删除名单失败","error");}}
 
   function updateProgressField(select) {
     const a=state.attendees.find(item=>item.id===select.dataset.attendeeId); if(!a||isLocked(a)) return renderAttendeeTable();

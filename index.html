@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260829-8" />
+    <link rel="stylesheet" href="styles.css?v=20260829-11" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -22,7 +22,7 @@
         documentApiBase: "https://139.196.97.236",
       };
     </script>
-    <script src="app.js?v=20260829-8" defer></script>
+    <script src="app.js?v=20260829-11" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -296,8 +296,8 @@
           <section class="page" data-page="attendees">
             <div class="page-heading heading-with-action"><div><span class="eyebrow">ATTENDEE ROSTER</span><h1>参会名单</h1><p id="rosterScope">按当前账号权限展示名单。</p></div><div class="heading-actions"><button class="button button-secondary" id="auditTravel">⌕ 核验行程填写</button><button class="button button-secondary import-list-button" id="importRoster">⇧ 导入名单</button><button class="button button-secondary" id="transferRegistrant">⇄ 填报人移交</button><button class="button button-secondary" id="exportExcel">导出 Excel</button><a class="button button-primary" href="#registration">＋ 新增报名</a></div></div>
             <div class="panel table-panel">
-              <div class="table-toolbar"><div class="search-box">⌕ <input id="attendeeSearch" placeholder="搜索姓名、城市、医院或航班" /></div><select id="riskFilter"><option value="all">全部状态</option><option value="pending">待审批</option><option value="approved">已通过</option><option value="normal">行程正常</option></select><select id="venueFilter"><option value="all">全部会场</option><option>大连会场</option><option>福州会场</option></select></div>
-              <div class="table-wrap"><table><thead><tr><th>参会者</th><th>医院 / 科室</th><th>会场</th><th>去程</th><th>返程</th><th>隐私沟通函</th><th>出票状态</th><th>负责人</th><th>状态</th><th></th></tr></thead><tbody id="attendeeTableBody"></tbody></table></div>
+              <div class="table-toolbar"><div class="search-box">⌕ <input id="attendeeSearch" placeholder="搜索姓名、城市、医院或航班" /></div><button class="button button-secondary roster-filter-button" id="toggleIncompleteFilter" type="button">筛选未填写</button><select id="riskFilter"><option value="all">全部状态</option><option value="pending">待审批</option><option value="approved">已通过</option><option value="normal">行程正常</option></select><select id="venueFilter"><option value="all">全部会场</option><option>大连会场</option><option>福州会场</option></select><button class="button roster-delete-button" id="deleteSelectedAttendees" type="button" disabled>删除所选 <span id="selectedAttendeeCount">0</span></button></div>
+              <div class="table-wrap roster-table-wrap"><table class="roster-template-table"><thead><tr id="attendeeTableHead"></tr></thead><tbody id="attendeeTableBody"></tbody></table></div>
               <div class="empty-state is-hidden" id="attendeeEmpty">没有符合条件的参会人员</div>
             </div>
           </section>

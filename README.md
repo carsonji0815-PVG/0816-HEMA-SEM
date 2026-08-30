@@ -129,5 +129,6 @@ window.APP_CONFIG = {
 - 审批中心：行程审批与住宿审批集中处理
 - 消息提醒：逐字段查看修改前/修改后内容；取消报名只保留审计，不生成待办
 - 系统设置：仅超级管理员可见，提供备份恢复、全局日志、账号权限、主题版式和业务字典
+- 内部行程核验：航班场站使用精简核验标签（北京保留首都/大兴，高铁站强制保留“站”）；报名原始数据、PNR、Rooming List 和对外导出继续使用官方完整名称
 - `supabase/functions/public-trip-query/index.ts`：报名身份会话、本人报名维护和无短信验证码的参会信息查询接口
 - `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布

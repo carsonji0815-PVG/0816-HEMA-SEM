@@ -211,10 +211,29 @@
     "北京南":"北京南站","北京西":"北京西站","北京朝阳":"北京朝阳站","北京丰台":"北京丰台站",
     "上海虹桥":"上海虹桥站","上海南":"上海南站","福州南":"福州南站","大连北":"大连北站",
   }));
-  const normalizeTerminal = value => TERMINAL_ALIASES.get(String(value||"").trim()) || String(value||"").trim();
+  const normalizeTerminal = (value,number="") => {
+    const raw=String(value||"").trim();
+    if(isTrainNumber(number)){const station=TERMINAL_ALIASES.get(raw)||raw;return station&&!/站$/u.test(station)?`${station.replace(/(?:火车|高铁)站?$/u,"")}站`:station;}
+    return TERMINAL_ALIASES.get(raw)||raw;
+  };
   const isTrainNumber = value => /^(G|D|C|S|Z|T|K)\d+/i.test(String(value||"").trim());
+  const VERIFICATION_MULTI_AIRPORTS=["北京","上海","成都"];
+  const VERIFICATION_AIRPORT_CITIES=["南通","银川","广州","深圳","天津","重庆","南京","杭州","宁波","温州","福州","厦门","泉州","青岛","济南","大连","沈阳","长春","哈尔滨","武汉","长沙","郑州","西安","太原","石家庄","合肥","南昌","昆明","贵阳","南宁","海口","三亚","兰州","乌鲁木齐","呼和浩特","珠海","无锡","常州","烟台","威海","桂林","丽江","西宁","拉萨","宜昌","洛阳","扬州","徐州"];
+  function verificationTerminalLabel(value,number,mode="") {
+    const raw=String(value||"").trim();if(!raw)return"—";
+    const train=mode==="train"||isTrainNumber(number);
+    if(train){const station=TERMINAL_ALIASES.get(raw)||raw;return /站$/u.test(station)?station:`${station.replace(/(?:火车|高铁)站?$/u,"")}站`;}
+    const terminal=raw.match(/(?:\bT\s*([1-9]\d*)\b|([1-9]\d*)\s*号?航站楼)/i);const terminalLabel=terminal?` T${terminal[1]||terminal[2]}`:"";
+    let airport=raw.replace(/\bT\s*[1-9]\d*\b/ig,"").replace(/[1-9]\d*\s*号?航站楼/ug,"").replace(/航站楼|国际机场|机场/ug,"").trim();
+    if(/^北京/u.test(airport)){airport=airport.includes("大兴")?"北京大兴":airport.includes("首都")?"北京首都":airport;return`${airport}${terminalLabel}`;}
+    const multiCity=VERIFICATION_MULTI_AIRPORTS.find(city=>airport.startsWith(city));
+    if(multiCity)return`${airport}${terminalLabel}`;
+    const city=VERIFICATION_AIRPORT_CITIES.find(item=>airport.startsWith(item));
+    return`${city||airport}${terminalLabel}`;
+  }
+  if(new URLSearchParams(location.search).get("preview")==="terminal")Object.defineProperty(window,"__verificationTerminalLabel",{value:verificationTerminalLabel,configurable:true});
   const isPreciseTerminal = (value,number) => {
-    const text=normalizeTerminal(value); if(!text)return false;
+    const text=normalizeTerminal(value,number); if(!text)return false;
     if(isTrainNumber(number))return /站$/.test(text);
     if(/(北京首都|上海浦东|上海虹桥|广州白云|成都双流|重庆江北|深圳宝安).*(机场)/.test(text)&&!/(T\d|航站楼)/i.test(text))return false;
     return /(机场|航站楼)/.test(text);
@@ -1038,8 +1057,8 @@
     const current={date:attendee[outbound?"outDate":"returnDate"],number:attendee[outbound?"outNo":"returnNo"],from:attendee[outbound?"outFrom":"returnFrom"],to:attendee[outbound?"outTo":"returnTo"],departure:attendee[outbound?"outDeparture":"returnDeparture"],arrival:attendee[outbound?"outArrival":"returnArrival"]};
     if(match.date&&current.date&&String(match.date).slice(0,10)!==current.date)warnings.push(`${outbound?"去程":"返程"}日期不一致：当前${current.date}，计划${String(match.date).slice(0,10)}`);
     if(match.number&&current.number&&String(match.number).replace(/\s/g,"").toUpperCase()!==String(current.number).replace(/\s/g,"").toUpperCase())warnings.push(`${outbound?"去程":"返程"}${service}号不一致：当前${current.number}，计划${match.number}`);
-    if(match.from&&comparableStation(current.from)!==comparableStation(match.from))warnings.push(`${outbound?"去程":"返程"}${flight?"出发机场/航站楼":"出发站"}与计划不一致：当前“${current.from}”，计划“${match.from}”`);
-    if(match.to&&comparableStation(current.to)!==comparableStation(match.to))warnings.push(`${outbound?"去程":"返程"}${flight?"抵达机场/航站楼":"抵达站"}与计划不一致：当前“${current.to}”，计划“${match.to}”`);
+    if(match.from&&comparableStation(current.from)!==comparableStation(match.from))warnings.push(`${outbound?"去程":"返程"}${flight?"出发机场/航站楼":"出发站"}与计划不一致：当前“${verificationTerminalLabel(current.from,current.number,result.mode)}”，计划“${verificationTerminalLabel(match.from,match.number||current.number,result.mode)}”`);
+    if(match.to&&comparableStation(current.to)!==comparableStation(match.to))warnings.push(`${outbound?"去程":"返程"}${flight?"抵达机场/航站楼":"抵达站"}与计划不一致：当前“${verificationTerminalLabel(current.to,current.number,result.mode)}”，计划“${verificationTerminalLabel(match.to,match.number||current.number,result.mode)}”`);
     if(match.departure&&current.departure&&match.departure!==current.departure)warnings.push(`${outbound?"去程":"返程"}${flight?"计划起飞":"发车"}时间不一致：当前${current.departure}，计划${match.departure}`);
     if(match.arrival&&current.arrival&&match.arrival!==current.arrival)warnings.push(`${outbound?"去程":"返程"}${flight?"计划落地":"到站"}时间不一致：当前${current.arrival}，计划${match.arrival}`);
     return [...new Set(warnings)];
@@ -1056,7 +1075,7 @@
     const records=activeVisibleAttendees().map(attendee=>({attendee,segments:["outbound","return"].map(segment=>({segment,check:attendee.customFields?._travelVerification?.[segment],warnings:[...localVerificationWarnings(attendee,segment),...(attendee.customFields?._travelVerification?.[segment]?.warnings||[])]})).filter(item=>item.check||item.warnings.length)})).filter(item=>item.segments.length);
     const issues=records.reduce((sum,item)=>sum+item.segments.reduce((count,segment)=>count+segment.warnings.length,0),0);const checked=records.reduce((sum,item)=>sum+item.segments.filter(segment=>segment.check).length,0);
     $("#travelVerificationSummary").innerHTML=`<div><small>已核验行程段</small><strong>${checked}</strong></div><div><small>发现差异字段</small><strong class="${issues?"warning":""}">${issues}</strong></div><div><small>审批流转</small><strong>0</strong><span>本环节不触发审批</span></div>`;
-    $("#travelVerificationResults").innerHTML=records.length?records.map(({attendee,segments})=>`<article class="verification-result-card ${segments.some(item=>item.warnings.length)?"has-difference":"is-match"}"><div class="verification-result-head"><div><strong>${escapeHtml(attendee.name)}</strong><small>${escapeHtml(attendee.region||"大区未填写")} · ${escapeHtml(attendee.hospital||"医院未填写")}</small></div><button class="button button-secondary" type="button" data-fix-travel="${attendee.id}">手动修正</button></div>${segments.map(item=>`<div class="verification-segment"><b>${item.segment==="outbound"?"去程":"返程"}</b>${item.warnings.length?item.warnings.map(warning=>`<span class="verification-difference">△ ${escapeHtml(warning)}</span>`).join(""):`<span class="verification-match">✓ 与计划数据一致</span>`}</div>`).join("")}</article>`).join(""):`<div class="empty-state">当前没有可核验的行程数据</div>`;
+    $("#travelVerificationResults").innerHTML=records.length?records.map(({attendee,segments})=>`<article class="verification-result-card ${segments.some(item=>item.warnings.length)?"has-difference":"is-match"}"><div class="verification-result-head"><div><strong>${escapeHtml(attendee.name)}</strong><small>${escapeHtml(attendee.region||"大区未填写")} · ${escapeHtml(attendee.hospital||"医院未填写")}</small></div><button class="button button-secondary" type="button" data-fix-travel="${attendee.id}">手动修正</button></div>${segments.map(item=>{const outbound=item.segment==="outbound";const number=attendee[outbound?"outNo":"returnNo"];const mode=item.check?.mode||item.check?.provider||(isTrainNumber(number)?"train":"flight");const from=item.check?.match?.from||attendee[outbound?"outFrom":"returnFrom"];const to=item.check?.match?.to||attendee[outbound?"outTo":"returnTo"];return`<div class="verification-segment"><b>${outbound?"去程":"返程"}</b><small class="verification-terminal-route">${escapeHtml(verificationTerminalLabel(from,number,mode))} → ${escapeHtml(verificationTerminalLabel(to,number,mode))}</small>${item.warnings.length?item.warnings.map(warning=>`<span class="verification-difference">△ ${escapeHtml(warning)}</span>`).join(""):`<span class="verification-match">✓ 与计划数据一致</span>`}</div>`;}).join("")}</article>`).join(""):`<div class="empty-state">当前没有可核验的行程数据</div>`;
     $$('[data-fix-travel]').forEach(button=>button.onclick=()=>{const attendee=state.attendees.find(item=>item.id===button.dataset.fixTravel);$("#travelVerificationDialog").close();if(attendee){$("#attendeeDialog").showModal();showTripEditor(attendee);}});
     $("#travelVerificationDialog").showModal();
   }
@@ -1064,9 +1083,6 @@
     if(!canManage())return deny();
     const button=$("#auditTravel"); const originalText=button.textContent; button.disabled=true; button.textContent="⌛ 正在核验计划时刻";
     let normalized=0; let issues=0; let apiChecked=0; let cacheHits=0;
-    activeVisibleAttendees().forEach(attendee=>{
-      ["outFrom","outTo","returnFrom","returnTo"].forEach(key=>{const next=normalizeTerminal(attendee[key]);if(next&&next!==attendee[key]){attendee[key]=next;normalized++;}});
-    });
     try {
       if(backend&&backendMeetingId){
         const journeys=[];
@@ -1074,7 +1090,7 @@
         if(journeys.length){
           const payload=await documentApi(`/api/integrated/projects/${backendMeetingId}/travel/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({journeys})});
           apiChecked=payload.results?.length||0; cacheHits=payload.usage?.cacheHits||0;
-          (payload.results||[]).forEach(result=>{if((result.warnings||[]).some(warning=>/尚未配置/.test(warning)))return;const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={provider:result.provider||result.mode,source:result.source||null,checkedAt:result.fetchedAt||result.source?.checkedAt||new Date().toISOString(),match:result.match||null,warnings:travelVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
+          (payload.results||[]).forEach(result=>{if((result.warnings||[]).some(warning=>/尚未配置/.test(warning)))return;const attendee=state.attendees.find(item=>item.id===result.attendeeId);if(!attendee)return;attendee.customFields={...(attendee.customFields||{})};const checks={...(attendee.customFields._travelVerification||{})};checks[result.segment]={mode:result.mode||(/train/i.test(result.provider||"")?"train":"flight"),provider:result.provider||result.mode,source:result.source||null,checkedAt:result.fetchedAt||result.source?.checkedAt||new Date().toISOString(),match:result.match||null,warnings:travelVerificationWarnings(attendee,result.segment,result)};attendee.customFields._travelVerification=checks;});
         }
       }
     } catch(error) {
@@ -1250,7 +1266,7 @@
     if(outboundLocked||returnLocked)$("#tripEditForm").insertAdjacentHTML("afterbegin",`<div class="risk-preview warning">${outboundLocked?"去程整列已锁定。":""}${returnLocked?"返程整列已锁定。":""} 已锁定字段不能修改。</div>`);
     $("#cancelEdit").onclick = () => openAttendee(a.id);
     $("#tripEditForm").onsubmit = event => {
-      event.preventDefault(); const fd = new FormData(event.currentTarget); const changes = []; const changedSegments=new Set(); ["outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival"].forEach(key => {const segment=key.startsWith("return")?"return":"outbound";if((segment==="outbound"&&outboundLocked)||(segment==="return"&&returnLocked))return; let next = fd.get(key); if(["outFrom","outTo","returnFrom","returnTo"].includes(key))next=normalizeTerminal(next); if (next !== a[key]) { changes.push({field:key,label:FIELD_LABELS[key]||key,before:a[key]||"未填写",after:next||"未填写"}); changedSegments.add(segment); a[key] = next; } });
+      event.preventDefault(); const fd = new FormData(event.currentTarget); const changes = []; const changedSegments=new Set(); ["outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival"].forEach(key => {const segment=key.startsWith("return")?"return":"outbound";if((segment==="outbound"&&outboundLocked)||(segment==="return"&&returnLocked))return; let next = fd.get(key); if(["outFrom","outTo","returnFrom","returnTo"].includes(key))next=normalizeTerminal(next,fd.get(segment==="return"?"returnNo":"outNo")); if (next !== a[key]) { changes.push({field:key,label:FIELD_LABELS[key]||key,before:a[key]||"未填写",after:next||"未填写"}); changedSegments.add(segment); a[key] = next; } });
       if(changedSegments.size&&a.customFields?._travelVerification){const checks={...a.customFields._travelVerification};changedSegments.forEach(segment=>delete checks[segment]);a.customFields={...a.customFields,_travelVerification:checks};}
       refreshTravelApprovals(a,changedSegments); addNotification("change",`${currentUser().name}修改了${a.name}的行程，共${changes.length}个字段`,{attendeeName:a.name,changes}); saveState(); $("#attendeeDialog").close(); renderAll(); toast("行程已更新，真实性核验结果已失效；合规审批按项目规则重新计算");
     };
@@ -1661,7 +1677,7 @@
     const attendee={
       id:existing?.id || (backend ? crypto.randomUUID() : `a-${Date.now()}-${sheetRow}`), ownerId:matchedOwner?.id || existing?.ownerId || currentUser().id,
       attendeeType:cleanCell(row[1])||"HCP", name:cleanCell(row[2]), city:cleanCell(row[3]), hospital:cleanCell(row[4]), department:cleanCell(row[5]), title:cleanCell(row[6]), venue:normalizeVenueLabel(row[7]), sex:cleanCell(row[8]), idNumber:cleanCell(row[9]), phone, hcpId:cleanCell(row[11]), accommodation:yesNo(row[12]), flight:yesNo(row[13],/^[GDC]\d+/i.test(cleanCell(row[17]))?"N":"Y"),
-      outDate:parsedTravel.outDate,outFrom:normalizeTerminal(cleanCell(row[15])),outTo:normalizeTerminal(cleanCell(row[16])),outNo:cleanCell(row[17]),outDeparture:parsedTravel.outDeparture,outArrival:parsedTravel.outArrival,returnDate:parsedTravel.returnDate,returnFrom:normalizeTerminal(cleanCell(row[21])),returnTo:normalizeTerminal(cleanCell(row[22])),returnNo:cleanCell(row[23]),returnDeparture:parsedTravel.returnDeparture,returnArrival:parsedTravel.returnArrival,region:cleanCell(row[26]),contactName:cleanCell(row[27]),contactMobile,mslContact:cleanCell(row[29]),remarks:importedRemarks,customFields,privacyLetterStatus:normalizePrivacyStatus(existing?.privacyLetterStatus),privacyLetterFilePath:existing?.privacyLetterFilePath||"",privacyLetterFileName:existing?.privacyLetterFileName||"",privacyLetterFileSize:existing?.privacyLetterFileSize||0,privacyLetterUploadedAt:existing?.privacyLetterUploadedAt||"",privacyLetterUploadedBy:existing?.privacyLetterUploadedBy||null,ticketStatus:existing?.ticketStatus||"pending",createdAt:existing?.createdAt||new Date().toISOString(),transport:existing?.transport||{pickup:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"待设置"},dropoff:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"会议酒店大堂"}},
+      outDate:parsedTravel.outDate,outFrom:normalizeTerminal(cleanCell(row[15]),cleanCell(row[17])),outTo:normalizeTerminal(cleanCell(row[16]),cleanCell(row[17])),outNo:cleanCell(row[17]),outDeparture:parsedTravel.outDeparture,outArrival:parsedTravel.outArrival,returnDate:parsedTravel.returnDate,returnFrom:normalizeTerminal(cleanCell(row[21]),cleanCell(row[23])),returnTo:normalizeTerminal(cleanCell(row[22]),cleanCell(row[23])),returnNo:cleanCell(row[23]),returnDeparture:parsedTravel.returnDeparture,returnArrival:parsedTravel.returnArrival,region:cleanCell(row[26]),contactName:cleanCell(row[27]),contactMobile,mslContact:cleanCell(row[29]),remarks:importedRemarks,customFields,privacyLetterStatus:normalizePrivacyStatus(existing?.privacyLetterStatus),privacyLetterFilePath:existing?.privacyLetterFilePath||"",privacyLetterFileName:existing?.privacyLetterFileName||"",privacyLetterFileSize:existing?.privacyLetterFileSize||0,privacyLetterUploadedAt:existing?.privacyLetterUploadedAt||"",privacyLetterUploadedBy:existing?.privacyLetterUploadedBy||null,ticketStatus:existing?.ticketStatus||"pending",createdAt:existing?.createdAt||new Date().toISOString(),transport:existing?.transport||{pickup:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"待设置"},dropoff:{driver:"待分配",phone:"—",vehicle:"待分配",time:"待设置",point:"会议酒店大堂"}},
     };
     const errors=[];
     if (!attendee.name) errors.push("缺少姓名"); if (phone.length!==11) errors.push("手机号格式错误"); if (!attendee.idNumber) errors.push("缺少证件号"); if (!attendee.hcpId) errors.push("缺少HCP ID");

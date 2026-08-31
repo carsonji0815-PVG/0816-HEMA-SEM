@@ -132,7 +132,7 @@
   const normalizeVenueLabel = value => String(value || "").trim().replace(/会场$/u, "").trim();
   const dbDate = value => /^20\d{2}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(String(value||"")) ? value : null;
   const dbTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||"")) ? value : null;
-  const normalizePrivacyStatus = value => value === "paper" ? "paper" : ["electronic","sent","complete"].includes(value) ? "electronic" : "pending";
+  function normalizePrivacyStatus(value) { return value === "paper" ? "paper" : ["electronic","sent","complete"].includes(value) ? "electronic" : "pending"; }
   const currentUser = () => state.users.find(user => user.id === state.currentUserId) || state.users[0];
   const userName = id => state.users.find(user => user.id === id)?.name || "未分配";
   const visibleAttendees = () => currentUser().role === "sales" ? state.attendees.filter(item => item.ownerId === currentUser().id) : state.attendees;
@@ -325,19 +325,43 @@
     }
   }
 
+  let luggageIntegration;
+  let offlineLuggageSession = null;
+  function luggageContext() {
+    return { eventId:state.activeProjectId, eventName:state.settings.eventName, userId:state.currentUserId, operator:currentUser()?.name || '', enabled:!!state.settings.luggageEnabled, used:!!state.settings.luggageUsed, configured:!!state.settings.luggageConfigured, offlineUntil:offlineLuggageSession?.expiresAt || null };
+  }
   async function init() {
+    luggageIntegration = window.createJourneyLuggage({
+      current:luggageContext, canManage, isProduction:()=>window.APP_CONFIG?.mode === 'production', backend:()=>backend,
+      authenticated:()=>staffAccess.allowed === true && !!backendMeetingId, attendees:()=>state.attendees, toast,
+      setEnabled(enabled) { state.settings.luggageEnabled=enabled; state.settings.luggageUsed=state.settings.luggageUsed||enabled; const project=currentProject(); if(project){project.luggageEnabled=enabled;project.luggageUsed=state.settings.luggageUsed;} localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); renderAll(); },
+      markUsed() {state.settings.luggageUsed=true;const project=currentProject();if(project)project.luggageUsed=true;},
+    });
     bindLogin();
     applySystemAppearance();
+    if (navigator.onLine === false && state.settings.luggageEnabled) {
+      offlineLuggageSession = await luggageIntegration.resume(state.currentUserId);
+      if (offlineLuggageSession) {
+        const saved=offlineLuggageSession;
+        state={...initialState(),currentUserId:saved.userId,activeProjectId:saved.eventId,
+          users:[{id:saved.userId,name:saved.operator,role:'ops',label:'现场离线操作员'}],
+          projects:[{id:saved.eventId,name:saved.eventName,slug:saved.eventId,registrationOpen:true,luggageEnabled:true,luggageUsed:true}],
+          attendees:[],notifications:[],settings:{...initialState().settings,eventName:saved.eventName,luggageEnabled:true,luggageUsed:true,luggageConfigured:true}};
+        backendMeetingId=saved.eventId;staffAccess={allowed:true,systemRole:'',displayName:saved.operator};
+        history.replaceState(null,'','#luggage');
+      }
+    }
     const cleanUrl=new URL(location.href);if(cleanUrl.searchParams.has("preview")){cleanUrl.searchParams.delete("preview");history.replaceState(null,"",cleanUrl.toString());}
     const config = window.APP_CONFIG || {};
     if (config.mode === "production" && config.supabaseUrl && config.supabaseAnonKey && window.supabase) {
       backend = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-      const { data } = await backend.auth.getSession();
+      backend.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") { luggageIntegration?.clearAccess(); staffAccess.allowed=false; luggageIntegration?.unmount(); } });
+      const { data } = offlineLuggageSession ? {data:{session:null}} : await backend.auth.getSession();
       if (data.session) {
         try{await loadStaffAccess();await loadBackendState();}
         catch(error){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=error.message;$("#loginDialog").showModal();}
       }
-      else if (!["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
+      else if (!offlineLuggageSession && !["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
     }
     populateUsers(); populateProjects(); bindNavigation(); bindForms(); bindControls(); route(); renderAll(); maybeAutoBackup();
     window.setInterval(renderGreeting,60000);
@@ -378,13 +402,15 @@
 
   async function switchProject(projectId) {
     if (!projectId || projectId === state.activeProjectId) return;
+    if (!luggageIntegration.canLeave()) { populateProjects(); return toast("行李正在保存，请稍后切换会议", "error"); }
+    luggageIntegration.unmount();
     try {
       if (backend && backendMeetingId) await loadBackendState(projectId);
       else {
         const project = state.projects.find(item => item.id === projectId);
         if (!project) return;
         state.activeProjectId = projectId;
-        state.settings = { ...state.settings, eventName:project.name, slug:project.slug, activityType:project.activityType||"external", identifier:project.identifier||project.slug, activityOwner:project.activityOwner||"", activityDate:project.activityDate||project.startDate||"", clientName:project.clientName||"", startDate:project.startDate||"", endDate:project.endDate||"", brandColor:project.brandColor||"#5267d9" };
+        state.settings = { ...state.settings, luggageEnabled:!!project.luggageEnabled, luggageUsed:!!project.luggageUsed, eventName:project.name, slug:project.slug, activityType:project.activityType||"external", identifier:project.identifier||project.slug, activityOwner:project.activityOwner||"", activityDate:project.activityDate||project.startDate||"", clientName:project.clientName||"", startDate:project.startDate||"", endDate:project.endDate||"", brandColor:project.brandColor||"#5267d9" };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       }
       populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast(`已切换至${state.settings.eventName}`);
@@ -410,7 +436,7 @@
         projectId = `demo-${Date.now()}`;
         const source = state.projects.find(project => project.id === data.sourceId);
         state.projects.push({ id:projectId, slug, name, activityType, identifier, activityOwner, activityDate, clientName:source?.clientName||"", role:"ops", attendeeCount:0, startDate:source?.startDate||activityDate, endDate:source?.endDate||activityDate, brandColor:source?.brandColor||"#5267d9" });
-        state.activeProjectId = projectId; state.settings = { ...initialState().settings, ...(source ? state.settings : {}), eventName:name, slug, activityType, identifier, activityOwner, activityDate };
+        state.activeProjectId = projectId; state.settings = { ...initialState().settings, ...(source ? state.settings : {}), eventName:name, slug, activityType, identifier, activityOwner, activityDate, luggageEnabled:false, luggageUsed:false };
         state.attendees = []; state.notifications = []; state.locks = {master:false,columns:[],rows:[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
       }
       if (backend) await syncDocumentProject().catch(error => toast(`项目建档初始化失败：${error.message}`, "error"));
@@ -462,9 +488,9 @@
     state = {
       currentUserId: authData.user.id,
       activeProjectId: backendMeetingId,
-      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:"ops", ownerUserId:m.owner_user_id||null, archiveReady:!!m.archive_ready, registrationOpen:!!m.registration_open, templateImported:!!m.template_imported_at, managerEditEnabled:!!m.manager_attendee_edit_enabled, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
+      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, luggageEnabled:!!m.luggage_enabled, luggageUsed:!!m.luggage_used, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:"ops", ownerUserId:m.owner_user_id||null, archiveReady:!!m.archive_ready, registrationOpen:!!m.registration_open, templateImported:!!m.template_imported_at, managerEditEnabled:!!m.manager_attendee_edit_enabled, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
       users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
-      settings: { eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:[...new Set((meeting.venues||[]).map(normalizeVenueLabel).filter(Boolean))], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, transportGroupMinutes:meeting.transport_group_minutes??30, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, registrationQuotas:Array.isArray(meeting.field_config?.registrationQuotas)?meeting.field_config.registrationQuotas:[], quotaRegions:Array.isArray(meeting.field_config?.quotaRegions)?meeting.field_config.quotaRegions:[], templateName:meeting.template_name||"", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : {version:1,columns:[]}, templateImported:!!meeting.template_imported_at, registrationOpen:!!meeting.registration_open, managerEditEnabled:!!meeting.manager_attendee_edit_enabled },
+      settings: { luggageEnabled:!!meeting.luggage_enabled, luggageUsed:!!meeting.luggage_used, luggageConfigured:Object.hasOwn(meeting,"luggage_enabled"), eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:[...new Set((meeting.venues||[]).map(normalizeVenueLabel).filter(Boolean))], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, transportGroupMinutes:meeting.transport_group_minutes??30, fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,...(meeting.field_config||{})}, registrationQuotas:Array.isArray(meeting.field_config?.registrationQuotas)?meeting.field_config.registrationQuotas:[], quotaRegions:Array.isArray(meeting.field_config?.quotaRegions)?meeting.field_config.quotaRegions:[], templateName:meeting.template_name||"", registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : {version:1,columns:[]}, templateImported:!!meeting.template_imported_at, registrationOpen:!!meeting.registration_open, managerEditEnabled:!!meeting.manager_attendee_edit_enabled },
       locks: { master: meeting.master_locked, columns: locksRes.data.filter(l => l.locked).map(l => l.field_group), rows: attendeesRes.data.filter(a => a.row_locked).map(a => a.id) },
       attendees: attendeesRes.data.map(fromDbAttendee),
       notifications: (()=>{const attendeeNames=new Map(attendeesRes.data.map(a=>[a.id,a.name]));const labelMap={name:"姓名",city:"城市",hospital:"医院/连锁",department:"科室/门店",title:"职称",venue:"会场",id_number:"证件号码",phone:"手机号",hcp_id:"客户编号",accommodation:"住宿",out_date:"去程日期",out_from:"去程出发城市",out_to:"去程到达城市",out_no:"去程航班/车次",out_departure:"去程出发时间",out_arrival:"去程到达时间",return_date:"返程日期",return_from:"返程出发城市",return_to:"返程到达城市",return_no:"返程航班/车次",return_departure:"返程出发时间",return_arrival:"返程到达时间",region:"大区",remarks:"备注",custom_fields:"分房/扩展信息",business_status:"报名状态"};const logs=(logsRes.data||[]).map(log=>{const before=log.before_data||{},after=log.after_data||{};const raw=[...new Set([...Object.keys(before),...Object.keys(after)])].filter(field=>!["updated_at","created_at","risks","approval"].includes(field)&&JSON.stringify(before[field])!==JSON.stringify(after[field])).map(field=>({field,label:labelMap[field]||field,before:typeof before[field]==="object"?JSON.stringify(before[field]):before[field],after:typeof after[field]==="object"?JSON.stringify(after[field]):after[field]}));const cancelled=/cancel/.test(log.action)||raw.some(change=>change.field==="business_status"&&change.after==="cancelled");const attendeeName=after.name||before.name||attendeeNames.get(log.attendee_id)||"";return{id:`audit-${log.id}`,type:/create/.test(log.action)?"create":"change",text:`${log.actor_label||"系统"} · ${log.action}${attendeeName?` · ${attendeeName}`:""}${raw.length?`（${raw.length}项）`:""}`,time:log.created_at,read:cancelled,auditOnly:cancelled,attendeeName,actorName:log.actor_label||"系统",changes:raw};});const notices=(noticesRes.data||[]).map(n=>({id:n.id,type:n.type,text:n.message,time:n.created_at,read:!!n.read_at}));return[...logs,...notices].sort((a,b)=>new Date(b.time)-new Date(a.time));})(),
@@ -519,15 +545,18 @@
   }
   function closeMenu() { $(".sidebar").classList.remove("open"); $("#mobileOverlay").classList.remove("show"); }
   function route() {
-    const target = (location.hash || "#dashboard").slice(1).split("?")[0];
+    let target = (location.hash || "#dashboard").slice(1).split("?")[0];
+    if (offlineLuggageSession && target !== "luggage") { target="luggage"; history.replaceState(null,"","#luggage"); toast("当前仅恢复本场行李离线操作；其他功能请联网后刷新", "error"); }
+    if (luggageIntegration && !luggageIntegration.canLeave()) { history.replaceState(null,"","#luggage"); toast("行李正在保存，请稍后离开", "error"); return; }
     const isPublic = ["portal", "lookup", "register", "manage"].includes(target);
     $("#adminApp").classList.toggle("is-hidden", isPublic);
     $("#publicPortalView").classList.toggle("is-hidden", !isPublic);
-    if (isPublic) { setPortalTab(target === "lookup" ? "lookup" : target === "manage" ? "manage" : "register"); if (!publicProjectConfig || Date.now()-publicProjectLoadedAt>5000) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
+    if (isPublic) { luggageIntegration?.unmount(); setPortalTab(target === "lookup" ? "lookup" : target === "manage" ? "manage" : "register"); if (!publicProjectConfig || Date.now()-publicProjectLoadedAt>5000) loadPublicProjectInfo(); scrollTo({ top: 0, behavior: "instant" }); return; }
     const requestedRoute = $( `[data-page="${target}"]`) ? target : "dashboard"; const gatedRoutes=new Set(["dashboard","registration","attendees","approvals","rooming","transport","locks"]); let routeName = !state.activeProjectId && requestedRoute !== "projects" ? "projects" : requestedRoute;
+    if(routeName==="luggage" && !luggageIntegration.available()) { routeName="settings"; history.replaceState(null,"","#settings"); toast("请先在本场会议设置中启用行李管理", "error"); }
     if(routeName==="system"&&!isSystemAdmin()){routeName="dashboard";toast("系统设置仅限超级管理员访问","error");}
     if(state.activeProjectId&&gatedRoutes.has(routeName)&&!activeManagementOpen())routeName="documents";
-    if (routeName !== requestedRoute) { history.replaceState(null,"",state.activeProjectId?"#documents":"#projects"); toast(state.activeProjectId?"请先在会议管理中完成项目建档文件，再继续报名和行程管理":"请先新建会议，再进行报名和行程管理", "error"); }
+    if (routeName !== requestedRoute && requestedRoute !== "luggage") { history.replaceState(null,"",state.activeProjectId?"#documents":"#projects"); toast(state.activeProjectId?"请先在会议管理中完成项目建档文件，再继续报名和行程管理":"请先新建会议，再进行报名和行程管理", "error"); }
     $$(".page").forEach(page => page.classList.toggle("active", page.dataset.page === routeName));
     $$("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === routeName||(routeName==="settings"&&link.dataset.route==="projects")));
     scrollTo({ top: 0, behavior: "instant" });
@@ -557,7 +586,7 @@
     $("#documentScenario").addEventListener("change", updateDocumentTypeOptions);
     $("#refreshDocuments").addEventListener("click", loadDocuments);
     $("#documentFile").addEventListener("change", event => $("#documentFileName").textContent = event.target.files[0]?.name || "单个文件最大 50MB");
-    $("#userSelect").addEventListener("change", event => { state.currentUserId = event.target.value; saveState(); renderAll(); toast(`已切换为${currentUser().label}`); });
+    $("#userSelect").addEventListener("change", event => { luggageIntegration?.unmount(); state.currentUserId = event.target.value; saveState(); renderAll(); toast(`已切换为${currentUser().label}`); });
     $("#attendeeSearch").addEventListener("input", renderAttendeeTable);
     $("#riskFilter").addEventListener("change", renderAttendeeTable);
     $("#venueFilter").addEventListener("change", renderAttendeeTable);
@@ -649,8 +678,10 @@
     renderGreeting();
     $("#userAvatar").textContent = user.name.slice(0, 1);
     const visual=projectVisual(currentProject()); $("#activeProjectIcon").textContent=visual.icon; $("#activeProjectIcon").style.setProperty("--project-accent",visual.color); document.documentElement.style.setProperty("--project-accent",visual.color);
+    $("#projectSelect").disabled=!!offlineLuggageSession;
+    $("#newProjectButton").disabled=!!offlineLuggageSession;
     $("#systemSettingsNav").classList.toggle("is-hidden",!isSystemAdmin());
-    renderRegistrationOwner(); renderCounts(); renderDashboard(); renderAttendeeTable(); renderApprovals(); renderRooming(); renderTransport(); renderLocks(); renderNotifications(); renderSettings(); renderProjects(); renderDocuments(); renderSystemSettings(); renderQr();
+    renderRegistrationOwner(); renderCounts(); renderDashboard(); renderAttendeeTable(); renderApprovals(); renderRooming(); renderTransport(); renderLocks(); renderNotifications(); renderSettings(); renderProjects(); renderDocuments(); renderSystemSettings(); renderQr(); luggageIntegration?.render();
   }
 
   function renderProjects() {

@@ -23,12 +23,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: modules/luggage/package-lock.json
+      - name: Install integrated module
+        run: npm ci --prefix modules/luggage
+      - name: Test luggage integration
+        run: npm test --prefix modules/luggage
+      - name: Build integrated site
+        run: |
+          npm run build --prefix modules/luggage
+          node scripts/build-site.mjs
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload static site
         uses: actions/upload-pages-artifact@v4
         with:
-          path: .
+          path: .site-build
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4

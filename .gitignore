@@ -3,3 +3,6 @@
 node_modules
 config.local.js
 supabase/.temp/
+
+/luggage/
+.site-build/

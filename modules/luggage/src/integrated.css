@@ -1,0 +1,22 @@
+/* Scoped by the same-origin internal frame: host owns the only sidebar/logo/header. */
+html, body, #app { min-height:0; height:auto; background:transparent; }
+.terminal { display:block; min-height:0; background:transparent; }
+.main-column { margin:0; min-height:0; }
+.workspace { width:100%; max-width:none; padding:0; }
+.integrated-context { display:flex; gap:16px; justify-content:space-between; padding:4px 2px 18px; color:#786d67; font-size:13px; flex-wrap:wrap; }
+.integrated-context strong { color:#382d27; }
+.integrated-tabs { display:flex; gap:8px; padding:6px; margin-bottom:22px; border:1px solid #e7ded7; background:#fffdfb; border-radius:14px; flex-wrap:wrap; }
+.integrated-tabs button { min-height:48px; flex:1; border:0; background:transparent; color:#78685f; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; }
+.integrated-tabs button.active { color:#b7271b; background:#fff0e9; box-shadow:inset 0 -2px #d52b1e; }
+.integrated-tabs button:disabled { opacity:.45; cursor:not-allowed; }
+.meeting-context-list { display:grid; grid-template-columns:80px 1fr; gap:14px; font-size:14px; }
+.meeting-context-list dt { color:#82766d; }.meeting-context-list dd { margin:0; overflow-wrap:anywhere; }
+.app-footer { margin-bottom:0; }
+@media (max-width:760px) { .workspace{padding:0}.main-column{margin:0}.integrated-tabs button{flex-basis:40%}.stats-grid{grid-template-columns:repeat(2,1fr)} }
+
+@media(min-width:820px){
+  .stats-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .stat{padding:16px 12px;gap:9px}.stat-icon{width:32px;height:32px}.stat strong{font-size:26px}
+  .entry-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+}
+@media(min-width:1250px){.register-layout{grid-template-columns:minmax(0,1fr) 330px}.entry-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -842,3 +842,20 @@ table tbody tr:hover { background: #fff7f5; }
 html[data-density="compact"] table td,html[data-density="compact"] table th{padding-top:8px!important;padding-bottom:8px!important}html[data-density="compact"]{font-size:14px}
 html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card:rgba(28,32,42,.96);--line:#343a48;--shadow:0 18px 50px rgba(0,0,0,.3)}html[data-theme="dark"] body,html[data-theme="dark"] .topbar{background:var(--canvas)}html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea,html[data-theme="dark"] .button-secondary{color:var(--ink);background:#222734;border-color:var(--line)}html[data-theme="dark"] .metric-card,html[data-theme="dark"] .panel{border-color:var(--line)}html[data-theme="dark"] .system-setting-note,html[data-theme="dark"] .change-detail-row>span{background:#222734}
 @media(max-width:900px){.system-settings-grid{grid-template-columns:1fr}.system-settings-grid>article:last-child{grid-column:auto}.verification-difference{grid-template-columns:1fr}.change-detail-row{grid-template-columns:1fr}.three-actions{grid-template-columns:1fr}}
+
+/* Integrated on-site services: one shell, one meeting, no external terminal link. */
+[data-page="luggage"] { --page-accent:#b75937; }
+.luggage-module-mount { width:100%; min-width:0; }
+#luggageFrame { display:block; width:100%; height:900px; border:0; background:transparent; }
+.luggage-control-panel { border-top:3px solid #b75937; background:linear-gradient(130deg,#fffdfb,#fff6f0); }
+.luggage-feature-capabilities { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 12px; }
+.luggage-feature-capabilities span { background:#f5ebe3; color:#87533e; padding:6px 10px; border-radius:6px; font-size:12px; }
+.luggage-feature-note { color:#827269; font-size:13px; line-height:1.8; margin-bottom:18px; }
+#luggageNav > span:last-child { font-size:inherit; width:auto; }
+@media(max-width:760px){[data-page="luggage"] .page-heading{gap:14px}#luggageFrame{min-height:900px}}
+
+.luggage-control-panel .switch {position:relative;min-width:44px;min-height:28px}
+.luggage-control-panel .switch input {display:block;position:absolute;inset:0;opacity:0;width:100%;height:100%;z-index:2;cursor:pointer;margin:0}
+.luggage-control-panel .switch input:focus-visible + span {outline:3px solid #d52b1e66;outline-offset:3px}
+
+[data-page="luggage"],#luggageMount {overflow-anchor:none}

@@ -132,3 +132,11 @@ window.APP_CONFIG = {
 - 内部行程核验：航班场站使用精简核验标签（北京保留首都/大兴，高铁站强制保留“站”）；报名原始数据、PNR、Rooming List 和对外导出继续使用官方完整名称
 - `supabase/functions/public-trip-query/index.ts`：报名身份会话、本人报名维护和无短信验证码的参会信息查询接口
 - `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布
+
+## 会议内行李管理（2026-08-31）
+
+行李管理已整合到本工程，不再跳转独立站点。会议详情新增开关，内部/外部会议均可按需启用；默认关闭。启用后在统一侧栏进入寄存、取件、台账和现场准备。
+
+**生产使用前必须运行新增数据库迁移** `supabase/migrations/2026083101_integrated_luggage.sql`，否则开关保持禁用；不会以模拟接口假装云端成功。源码、权限、离线授权、构建命令和设备边界见 [整合说明](docs/LUGGAGE-INTEGRATION.md)。
+
+发布流程现包含模块测试与编译，只发布静态构建目录。直接使用 Python 在源码目录预览时，须先执行 `npm ci --prefix modules/luggage && npm run build --prefix modules/luggage`；完整离线演示按整合说明使用构建和预览脚本。

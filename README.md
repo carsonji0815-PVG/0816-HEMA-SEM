@@ -130,6 +130,9 @@ window.APP_CONFIG = {
 - 消息提醒：逐字段查看修改前/修改后内容；取消报名只保留审计，不生成待办
 - 系统设置：仅超级管理员可见，提供备份恢复、全局日志、账号权限、主题版式和业务字典
 - 内部行程核验：航班场站使用精简核验标签（北京保留首都/大兴，高铁站强制保留“站”）；报名原始数据、PNR、Rooming List 和对外导出继续使用官方完整名称
+- 手动修正：仅本次检出的异常字段标色，显示计划值；保存后重新调用核验接口，失败继续修正，通过返回结果页。名单对应行程单元格显示持久“已核验”标记，字段修改后旧标记自动失效。
+- 核验结果存入参会者 custom_fields，无需新增数据库列；新增静态文件 travel-verification.js 必须随 HTML、app.js、styles.css 一起发布。接口失败或返回不完整不会标记通过。高铁日期依据现有阿里云按日期检索接口，航班日期依据返回的 departureDate。
+- 回归测试：本地启动 4173 端口后执行 node scripts/travel-verification-fields-smoke.mjs；测试使用独立浏览器及模拟接口，不写入真实会议数据。
 - `supabase/functions/public-trip-query/index.ts`：报名身份会话、本人报名维护和无短信验证码的参会信息查询接口
 - `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布
 

@@ -859,3 +859,15 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
 .luggage-control-panel .switch input:focus-visible + span {outline:3px solid #d52b1e66;outline-offset:3px}
 
 [data-page="luggage"],#luggageMount {overflow-anchor:none}
+/* Verification cues apply to individual fields, never to an entire attendee row. */
+.field-grid .travel-problem-field { background:#fff1ed; border-left:4px solid #d52b1e; padding:10px; border-radius:8px; color:#8b2017; }
+.field-grid .travel-problem-field input { border:2px solid #d52b1e; background:#fffaf8; color:var(--ink,#302627); }
+.travel-field-issue { display:block; margin-top:6px; font-size:12px; line-height:1.6; color:#a52318; }
+.template-data-cell.travel-verified-cell { background:#edf4fc; box-shadow:inset 0 -2px #7e9dbc; }
+.travel-verified-label { display:block; margin-top:5px; font-size:11px; color:#24527b; font-weight:600; }
+.trip-save-error:empty { display:none; }
+[data-theme="dark"] .field-grid .travel-problem-field { background:#482622; color:#ffd2c6; }
+[data-theme="dark"] .field-grid .travel-problem-field input { background:#302526; color:#fff; }
+[data-theme="dark"] .travel-field-issue { color:#ffb5a5; }
+[data-theme="dark"] .template-data-cell.travel-verified-cell { background:#213346; }
+[data-theme="dark"] .travel-verified-label { color:#b7d8f4; }

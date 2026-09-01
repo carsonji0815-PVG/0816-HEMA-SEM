@@ -61,6 +61,8 @@
   function hydrate(attendee={}){
     const mode=normalizeType(attendee.departTransportType||attendee.outTransportType,attendee.outNo);
     const arrivalMode=normalizeType(attendee.arriveTransportType||mode,attendee.outNo);
+    const returnMode=normalizeType(attendee.returnDepartTransportType,attendee.returnNo);
+    const returnArrivalMode=normalizeType(attendee.returnArriveTransportType||returnMode,attendee.returnNo);
     return{
       departDate:attendee.departDate||attendee.outDate||"",
       departCity:normalizeCity(attendee.departCity||attendee.outFrom||""),
@@ -70,6 +72,14 @@
       arriveCity:normalizeCity(attendee.arriveCity||attendee.outTo||""),
       arriveTransportType:arrivalMode,
       arriveStation:arrivalMode==="LOCAL_ATTEND"?"":officialStation(attendee.arriveStation||attendee.outTo||"",arrivalMode)||"",
+      returnDepartDate:attendee.returnDepartDate||attendee.returnDate||"",
+      returnDepartCity:normalizeCity(attendee.returnDepartCity||attendee.returnFrom||""),
+      returnDepartTransportType:returnMode,
+      returnDepartStation:returnMode==="LOCAL_ATTEND"?"":officialStation(attendee.returnDepartStation||attendee.returnFrom||"",returnMode)||"",
+      returnArriveDate:attendee.returnArriveDate||attendee.returnDate||"",
+      returnArriveCity:normalizeCity(attendee.returnArriveCity||attendee.returnTo||""),
+      returnArriveTransportType:returnArrivalMode,
+      returnArriveStation:returnArrivalMode==="LOCAL_ATTEND"?"":officialStation(attendee.returnArriveStation||attendee.returnTo||"",returnArrivalMode)||"",
     };
   }
   function applyLegacy(target){
@@ -77,13 +87,16 @@
     target.outDate=fields.departDate;
     target.outFrom=fields.departStation||fields.departCity;
     target.outTo=fields.arriveStation||fields.arriveCity;
+    target.returnDate=fields.returnDepartDate;
+    target.returnFrom=fields.returnDepartStation||fields.returnDepartCity;
+    target.returnTo=fields.returnArriveStation||fields.returnArriveCity;
     target.flight=fields.departTransportType==="PLANE"?"Y":"N";
     return target;
   }
   function bindForm(form,{customDictionary=[],preserve=true}={}){
     if(!form)return()=>{};
     const cleanups=[];
-    for(const side of ["depart","arrive"]){
+    for(const side of ["depart","arrive","returnDepart","returnArrive"]){
       const city=form.elements[`${side}City`],type=form.elements[`${side}TransportType`];
       const select=form.querySelector(`[data-station-select="${side}"]`),input=form.querySelector(`[data-station-input="${side}"]`);
       if(!city||!type||!select||!input)continue;

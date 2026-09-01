@@ -11,9 +11,9 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const run=(command,args,options={})=>execFileSync(command,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:180000,...options});
 const marker='/opt/lilly-migration/staging/PRODUCTION_ACTIVE';
 const current='/var/www/lilly-platform/current';
-const expectedSite='/var/www/lilly-platform/releases/travel-20260831-761cc510ee01';
+const expectedSite='/var/www/lilly-platform/releases/journey-20260901-e6137babe968';
 const edge='/opt/lilly-migration/staging/volumes/functions/public-trip-query/handler.ts';
-const expectedEdge='5867092dfccb134b4b8fbddc28e8c3cbbed9be630852863187a77f2e265a318b';
+const expectedEdge='f26fbb980c96b6c8db4b37e06b27006a736502a4ce40f840cddbb3e5ab2a36a2';
 const releaseRoot=`/opt/lilly-field-release/${manifest.version}`;
 const site=`/var/www/lilly-platform/releases/${manifest.version}`;
 const backup=path.join(releaseRoot,'before');
@@ -24,7 +24,7 @@ if(process.platform!=='linux'||process.getuid()!==0||!fs.existsSync(marker))thro
 if(fs.existsSync(releaseRoot))throw new Error('This immutable release was already prepared');
 check('known frontend baseline',fs.realpathSync(current)===expectedSite);
 check('known Edge baseline',fs.existsSync(edge)&&hash(fs.readFileSync(edge))===expectedEdge);
-check('journey columns absent before migration',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='attendees' and column_name='depart_date'"]).trim()==='0');
+check('return journey columns absent before migration',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='attendees' and column_name='return_depart_date'"]).trim()==='0');
 fs.mkdirSync(backup,{recursive:true,mode:0o700});
 fs.copyFileSync(edge,path.join(backup,'public-trip-query.ts'));
 fs.writeFileSync(path.join(backup,'frontend-target.txt'),expectedSite,{mode:0o600});
@@ -41,8 +41,9 @@ const migration=fs.readFileSync(path.join(bundle,'migration.sql'),'utf8');
 // Compile and execute all DDL/backfill in a rolled-back transaction first.
 run('docker',['exec','-i','lilly-stage-db','psql','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],{input:`begin;\n${migration}\nrollback;\n`,stdio:['pipe','pipe','pipe']});
 run('docker',['exec','-i','lilly-stage-db','psql','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],{input:`begin;\n${migration}\ncommit;\n`,stdio:['pipe','pipe','pipe']});
-check('eight canonical journey columns',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='attendees' and column_name in ('depart_date','depart_city','depart_transport_type','depart_station','arrive_date','arrive_city','arrive_transport_type','arrive_station')"]).trim()==='8');
-check('local station invariant',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from public.attendees where (depart_transport_type='LOCAL_ATTEND' and depart_station is not null) or (arrive_transport_type='LOCAL_ATTEND' and arrive_station is not null)"]).trim()==='0');
+check('sixteen canonical journey columns',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='attendees' and column_name in ('depart_date','depart_city','depart_transport_type','depart_station','arrive_date','arrive_city','arrive_transport_type','arrive_station','return_depart_date','return_depart_city','return_depart_transport_type','return_depart_station','return_arrive_date','return_arrive_city','return_arrive_transport_type','return_arrive_station')"]).trim()==='16');
+check('local station invariant',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from public.attendees where (depart_transport_type='LOCAL_ATTEND' and depart_station is not null) or (arrive_transport_type='LOCAL_ATTEND' and arrive_station is not null) or (return_depart_transport_type='LOCAL_ATTEND' and return_depart_station is not null) or (return_arrive_transport_type='LOCAL_ATTEND' and return_arrive_station is not null)"]).trim()==='0');
+check('station dictionary seeded',Number(run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc','select count(*) from public.station_dict']).trim())>=20);
 const candidate=fs.readFileSync(path.join(bundle,'public-trip-query.ts'));
 check('Edge bundle hash',hash(candidate)===manifest.edgeHash);
 try{

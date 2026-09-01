@@ -3,7 +3,7 @@
   const suffixes={date:"Date",number:"No",from:"From",to:"To",departure:"Departure",arrival:"Arrival"};
   const labels={date:"出发日期",number:"航班号/车次号",from:"出发场站",to:"抵达场站",departure:"出发时间",arrival:"到达时间",departCity:"出发城市",departTransportType:"出发出行方式",arriveDate:"抵达日期",arriveCity:"抵达城市",arriveTransportType:"抵达出行方式"};
   const keys=segment=>segment==="return"
-    ?Object.fromEntries(Object.entries(suffixes).map(([key,suffix])=>[key,"return"+suffix]))
+    ?{date:"returnDepartDate",departCity:"returnDepartCity",departTransportType:"returnDepartTransportType",from:"returnDepartStation",arriveDate:"returnArriveDate",arriveCity:"returnArriveCity",arriveTransportType:"returnArriveTransportType",to:"returnArriveStation",number:"returnNo",departure:"returnDeparture",arrival:"returnArrival"}
     :{date:"departDate",departCity:"departCity",departTransportType:"departTransportType",from:"departStation",arriveDate:"arriveDate",arriveCity:"arriveCity",arriveTransportType:"arriveTransportType",to:"arriveStation",number:"outNo",departure:"outDeparture",arrival:"outArrival"};
   const snapshot=(attendee,segment)=>Object.fromEntries(Object.entries(keys(segment)).map(([key,field])=>[key,String(attendee[field]||"").trim()]));
   const fingerprint=(attendee,segment)=>JSON.stringify(snapshot(attendee,segment));

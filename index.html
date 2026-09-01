@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260831-verification-01" />
+    <link rel="stylesheet" href="styles.css?v=20260831-verification-02" />
     <script src="assets/vendor/qrcode.min.js" defer></script>
     <script src="assets/vendor/xlsx.full.min.js" defer></script>
     <script src="assets/vendor/jszip.min.js" defer></script>
@@ -30,8 +30,11 @@
       };
     </script>
     <script src="luggage-integration.js?v=20260831-01" defer></script>
-    <script src="travel-verification.js?v=20260831-verification-01" defer></script>
-    <script src="app.js?v=20260831-verification-01" defer></script>
+    <script src="travel-fields.js?v=20260901-journey-fields-01" defer></script>
+    <script src="travel-verification.js?v=20260901-journey-fields-01" defer></script>
+    <script src="travel-verification-storage.js?v=20260831-verification-02" defer></script>
+    <script src="travel-verification-panel.js?v=20260831-verification-02" defer></script>
+    <script src="app.js?v=20260831-verification-02" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -111,8 +114,15 @@
                   <label class="span-2" data-template-field="remarks" data-config-field="remarks">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>
                 </div></section>
                 <section class="public-form-section"><h3>去程信息</h3><div class="public-field-grid">
-                  <label data-template-field="outDate">出发日期<input name="outDate" type="date" required /></label><label data-template-field="outFrom">出发城市<input name="outFrom" required /></label>
-                  <label data-template-field="outTo">到达城市<input name="outTo" required /></label><label data-template-field="outNo">航班 / 车次号<input name="outNo" required /></label>
+                  <label data-journey-field="departDate">出发日期<input name="departDate" type="date" required /></label>
+                  <label data-journey-field="departCity">出发城市<input name="departCity" required /></label>
+                  <label data-journey-field="departTransportType">出发出行方式<select name="departTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label>
+                  <label data-journey-field="departStation">出发场站<select data-station-select="depart" hidden></select><input data-station-input="depart" hidden /></label>
+                  <label data-journey-field="arriveDate">抵达日期<input name="arriveDate" type="date" required /></label>
+                  <label data-journey-field="arriveCity">抵达城市<input name="arriveCity" required /></label>
+                  <label data-journey-field="arriveTransportType">抵达出行方式<select name="arriveTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label>
+                  <label data-journey-field="arriveStation">抵达场站<select data-station-select="arrive" hidden></select><input data-station-input="arrive" hidden /></label>
+                  <label data-template-field="outNo">航班 / 车次号<input name="outNo" required /></label>
                   <label data-template-field="outDeparture">出发时间<input name="outDeparture" type="time" required /></label><label data-template-field="outArrival">到达时间<input name="outArrival" type="time" required /></label>
                 </div></section>
                 <section class="public-form-section"><h3>返程信息</h3><div class="public-field-grid">
@@ -164,7 +174,7 @@
           <a class="project-manage-link" href="#projects" aria-label="管理项目">⚙</a>
         </div>
         <nav class="side-nav" aria-label="主导航">
-          <div class="nav-group"><p>工作台</p><a href="#dashboard" data-route="dashboard"><span>◫</span>工作台首页</a><a href="#attendees" data-route="attendees"><span>♟</span>参会名单管理 <b id="navAttendeeCount">0</b></a><a href="#locks" data-route="locks"><span>▦</span>名单锁定</a><a href="#rooming" data-route="rooming"><span>▥</span>分房管理</a><a href="#registration" data-route="registration"><span>✎</span>报名管理</a><a href="#transport" data-route="transport"><span>⌁</span>接送机调度</a><a href="#luggage" data-route="luggage" id="luggageNav" class="is-hidden"><span>▣</span><span id="luggageNavLabel">行李管理</span></a></div>
+          <div class="nav-group"><p>工作台</p><a href="#dashboard" data-route="dashboard"><span>◫</span>工作台首页</a><a href="#attendees" data-route="attendees"><span>♟</span>参会名单管理 <b id="navAttendeeCount">0</b></a><a href="#verification" data-route="verification" id="verificationNav"><span>✓</span>行程核验</a><a href="#locks" data-route="locks"><span>▦</span>名单锁定</a><a href="#rooming" data-route="rooming"><span>▥</span>分房管理</a><a href="#registration" data-route="registration"><span>✎</span>报名管理</a><a href="#transport" data-route="transport"><span>⌁</span>接送机调度</a><a href="#luggage" data-route="luggage" id="luggageNav" class="is-hidden"><span>▣</span><span id="luggageNavLabel">行李管理</span></a></div>
           <div class="nav-group"><p>会议项目</p><a href="#projects" data-route="projects"><span>▤</span>会议管理</a><a href="#documents" data-route="documents"><span>▧</span>项目建档文件</a></div>
           <div class="nav-group"><p>审批中心</p><a href="#approvals" data-route="approvals"><span>⚑</span>行程与住宿审批 <b id="navApprovalCount" class="alert-count">0</b></a></div>
           <div class="nav-group"><p>消息提醒</p><a href="#notifications" data-route="notifications"><span>◌</span>变更提醒 <b id="navNoticeCount" class="alert-count">0</b></a></div>
@@ -278,8 +288,15 @@
                 <article class="panel form-section trip-section">
                   <div class="section-number">02</div><div class="section-title"><h2>去程信息</h2><p>系统将按会议规则自动检查异常</p></div>
                   <div class="field-grid">
-                    <label>出发日期<input name="outDate" type="date" required /></label><label>出发城市<input name="outFrom" required /></label>
-                    <label>到达城市<input name="outTo" required /></label><label>航班 / 车次号<input name="outNo" required /></label>
+                    <label data-journey-field="departDate">出发日期<input name="departDate" type="date" required /></label>
+                    <label data-journey-field="departCity">出发城市<input name="departCity" required /></label>
+                    <label data-journey-field="departTransportType">出发出行方式<select name="departTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label>
+                    <label data-journey-field="departStation">出发场站<select data-station-select="depart" hidden></select><input data-station-input="depart" hidden /></label>
+                    <label data-journey-field="arriveDate">抵达日期<input name="arriveDate" type="date" required /></label>
+                    <label data-journey-field="arriveCity">抵达城市<input name="arriveCity" required /></label>
+                    <label data-journey-field="arriveTransportType">抵达出行方式<select name="arriveTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label>
+                    <label data-journey-field="arriveStation">抵达场站<select data-station-select="arrive" hidden></select><input data-station-input="arrive" hidden /></label>
+                    <label>航班 / 车次号<input name="outNo" required /></label>
                     <label>出发时间<input name="outDeparture" type="time" required /></label><label>到达时间<input name="outArrival" type="time" required /></label>
                   </div>
                 </article>
@@ -305,6 +322,14 @@
               <div class="table-wrap roster-table-wrap"><table class="roster-template-table"><thead><tr id="attendeeTableHead"></tr></thead><tbody id="attendeeTableBody"></tbody></table></div>
               <div class="empty-state is-hidden" id="attendeeEmpty">没有符合条件的参会人员</div>
             </div>
+          </section>
+
+          <section class="page" data-page="verification">
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">TRAVEL VERIFICATION</span><h1>行程核验</h1><p>直接读取本项目参会名单的去程与返程。只标注差异，由会务负责人审核修改。</p></div><button class="button button-primary" id="verifyRosterButton">查询并核验名单</button></div>
+            <div class="panel verify-help"><strong>同一份名单，无需重复导入</strong><p>红色：与计划数据有差异；黄色：需补全或人工确认；灰色：未查询、接口不可用或日期尚不可查。查不到不等于填写错误。核验不代表已出票。</p><label><input type="checkbox" id="verificationAllowPaid"> 本次允许飞常准查询（可能消耗账户额度；每次最多 1 个新的航班查询）</label><p id="verificationProviderStatus">密钥仅由服务器保存。未勾选时航班只做本地检查，不发起收费查询；高铁按已接入数据源查询。</p></div>
+            <div id="verificationPageSummary" class="verification-summary verify-summary-grid" aria-live="polite"></div>
+            <div class="verify-toolbar"><label>核验状态 <select id="verificationFilter"><option value="all">全部有效行程</option><option value="difference">计划有差异</option><option value="review">需人工确认</option><option value="pending">待核验 / 待重查</option><option value="verified">核验通过</option><option value="blank">未提供行程</option></select></label><label>搜索 <input id="verificationSearch" type="search" placeholder="姓名、班次、日期或场站"></label></div>
+            <p id="verificationProgress" role="status"></p><div id="verificationPageResults" class="verification-result-list"></div>
           </section>
 
           <section class="page" data-page="approvals">
@@ -369,7 +394,7 @@
               <article class="panel"><div class="panel-heading"><div><span class="kicker">GLOBAL AUDIT</span><h2>全局操作日志</h2></div></div><label class="search-box system-log-search"><span>⌕</span><input id="globalLogSearch" placeholder="搜索账号、参会人、字段或操作" /></label><div id="globalLogList" class="global-log-list"></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">ACCESS CONTROL</span><h2>人员权限管理</h2><p>会务负责人账号和各项目授权总览。</p></div></div><div id="systemPermissionOverview" class="system-permission-overview"></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">APPEARANCE</span><h2>系统外观设置</h2></div></div><div class="stack-form"><label>主题<select id="systemTheme"><option value="light">浅色默认主题</option><option value="dark">深色主题</option></select></label><label>品牌主色<input id="systemBrandColor" type="color" value="#d52b1e" /></label><label>表格版式<select id="tableDensity"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label></div></article>
-              <article class="panel"><div class="panel-heading"><div><span class="kicker">BUSINESS DICTIONARY</span><h2>业务字典</h2></div></div><div class="stack-form"><label>旅游城市清单<textarea id="dictionaryTourismCities" rows="5"></textarea></label><label>职称字典<textarea id="dictionaryTitles" rows="4"></textarea></label><button class="button button-primary" id="saveSystemDictionary" type="button">保存业务字典</button></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">BUSINESS DICTIONARY</span><h2>业务字典</h2></div></div><div class="stack-form"><label>旅游城市清单<textarea id="dictionaryTourismCities" rows="5"></textarea></label><label>职称字典<textarea id="dictionaryTitles" rows="4"></textarea></label><label>场站基础字典 <small>每行：城市|PLANE或HIGH_SPEED_RAIL|标准全称</small><textarea id="dictionaryStations" rows="10" spellcheck="false"></textarea></label><button class="button button-primary" id="saveSystemDictionary" type="button">保存业务字典</button></div></article>
             </div>
           </section>
         </main>
@@ -428,7 +453,7 @@
     </dialog>
     <dialog id="travelVerificationDialog" class="detail-dialog verification-dialog">
       <form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form>
-      <div class="detail-head"><span class="kicker">TRAVEL DATA VERIFICATION</span><h2>行程真实性核验结果</h2><p>只比对计划数据并纠错，不进入审批流。</p></div>
+      <div class="detail-head"><span class="kicker">TRAVEL DATA VERIFICATION</span><h2>行程真实性核验结果</h2><p>比对计划数据并标注差异，由会务负责人手动修改，不自动覆盖名单。</p></div>
       <div class="detail-body"><div id="travelVerificationSummary" class="verification-summary"></div><div id="travelVerificationResults" class="verification-result-list"></div><div class="detail-actions"><button class="button button-secondary" id="closeTravelVerification" type="button">关闭</button></div></div>
     </dialog>
     <dialog id="notificationDetailDialog" class="detail-dialog notification-detail-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div id="notificationDetailContent"></div></dialog>

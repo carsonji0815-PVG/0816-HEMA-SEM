@@ -861,13 +861,22 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
 [data-page="luggage"],#luggageMount {overflow-anchor:none}
 /* Verification cues apply to individual fields, never to an entire attendee row. */
 .field-grid .travel-problem-field { background:#fff1ed; border-left:4px solid #d52b1e; padding:10px; border-radius:8px; color:#8b2017; }
-.field-grid .travel-problem-field input { border:2px solid #d52b1e; background:#fffaf8; color:var(--ink,#302627); }
+.field-grid .travel-problem-field input, .field-grid .travel-problem-field select { border:2px solid #d52b1e; background:#fffaf8; color:var(--ink,#302627); }
 .travel-field-issue { display:block; margin-top:6px; font-size:12px; line-height:1.6; color:#a52318; }
 .template-data-cell.travel-verified-cell { background:#edf4fc; box-shadow:inset 0 -2px #7e9dbc; }
 .travel-verified-label { display:block; margin-top:5px; font-size:11px; color:#24527b; font-weight:600; }
 .trip-save-error:empty { display:none; }
 [data-theme="dark"] .field-grid .travel-problem-field { background:#482622; color:#ffd2c6; }
-[data-theme="dark"] .field-grid .travel-problem-field input { background:#302526; color:#fff; }
+[data-theme="dark"] .field-grid .travel-problem-field input, [data-theme="dark"] .field-grid .travel-problem-field select { background:#302526; color:#fff; }
 [data-theme="dark"] .travel-field-issue { color:#ffb5a5; }
 [data-theme="dark"] .template-data-cell.travel-verified-cell { background:#213346; }
 [data-theme="dark"] .travel-verified-label { color:#b7d8f4; }
+
+/* Roster-backed verification workspace; field errors are distinct from unavailable data. */
+.verify-help{padding:18px;margin-bottom:18px}.verify-help p,.verify-notice{font-size:12px;line-height:1.7;color:var(--ink-soft)}
+.verify-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.verify-summary-grid small,.verify-summary-grid strong{display:block}.verify-summary-grid strong{font-size:26px;margin-top:6px}
+.verify-toolbar{display:flex;flex-wrap:wrap;gap:18px;margin:20px 0}.verify-toolbar label{display:flex;align-items:center;gap:8px}.verify-toolbar input,.verify-toolbar select{padding:9px;border:1px solid var(--line);border-radius:8px;background:white}
+.verify-card{border:1px solid var(--line);border-radius:14px;padding:18px;background:white}.verify-card header,.verify-card footer{display:flex;gap:16px;justify-content:space-between;align-items:center}.verify-card header small{display:block;color:var(--ink-soft);margin:6px 0 12px}.verify-card footer small{font-size:11px;color:var(--ink-soft)}
+.verify-state{border-radius:20px;padding:6px 10px;font-size:11px;background:#edf0f5;color:#566075;white-space:nowrap}.verify-state-verified{background:#e4f5eb;color:#187246}.verify-state-difference{background:#ffe6e5;color:#a12828}.verify-state-review{background:#fff0cf;color:#895d0b}
+.verify-table-scroll{overflow:auto}.verify-table{width:100%;min-width:620px;border-collapse:collapse;font-size:12px}.verify-table th,.verify-table td{text-align:left;padding:10px;border-bottom:1px solid #edf0f4;vertical-align:top}.verify-table th{font-weight:500;color:#5b6475}.verify-table thead{background:#f5f7fa}.verify-field-difference td:nth-child(2){background:#fff0ef;color:#a12424;font-weight:700}.verify-field-difference td:last-child{color:#a12424}.verify-field-review td:nth-child(2){background:#fff6df;color:#866114}.verify-notice:empty{display:none}
+@media(max-width:700px){.verify-summary-grid{grid-template-columns:repeat(2,1fr)}.verify-card{padding:12px}.verify-card header,.verify-card footer{align-items:flex-start;flex-wrap:wrap}}

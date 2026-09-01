@@ -22,20 +22,24 @@ const hash = async (value: string) => {
 const clean = (value: unknown, max = 200) => String(value || "").trim().slice(0, max);
 const normalized = (value: unknown, max = 200) => clean(value, max).replace(/\s+/g, "").toLowerCase();
 const yes = (value: unknown) => ["Y", "true", "1", "是"].includes(String(value));
+const transportType = (value: unknown) => ({飞机:"PLANE",高铁:"HIGH_SPEED_RAIL",本地参会:"LOCAL_ATTEND",PLANE:"PLANE",HIGH_SPEED_RAIL:"HIGH_SPEED_RAIL",LOCAL_ATTEND:"LOCAL_ATTEND"}[clean(value,30)] || "");
 const registrationView = (row: Record<string, unknown>) => ({
   attendeeType: row.attendee_type || "HCP", name: row.name || "", city: row.city || "", hospital: row.hospital || "", department: row.department || "", title: row.title || "", venue: row.venue || "", sex: row.sex || "",
   idNumber: row.id_number === "待补充" ? "" : row.id_number || "", phone: row.phone || "", hcpId: String(row.hcp_id || "").startsWith("WEB-") ? "" : row.hcp_id || "", accommodation: row.accommodation ? "Y" : "N", flight: row.is_flight ? "Y" : "N",
+  departDate:row.depart_date||row.out_date||"",departCity:row.depart_city||row.out_from||"",departTransportType:row.depart_transport_type||"",departStation:row.depart_station||"",
+  arriveDate:row.arrive_date||row.out_date||"",arriveCity:row.arrive_city||row.out_to||"",arriveTransportType:row.arrive_transport_type||"",arriveStation:row.arrive_station||"",
   outDate: row.out_date || "", outFrom: row.out_from || "", outTo: row.out_to || "", outNo: row.out_no || "", outDeparture: String(row.out_departure || "").slice(0, 5), outArrival: String(row.out_arrival || "").slice(0, 5),
   returnDate: row.return_date || "", returnFrom: row.return_from || "", returnTo: row.return_to || "", returnNo: row.return_no || "", returnDeparture: String(row.return_departure || "").slice(0, 5), returnArrival: String(row.return_arrival || "").slice(0, 5),
   region: row.region || "", contactName: row.contact_name || "", contactMobile: row.contact_mobile || "", mslContact: row.msl_contact || "", remarks: row.remarks === "公开报名认证，待填写完整信息" ? "" : row.remarks || "",
   customFields: row.custom_fields || {},
 });
-const projectView = (meeting: Record<string, unknown>) => ({
+const projectView = (meeting: Record<string, unknown>, systemSettings:Record<string,unknown>={}) => ({
   slug: meeting.slug || "", name: meeting.name || "参会服务", clientName: meeting.client_name || "", venues: meeting.venues || [], servicePhone: meeting.service_phone || "", brandColor: meeting.brand_color || "#5267d9", fieldConfig: meeting.field_config || {}, flightLeadMinutes: meeting.flight_lead_minutes || 120, trainLeadMinutes: meeting.train_lead_minutes || 90,
   startDate: meeting.start_date || "", endDate: meeting.end_date || "", deadline: meeting.deadline || "", masterLocked: !!meeting.master_locked, archiveReady: !!meeting.archive_ready,
   templateName: meeting.template_name || "", registrationTemplate: meeting.registration_template || {}, templateImported:!!meeting.template_imported_at,
   registrationOpen:!!meeting.registration_open, newRegistrationAllowed:!!meeting.registration_open,
   managementOpen:!!meeting.registration_open || !!meeting.archive_ready, managerEditEnabled:!!meeting.manager_attendee_edit_enabled,
+  stationDictionary:Array.isArray(systemSettings.stationDictionary)?systemSettings.stationDictionary:[],
 });
 
 export default {
@@ -50,6 +54,9 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const ipHash = await hash(`${forwarded}:${Deno.env.get("QUERY_RATE_SALT") || "journey-desk"}`);
   const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  const {data:systemConfiguration}=await db.from("system_configuration").select("settings").eq("singleton",true).maybeSingle();
+  const systemSettings=(systemConfiguration?.settings||{}) as Record<string,unknown>;
+  const viewProject=(meeting:Record<string,unknown>)=>projectView(meeting,systemSettings);
 
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { count } = await db.from("public_query_logs").select("id", { count: "exact", head: true }).eq("ip_hash", ipHash).gte("created_at", since);
@@ -63,13 +70,13 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   if (action === "list-projects") {
     const { data:meetings, error } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,registration_open,manager_attendee_edit_enabled").or("registration_open.eq.true,archive_ready.eq.true").order("start_date",{ascending:false}).limit(50);
     if (error) return reply({ error:"读取项目列表失败" }, 500);
-    return reply({ projects:(meetings || []).map(projectView) });
+    return reply({ projects:(meetings || []).map(viewProject) });
   }
   if (!slug) return reply({ error: "报名链接缺少项目编号，请使用项目专属二维码或链接" }, 400);
 
   const { data: meeting } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,registration_open,manager_attendee_edit_enabled,allowed_departure_cities,check_city_mismatch,check_departure_city").eq("slug", slug).maybeSingle();
   if (!meeting) return reply({ error: "未找到会议" }, 404);
-  if (action === "project-info") return reply({ project:projectView(meeting) });
+  if (action === "project-info") return reply({ project:viewProject(meeting) });
 
   if (action === "register") return reply({ error:"报名页面已更新，请刷新后重新填写" }, 426);
 
@@ -100,7 +107,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const { data: attendees, error } = await db.from("attendees").select("*")
       .eq("meeting_id", meeting.id).eq("registrant_id",registrant.id).order("created_at", { ascending:false });
     if (error) return reply({ error:"读取报名名单失败，请稍后重试" }, 500);
-    return reply({ authenticated:true, sessionToken, expiresAt, mode, project:projectView(meeting), registrant:{id:registrant.id,region:registrant.region,name:registrant.display_name,employeeNo:registrant.employee_no}, attendees:(attendees || []).map(row => ({ id:row.id, rowLocked:!!row.row_locked, approval:row.approval || "normal", ticketStatus:row.ticket_status || "pending", businessStatus:row.business_status||"active", ...registrationView(row) })) });
+    return reply({ authenticated:true, sessionToken, expiresAt, mode, project:viewProject(meeting), registrant:{id:registrant.id,region:registrant.region,name:registrant.display_name,employeeNo:registrant.employee_no}, attendees:(attendees || []).map(row => ({ id:row.id, rowLocked:!!row.row_locked, approval:row.approval || "normal", ticketStatus:row.ticket_status || "pending", businessStatus:row.business_status||"active", ...registrationView(row) })) });
   }
 
   if (action === "save-attendee") {
@@ -135,9 +142,13 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const requestedCustom = details.customFields && typeof details.customFields === "object" && !Array.isArray(details.customFields) ? details.customFields as Record<string,unknown> : {};
     const allowedCustom = new Set(((meeting.registration_template as {columns?:Array<{key?:string,custom?:boolean}>})?.columns || []).filter(column=>column.custom).map(column=>clean(column.key,80)));
     const customFields = Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)]));
+    const departType=transportType(details.departTransportType),arriveType=transportType(details.arriveTransportType);
+    const departStation=departType==="LOCAL_ATTEND"?null:clean(details.departStation,120)||null,arriveStation=arriveType==="LOCAL_ATTEND"?null:clean(details.arriveStation,120)||null;
     const values: Record<string,unknown> = {
       attendee_type:clean(details.attendeeType,30) || "HCP", name:attendeeName, city:clean(details.city,50), hospital:clean(details.hospital,100), department:clean(details.department,100), title:clean(details.title,50), venue:clean(details.venue,50), sex:clean(details.sex,10), id_number:clean(details.idNumber,100), phone:attendeePhone, hcp_id:clean(details.hcpId,100), accommodation:yes(details.accommodation), is_flight:yes(details.flight), region:clean(registrant.region,50),
-      out_date:clean(details.outDate,10) || null, out_from:clean(details.outFrom,50), out_to:clean(details.outTo,50), out_no:clean(details.outNo,30), out_departure:clean(details.outDeparture,5) || null, out_arrival:clean(details.outArrival,5) || null,
+      depart_date:clean(details.departDate,10)||null,depart_city:clean(details.departCity,50),depart_transport_type:departType||null,depart_station:departStation,
+      arrive_date:clean(details.arriveDate,10)||null,arrive_city:clean(details.arriveCity,50),arrive_transport_type:arriveType||null,arrive_station:arriveStation,
+      out_date:clean(details.departDate,10) || null, out_from:departStation||clean(details.departCity,50), out_to:arriveStation||clean(details.arriveCity,50), out_no:clean(details.outNo,30), out_departure:clean(details.outDeparture,5) || null, out_arrival:clean(details.outArrival,5) || null,
       return_date:clean(details.returnDate,10) || null, return_from:clean(details.returnFrom,50), return_to:clean(details.returnTo,50), return_no:clean(details.returnNo,30), return_departure:clean(details.returnDeparture,5) || null, return_arrival:clean(details.returnArrival,5) || null,
       contact_name:clean(registrant.display_name,50), contact_mobile:clean(details.contactMobile,20).replace(/\D/g,"").slice(-11), msl_contact:clean(details.mslContact,50), remarks:clean(details.remarks,500), custom_fields:customFields,
     };
@@ -145,19 +156,21 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const configuredColumns=((meeting.registration_template as {columns?:Array<{key?:string,required?:boolean,custom?:boolean}>})?.columns || []);
     const templateColumns=configuredColumns.length ? configuredColumns : ["name","phone","region","idNumber","outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival","contactName","contactMobile"].map(key=>({key,required:true,custom:false}));
     const missingRequired=templateColumns.filter(column=>column.required).some(column=>{ const value=column.custom ? customFields[clean(column.key,80)] : values[keyToDb[clean(column.key,80)]]; return value === null || value === undefined || value === ""; });
-    if (missingRequired) return reply({ error:"请完整填写当前项目报名模板中的必填信息" }, 400);
+    const validDate=(value:unknown)=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||""))&&!Number.isNaN(Date.parse(`${value}T00:00:00Z`))&&new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
+    const journeyMissing=!validDate(values.depart_date)||!values.depart_city||!departType||!validDate(values.arrive_date)||!values.arrive_city||!arriveType||(departType!=="LOCAL_ATTEND"&&!departStation)||(arriveType!=="LOCAL_ATTEND"&&!arriveStation);
+    if (missingRequired||journeyMissing) return reply({ error:"请完整填写当前项目报名模板和行程信息" }, 400);
 
     if (attendee) {
       const { data:locks } = await db.from("column_locks").select("field_group").eq("meeting_id",meeting.id).eq("locked",true);
-      const groups:Record<string,string[]>={identity:["attendee_type","name","city","hospital","department","title","venue","sex","id_number","phone","hcp_id","region"],contact:["contact_name","contact_mobile"],outbound:["out_date","out_from","out_to","out_no","out_departure","out_arrival"],return:["return_date","return_from","return_to","return_no","return_departure","return_arrival"],accommodation:["accommodation","is_flight"],remarks:["msl_contact","remarks"]};
+      const groups:Record<string,string[]>={identity:["attendee_type","name","city","hospital","department","title","venue","sex","id_number","phone","hcp_id","region"],contact:["contact_name","contact_mobile"],outbound:["depart_date","depart_city","depart_transport_type","depart_station","arrive_date","arrive_city","arrive_transport_type","arrive_station","out_date","out_from","out_to","out_no","out_departure","out_arrival"],return:["return_date","return_from","return_to","return_no","return_departure","return_arrival"],accommodation:["accommodation","is_flight"],remarks:["msl_contact","remarks"]};
       const lockedChange=(locks || []).find(lock=>(groups[lock.field_group] || []).some(key=>String(attendee?.[key] ?? "") !== String(values[key] ?? "")));
       if (lockedChange) return reply({ error:`${lockedChange.field_group} 相关字段已锁定，不能修改` }, 423);
     }
 
     const outboundRisks:string[]=[]; const returnRisks:string[]=[];
-    if (meeting.check_city_mismatch && values.out_from !== values.return_to) returnRisks.push("去程出发城市与返程到达城市不一致");
-    if (meeting.check_departure_city && values.out_from && !(meeting.allowed_departure_cities || []).includes(values.out_from)) outboundRisks.push(`出发城市“${values.out_from}”不在预设范围`);
-    const outboundChanged=!attendee || ["out_date","out_from","out_to","out_no","out_departure","out_arrival"].some(key=>String(attendee?.[key]??"")!==String(values[key]??""));
+    if (meeting.check_city_mismatch && values.depart_city !== values.return_to) returnRisks.push("去程出发城市与返程到达城市不一致");
+    if (meeting.check_departure_city && values.depart_city && !(meeting.allowed_departure_cities || []).includes(values.depart_city)) outboundRisks.push(`出发城市“${values.depart_city}”不在预设范围`);
+    const outboundChanged=!attendee || ["depart_date","depart_city","depart_transport_type","depart_station","arrive_date","arrive_city","arrive_transport_type","arrive_station","out_date","out_from","out_to","out_no","out_departure","out_arrival"].some(key=>String(attendee?.[key]??"")!==String(values[key]??""));
     const returnChanged=!attendee || ["return_date","return_from","return_to","return_no","return_departure","return_arrival"].some(key=>String(attendee?.[key]??"")!==String(values[key]??""));
     const outboundApproval=outboundRisks.length?(outboundChanged?"pending":attendee?.outbound_approval_status||"pending"):"normal";
     const returnApproval=returnRisks.length?(returnChanged?"pending":attendee?.return_approval_status||"pending"):"normal";
@@ -171,7 +184,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       ({ data:saved, error:saveError } = await db.from("attendees").insert({...updateValues,meeting_id:meeting.id,owner_id:owner.user_id,registrant_id:session.registrant_id,business_status:"active",privacy_letter_status:"pending",ticket_status:"pending"}).select("*").single());
     }
     if (saveError || !saved) return reply({ error:String(saveError?.message || "").includes("duplicate") ? "该参会人员手机号已在本项目中报名" : "报名保存失败，请稍后重试" }, 500);
-    return reply({ saved:true, attendee:{id:saved.id,rowLocked:!!saved.row_locked,approval:saved.approval||"normal",ticketStatus:saved.ticket_status||"pending",businessStatus:saved.business_status||"active",...registrationView(saved)}, needsApproval:aggregateApproval==="pending", project:projectView(meeting) });
+    return reply({ saved:true, attendee:{id:saved.id,rowLocked:!!saved.row_locked,approval:saved.approval||"normal",ticketStatus:saved.ticket_status||"pending",businessStatus:saved.business_status||"active",...registrationView(saved)}, needsApproval:aggregateApproval==="pending", project:viewProject(meeting) });
   }
 
   if (action === "cancel-attendee") {
@@ -203,14 +216,14 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     if (existing) {
       if (clean(existing.name, 50) !== name || clean(existing.region, 50) !== region) return reply({ error: "大区、姓名或手机号不匹配，请核对后重试" }, 403);
       if (existing.row_locked) return reply({ error: "该报名已锁定，不能修改" }, 423);
-      return reply({ authenticated: true, existing: existing.id_number !== "待补充", attendee: registrationView(existing), project:projectView(meeting) });
+      return reply({ authenticated: true, existing: existing.id_number !== "待补充", attendee: registrationView(existing), project:viewProject(meeting) });
     }
     const { data: owner } = await db.from("meeting_members").select("user_id").eq("meeting_id", meeting.id).eq("role", "ops").order("created_at", { ascending: true }).limit(1).maybeSingle();
     if (!owner) return reply({ error: "会务负责人尚未配置，请稍后再试" }, 503);
     const reference = `WEB-${phone.slice(-4)}-${Date.now().toString(36).toUpperCase()}`;
     const { data: created, error: insertError } = await db.from("attendees").insert({ meeting_id:meeting.id, owner_id:owner.user_id, attendee_type:"HCP", name, region, phone, id_number:"待补充", hcp_id:reference, approval:"normal", risks:[], remarks:"公开报名认证，待填写完整信息" }).select("*").single();
     if (insertError || !created) return reply({ error: "身份验证失败，请稍后重试" }, 500);
-    return reply({ authenticated:true, existing:false, attendee:registrationView(created), project:projectView(meeting) });
+    return reply({ authenticated:true, existing:false, attendee:registrationView(created), project:viewProject(meeting) });
   }
 
   if (clean(payload.action) === "complete-registration") {
@@ -253,11 +266,11 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const aggregateApproval=[outboundApproval,returnApproval].some(status=>["pending","rejected"].includes(status))?"pending":[outboundApproval,returnApproval].some(status=>status==="approved")?"approved":"normal";
     const { error:updateError } = await db.from("attendees").update({ ...values, outbound_approval_status:outboundApproval, return_approval_status:returnApproval, approval:aggregateApproval, risks }).eq("id",attendee.id);
     if (updateError) return reply({ error:updateError.message.includes("锁定") ? "报名已锁定，不能修改" : "报名保存失败，请稍后重试" }, 500);
-    return reply({ completed:true, needsApproval:aggregateApproval==="pending", project:projectView(meeting) });
+    return reply({ completed:true, needsApproval:aggregateApproval==="pending", project:viewProject(meeting) });
   }
 
   const { data: attendee } = await db.from("attendees")
-    .select("id,name,venue,accommodation,custom_fields,out_date,out_from,out_to,out_no,out_departure,out_arrival,return_date,return_from,return_to,return_no,return_departure,return_arrival")
+    .select("id,name,venue,accommodation,custom_fields,depart_date,depart_city,depart_transport_type,depart_station,arrive_date,arrive_city,arrive_transport_type,arrive_station,out_date,out_from,out_to,out_no,out_departure,out_arrival,return_date,return_from,return_to,return_no,return_departure,return_arrival")
     .eq("meeting_id", meeting.id).eq("phone", phone).eq("business_status","active").maybeSingle();
   if (!attendee) return reply({ found: false });
   const { data: transports } = await db.from("transports")
@@ -267,9 +280,9 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   return reply({
     found: true,
     meeting: meeting.name,
-    project: projectView(meeting),
+    project: viewProject(meeting),
     attendee: { name: `${attendee.name.slice(0, 1)}${"*".repeat(Math.max(attendee.name.length - 1, 1))}`, venue:attendee.venue||"待公布", accommodation:attendee.accommodation?"需要住宿":"无需住宿", hotel:(attendee.custom_fields as Record<string,unknown> || {}).hotel || (attendee.custom_fields as Record<string,unknown> || {}).酒店 || "待公布" },
-    outbound: { date: attendee.out_date, from: attendee.out_from, to: attendee.out_to, number: attendee.out_no, departure: attendee.out_departure, arrival: attendee.out_arrival },
+    outbound: { date: attendee.depart_date || attendee.out_date, from: attendee.depart_city || attendee.out_from, fromStation:attendee.depart_station, fromTransportType:attendee.depart_transport_type, to: attendee.arrive_city || attendee.out_to, toStation:attendee.arrive_station, toTransportType:attendee.arrive_transport_type, number: attendee.out_no, departure: attendee.out_departure, arrival: attendee.out_arrival },
     returnTrip: { date: attendee.return_date, from: attendee.return_from, to: attendee.return_to, number: attendee.return_no, departure: attendee.return_departure, arrival: attendee.return_arrival },
     transports: (transports || []).map(item => ({ direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy })),
   });

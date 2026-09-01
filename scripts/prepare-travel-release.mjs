@@ -1,0 +1,22 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {gzipSync} from 'node:zlib';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+const source=fs.readFileSync(path.resolve(root,'../礼来报价、PO&报价+确认单/server.js'),'utf8');
+const start=source.indexOf('// Canonical verification source'),end=source.indexOf('\nfunction hashPassword',start);
+const routeStart=source.indexOf('  const travelRoute ='),routeEnd=source.indexOf('  const projectRoute =',routeStart);
+if([start,end,routeStart,routeEnd].some(i=>i<0))throw new Error('Missing integration sections');
+const staticFiles={};
+function collect(dir,base=''){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const name=path.posix.join(base,entry.name);if(entry.isDirectory())collect(path.join(dir,entry.name),name);else staticFiles[name]=fs.readFileSync(path.join(dir,entry.name)).toString('base64');}}
+collect(path.join(root,'.site-build'));
+const moduleFiles={};for(const file of fs.readdirSync(path.join(root,'modules/travel-verification/server')))moduleFiles[file]=fs.readFileSync(path.join(root,'modules/travel-verification/server',file)).toString('base64');
+const payload={expectedServerHash:'21524549df0f8f35ac8cb31e7ef5f1407b6aabf22630a6f05c2edb555ff38544',expectedSite:'/var/www/lilly-platform/releases/106ef37730ad6485',loader:source.slice(start,end).trim(),route:source.slice(routeStart,routeEnd),staticFiles,moduleFiles};
+payload.version='travel-20260831-'+sha(JSON.stringify(payload)).slice(0,12);
+const template=fs.readFileSync(path.join(root,'scripts/deploy-travel-release.mjs'),'utf8');
+const script=template.replace('__RELEASE_PAYLOAD__',gzipSync(JSON.stringify(payload),{level:9}).toString('base64'));
+const out=path.join(root,'.tmp/travel-release');fs.mkdirSync(out,{recursive:true});
+const file=path.join(out,payload.version+'.mjs');fs.writeFileSync(file,script,{mode:0o600});
+const manifest={version:payload.version,file,sha256:sha(script),bytes:Buffer.byteLength(script),staticFiles:Object.keys(staticFiles).length,moduleFiles:Object.keys(moduleFiles).length};fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2));console.log(JSON.stringify(manifest,null,2));

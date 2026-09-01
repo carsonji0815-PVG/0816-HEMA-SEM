@@ -1,0 +1,40 @@
+// Server-only private gateway rehearsal. Never modifies nginx/live application.
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, chmodSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+const dir = '/opt/lilly-migration/staging';
+if ((await import('node:fs')).existsSync(`${dir}/PRODUCTION_ACTIVE`)) throw new Error('Rehearsal mutation forbidden after production activation.');
+if (process.platform !== 'linux' || process.getuid() !== 0) throw new Error('Migration server only.');
+const base = JSON.parse(readFileSync(`${dir}/compose.core.json`, 'utf8'));
+if (base.name !== 'lilly-stage' || base.services.db.container_name !== 'lilly-stage-db') throw new Error('Wrong target.');
+const binary = '/opt/lilly-migration/images/envoy-1.39.0-linux-x86_64.verified';
+if (!existsSync(binary)) throw new Error('Official Envoy download must finish first.');
+const response = await fetch('https://api.github.com/repos/envoyproxy/envoy/releases/tags/v1.39.0', { headers: { 'User-Agent': 'lilly-migration' }, signal: AbortSignal.timeout(20000) });
+if (!response.ok) throw new Error('Official checksum unavailable.');
+const asset = (await response.json()).assets.find(a => a.name === 'envoy-1.39.0-linux-x86_64');
+const digest = createHash('sha256').update(readFileSync(binary)).digest('hex');
+if (asset?.digest !== `sha256:${digest}`) throw new Error('Envoy checksum mismatch.');
+const image = `lilly-stage-envoy:1.39.0-${digest.slice(0, 12)}`;
+const context = `${dir}/gateway-build`;
+mkdirSync(context, { recursive: true, mode: 0o700 });
+copyFileSync(binary, `${context}/envoy`);
+chmodSync(`${context}/envoy`, 0o755);
+// Reuse verified official Debian-based runtime layers (glibc + openssl).
+// Its Edge Runtime entrypoint is replaced by the upstream gateway entrypoint.
+writeFileSync(`${context}/Dockerfile`, `FROM public.ecr.aws/supabase/edge-runtime@sha256:2781daf92394db91f7e94129cc3d04ec474ad16a8fe64b3fbeef6e7d557ab120\nUSER root\nCOPY envoy /usr/local/bin/envoy\nENTRYPOINT ["/usr/local/bin/envoy"]\n`, { mode: 0o600 });
+execFileSync('docker', ['build', '--pull=false', '-t', image, context], { stdio: 'inherit' });
+const version = execFileSync('docker', ['run', '--rm', '--network', 'none', '--memory', '128m', image, '--version'], { encoding: 'utf8' });
+if (!version.includes('/1.39.0/')) throw new Error('Unexpected Envoy version.');
+const original = JSON.parse(execFileSync('docker', ['compose', '-p', 'lilly-stage', 'config', '--format', 'json'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+const gateway = original.services['api-gw'];
+gateway.container_name = 'lilly-stage-gateway';
+gateway.image = image;
+gateway.ports = [{ target: 8000, published: '18000', host_ip: '127.0.0.1', protocol: 'tcp' }];
+gateway.depends_on = { auth: { condition: 'service_healthy' }, rest: { condition: 'service_healthy' }, storage: { condition: 'service_healthy' } };
+gateway.mem_limit = '256m';
+gateway.cpus = 0.5;
+gateway.command = ['--concurrency', '2', '--log-level', 'warning'];
+gateway.logging = { driver: 'json-file', options: { 'max-size': '10m', 'max-file': '3' } };
+base.services['api-gw'] = gateway;
+writeFileSync(`${dir}/compose.gateway.json`, JSON.stringify(base, null, 2), { mode: 0o600 });
+console.log('Official gateway configuration prepared on loopback only; no production routing changed.');

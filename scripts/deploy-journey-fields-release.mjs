@@ -11,9 +11,9 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const run=(command,args,options={})=>execFileSync(command,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:180000,...options});
 const marker='/opt/lilly-migration/staging/PRODUCTION_ACTIVE';
 const current='/var/www/lilly-platform/current';
-const expectedSite='/var/www/lilly-platform/releases/journey-20260901-e6137babe968';
+const expectedSite='/var/www/lilly-platform/releases/journey-20260901-8d30fb951ea0';
 const edge='/opt/lilly-migration/staging/volumes/functions/public-trip-query/handler.ts';
-const expectedEdge='f26fbb980c96b6c8db4b37e06b27006a736502a4ce40f840cddbb3e5ab2a36a2';
+const expectedEdge='d1b75dc5217ffcea52ddd558ea2c23995263099b941f4652a751e4db2fe3865f';
 const releaseRoot=`/opt/lilly-field-release/${manifest.version}`;
 const site=`/var/www/lilly-platform/releases/${manifest.version}`;
 const backup=path.join(releaseRoot,'before');
@@ -24,7 +24,7 @@ if(process.platform!=='linux'||process.getuid()!==0||!fs.existsSync(marker))thro
 if(fs.existsSync(releaseRoot))throw new Error('This immutable release was already prepared');
 check('known frontend baseline',fs.realpathSync(current)===expectedSite);
 check('known Edge baseline',fs.existsSync(edge)&&hash(fs.readFileSync(edge))===expectedEdge);
-check('return journey columns absent before migration',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='attendees' and column_name='return_depart_date'"]).trim()==='0');
+check('verification highlight column absent before migration',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='attendees' and column_name='verify_highlight_fields'"]).trim()==='0');
 fs.mkdirSync(backup,{recursive:true,mode:0o700});
 fs.copyFileSync(edge,path.join(backup,'public-trip-query.ts'));
 fs.writeFileSync(path.join(backup,'frontend-target.txt'),expectedSite,{mode:0o600});
@@ -43,7 +43,13 @@ run('docker',['exec','-i','lilly-stage-db','psql','-v','ON_ERROR_STOP=1','-U','p
 run('docker',['exec','-i','lilly-stage-db','psql','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],{input:`begin;\n${migration}\ncommit;\n`,stdio:['pipe','pipe','pipe']});
 check('sixteen canonical journey columns',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='attendees' and column_name in ('depart_date','depart_city','depart_transport_type','depart_station','arrive_date','arrive_city','arrive_transport_type','arrive_station','return_depart_date','return_depart_city','return_depart_transport_type','return_depart_station','return_arrive_date','return_arrive_city','return_arrive_transport_type','return_arrive_station')"]).trim()==='16');
 check('local station invariant',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from public.attendees where (depart_transport_type='LOCAL_ATTEND' and depart_station is not null) or (arrive_transport_type='LOCAL_ATTEND' and arrive_station is not null) or (return_depart_transport_type='LOCAL_ATTEND' and return_depart_station is not null) or (return_arrive_transport_type='LOCAL_ATTEND' and return_arrive_station is not null)"]).trim()==='0');
-check('station dictionary seeded',Number(run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc','select count(*) from public.station_dict']).trim())>=20);
+check('persistent verification highlight column',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='attendees' and column_name='verify_highlight_fields' and data_type='jsonb'"]).trim()==='1');
+check('national station dictionary seeded',Number(run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc','select count(*) from public.station_dict']).trim())>=3600);
+check('national city coverage',Number(run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc','select count(distinct city_name) from public.station_dict']).trim())>=450);
+check('city aliases seeded',Number(run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc','select count(*) from public.city_alias']).trim())>=450);
+check('Shanghai rail acceptance stations',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from public.get_station_list(' 上海市　','HIGH_SPEED_RAIL') where station_name in ('上海虹桥站','上海站','上海南站','上海西站','上海松江南站','安亭北站')"]).trim()==='6');
+check('Chengdu airport terminals',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from public.get_station_list('成都市','PLANE') where station_name in ('成都双流国际机场T1航站楼','成都双流国际机场T2航站楼','成都天府国际机场T1航站楼','成都天府国际机场T2航站楼')"]).trim()==='4');
+check('Chengdu rail acceptance stations',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from public.get_station_list('成都','HIGH_SPEED_RAIL') where station_name in ('成都东站','成都南站','成都西站','犀浦站')"]).trim()==='4');
 const candidate=fs.readFileSync(path.join(bundle,'public-trip-query.ts'));
 check('Edge bundle hash',hash(candidate)===manifest.edgeHash);
 try{
@@ -66,6 +72,8 @@ try{
   const configuration=JSON.parse(fs.readFileSync('/opt/lilly-migration/staging/compose.functions.json','utf8'));const publicKey=configuration.services['api-gw'].environment.SUPABASE_PUBLISHABLE_KEY;
   const api=await fetch('https://139.196.97.236/supabase/functions/v1/public-trip-query',{method:'POST',headers:{apikey:publicKey,'Content-Type':'application/json'},body:'{"action":"list-projects"}',signal:AbortSignal.timeout(20000)});
   const body=await api.json();check('public registration Edge function',api.ok&&Array.isArray(body.projects));
+  const stationApi=await fetch('https://139.196.97.236/supabase/functions/v1/public-trip-query?action=station-list&cityName=%E6%88%90%E9%83%BD%E5%B8%82&transportType=PLANE',{headers:{apikey:publicKey},signal:AbortSignal.timeout(20000)});const stationBody=await stationApi.json();
+  check('public station GET interface',stationApi.ok&&stationBody.success&&stationBody.data?.length>=4&&stationBody.data.every(item=>item.station_name&&item.station_short_name));
   fs.writeFileSync(path.join(releaseRoot,'ACTIVE'),new Date().toISOString(),{mode:0o600});
   result.allPassed=true;result.site=site;result.finishedAt=new Date().toISOString();fs.writeFileSync(path.join(releaseRoot,'validation.json'),JSON.stringify(result,null,2),{mode:0o600});
   console.log(JSON.stringify(result));

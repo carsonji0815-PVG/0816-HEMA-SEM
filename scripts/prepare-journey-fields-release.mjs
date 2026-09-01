@@ -8,7 +8,10 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const stage=fs.mkdtempSync(path.join(os.tmpdir(),'journey-fields-release-'));
 const site=path.join(stage,'site');fs.cpSync(path.join(root,'.site-build'),site,{recursive:true});
-fs.copyFileSync(path.join(root,'supabase/migrations/2026090102_return_journey_station_dictionary.sql'),path.join(stage,'migration.sql'));
+fs.writeFileSync(path.join(stage,'migration.sql'),[
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090103_national_station_alias_verification.sql'),'utf8'),
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090104_national_station_seed.sql'),'utf8'),
+].join('\n\n'));
 fs.copyFileSync(path.join(root,'supabase/functions/public-trip-query/index.ts'),path.join(stage,'public-trip-query.ts'));
 const staticHashes={};
 const walk=(dir,base='')=>{for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const name=path.posix.join(base,entry.name);if(entry.isDirectory())walk(path.join(dir,entry.name),name);else staticHashes[name]=hash(fs.readFileSync(path.join(dir,entry.name)));}};walk(site);

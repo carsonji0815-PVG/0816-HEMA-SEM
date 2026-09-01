@@ -5,7 +5,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -19,7 +19,7 @@ const hash = async (value: string) => {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
 };
 
-const clean = (value: unknown, max = 200) => String(value || "").trim().slice(0, max);
+const clean = (value: unknown, max = 200) => String(value || "").replace(/[\u200B-\u200D\uFEFF]/gu,"").replace(/\u3000/gu," ").trim().replace(/\s+/gu," ").slice(0, max);
 const normalized = (value: unknown, max = 200) => clean(value, max).replace(/\s+/g, "").toLowerCase();
 const yes = (value: unknown) => ["Y", "true", "1", "是"].includes(String(value));
 const transportType = (value: unknown) => ({飞机:"PLANE",高铁:"HIGH_SPEED_RAIL",本地参会:"LOCAL_ATTEND",PLANE:"PLANE",HIGH_SPEED_RAIL:"HIGH_SPEED_RAIL",LOCAL_ATTEND:"LOCAL_ATTEND"}[clean(value,30)] || "");
@@ -47,19 +47,31 @@ const projectView = (meeting: Record<string, unknown>, systemSettings:Record<str
 export default {
 fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (request.method !== "POST") return reply({ error: "Method not allowed" }, 405);
+  if (!["GET","POST"].includes(request.method)) return reply({ error: "Method not allowed" }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceKey) return reply({ error: "Service unavailable" }, 503);
 
+  const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  let payload: Record<string, unknown>;
+  try { payload = request.method==="GET"?Object.fromEntries(new URL(request.url).searchParams.entries()):await request.json(); } catch { return reply({ error: "Invalid request" }, 400); }
+  const action = clean(payload.action, 50);
+  if(action==="station-list"){
+    const cityName=clean(payload.cityName,50),type=transportType(payload.transportType||payload.transport_type);
+    if(!cityName||!["PLANE","HIGH_SPEED_RAIL"].includes(type))return reply({success:true,data:[]});
+    const{data,error}=await db.rpc("get_station_list",{p_city_name:cityName,p_transport_type:type});
+    return error?reply({success:false,error:"读取场站失败"},500):reply({success:true,data:data||[]});
+  }
+  if(action==="station-cities"){
+    const{data,error}=await db.rpc("get_station_cities");
+    return error?reply({success:false,error:"读取城市失败"},500):reply({success:true,data:(data||[]).map((item:Record<string,unknown>)=>item.city_name)});
+  }
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const ipHash = await hash(`${forwarded}:${Deno.env.get("QUERY_RATE_SALT") || "journey-desk"}`);
-  const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const {data:systemConfiguration}=await db.from("system_configuration").select("settings").eq("singleton",true).maybeSingle();
   const systemSettings=(systemConfiguration?.settings||{}) as Record<string,unknown>;
-  const {data:stationRows}=await db.from("station_dict").select("city_name,transport_type,station_name").order("city_name").order("transport_type").order("station_name");
-  if(Array.isArray(stationRows)&&stationRows.length)systemSettings.stationDictionary=stationRows.map(row=>({city:row.city_name,type:row.transport_type,name:row.station_name}));
+  systemSettings.stationDictionary=[];
   const viewProject=(meeting:Record<string,unknown>)=>projectView(meeting,systemSettings);
 
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -67,9 +79,6 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   if ((count || 0) >= 20) return reply({ error: "查询过于频繁，请稍后再试" }, 429);
   await db.from("public_query_logs").insert({ ip_hash: ipHash });
 
-  let payload: Record<string, unknown>;
-  try { payload = await request.json(); } catch { return reply({ error: "Invalid request" }, 400); }
-  const action = clean(payload.action, 50);
   const slug = clean(payload.meeting, 100);
   if (action === "list-projects") {
     const { data:meetings, error } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,registration_open,manager_attendee_edit_enabled").or("registration_open.eq.true,archive_ready.eq.true").order("start_date",{ascending:false}).limit(50);
@@ -145,10 +154,25 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
 
     const requestedCustom = details.customFields && typeof details.customFields === "object" && !Array.isArray(details.customFields) ? details.customFields as Record<string,unknown> : {};
     const allowedCustom = new Set(((meeting.registration_template as {columns?:Array<{key?:string,custom?:boolean}>})?.columns || []).filter(column=>column.custom).map(column=>clean(column.key,80)));
-    const customFields = Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)]));
+    const internalCustom=Object.fromEntries(Object.entries((attendee?.custom_fields as Record<string,unknown>)||{}).filter(([key])=>key.startsWith("_")));
+    const customFields = {...internalCustom,...Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)]))};
     const departType=transportType(details.departTransportType),arriveType=transportType(details.arriveTransportType),returnDepartType=transportType(details.returnDepartTransportType),returnArriveType=transportType(details.returnArriveTransportType);
-    const departStation=departType==="LOCAL_ATTEND"?null:clean(details.departStation,120)||null,arriveStation=arriveType==="LOCAL_ATTEND"?null:clean(details.arriveStation,120)||null;
-    const returnDepartStation=returnDepartType==="LOCAL_ATTEND"?null:clean(details.returnDepartStation,120)||null,returnArriveStation=returnArriveType==="LOCAL_ATTEND"?null:clean(details.returnArriveStation,120)||null;
+    let departStation=departType==="LOCAL_ATTEND"?null:clean(details.departStation,120)||null,arriveStation=arriveType==="LOCAL_ATTEND"?null:clean(details.arriveStation,120)||null;
+    let returnDepartStation=returnDepartType==="LOCAL_ATTEND"?null:clean(details.returnDepartStation,120)||null,returnArriveStation=returnArriveType==="LOCAL_ATTEND"?null:clean(details.returnArriveStation,120)||null;
+    const stationChecks=[
+      {label:"出发场站",city:details.departCity,type:departType,value:departStation,set:(value:string)=>departStation=value},
+      {label:"抵达场站",city:details.arriveCity,type:arriveType,value:arriveStation,set:(value:string)=>arriveStation=value},
+      {label:"返程出发场站",city:details.returnDepartCity,type:returnDepartType,value:returnDepartStation,set:(value:string)=>returnDepartStation=value},
+      {label:"返程抵达场站",city:details.returnArriveCity,type:returnArriveType,value:returnArriveStation,set:(value:string)=>returnArriveStation=value},
+    ].filter(item=>item.type!=="LOCAL_ATTEND"&&item.city&&item.value);
+    const stationResults=await Promise.all(stationChecks.map(item=>db.rpc("get_station_list",{p_city_name:clean(item.city,50),p_transport_type:item.type})));
+    for(let index=0;index<stationChecks.length;index++){
+      const item=stationChecks[index],rows=(stationResults[index].data||[]) as Array<Record<string,unknown>>;
+      if(stationResults[index].error)continue;
+      const matched=rows.find(row=>normalized(row.station_name,150)===normalized(item.value,150)||normalized(row.station_short_name,150)===normalized(item.value,150));
+      if(rows.length&&!matched)return reply({error:`${item.label}与城市、出行方式不匹配，请重新选择`},400);
+      if(matched)item.set(clean(matched.station_name,120));
+    }
     const values: Record<string,unknown> = {
       attendee_type:clean(details.attendeeType,30) || "HCP", name:attendeeName, city:clean(details.city,50), hospital:clean(details.hospital,100), department:clean(details.department,100), title:clean(details.title,50), venue:clean(details.venue,50), sex:clean(details.sex,10), id_number:clean(details.idNumber,100), phone:attendeePhone, hcp_id:clean(details.hcpId,100), accommodation:yes(details.accommodation), is_flight:yes(details.flight), region:clean(registrant.region,50),
       depart_date:clean(details.departDate,10)||null,depart_city:clean(details.departCity,50),depart_transport_type:departType||null,depart_station:departStation,
@@ -159,7 +183,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       return_date:clean(details.returnDepartDate,10) || null, return_from:returnDepartStation||clean(details.returnDepartCity,50), return_to:returnArriveStation||clean(details.returnArriveCity,50), return_no:clean(details.returnNo,30), return_departure:clean(details.returnDeparture,5) || null, return_arrival:clean(details.returnArrival,5) || null,
       contact_name:clean(registrant.display_name,50), contact_mobile:clean(details.contactMobile,20).replace(/\D/g,"").slice(-11), msl_contact:clean(details.mslContact,50), remarks:clean(details.remarks,500), custom_fields:customFields,
     };
-    const keyToDb:Record<string,string>={attendeeType:"attendee_type",name:"name",city:"city",hospital:"hospital",department:"department",title:"title",venue:"venue",sex:"sex",idNumber:"id_number",phone:"phone",hcpId:"hcp_id",accommodation:"accommodation",flight:"is_flight",region:"region",outDate:"out_date",outFrom:"out_from",outTo:"out_to",outNo:"out_no",outDeparture:"out_departure",outArrival:"out_arrival",returnDate:"return_date",returnFrom:"return_from",returnTo:"return_to",returnNo:"return_no",returnDeparture:"return_departure",returnArrival:"return_arrival",contactName:"contact_name",contactMobile:"contact_mobile",mslContact:"msl_contact",remarks:"remarks"};
+    const keyToDb:Record<string,string>={attendeeType:"attendee_type",name:"name",city:"city",hospital:"hospital",department:"department",title:"title",venue:"venue",sex:"sex",idNumber:"id_number",phone:"phone",hcpId:"hcp_id",accommodation:"accommodation",flight:"is_flight",region:"region",departDate:"depart_date",departCity:"depart_city",departTransportType:"depart_transport_type",departStation:"depart_station",arriveDate:"arrive_date",arriveCity:"arrive_city",arriveTransportType:"arrive_transport_type",arriveStation:"arrive_station",returnDepartDate:"return_depart_date",returnDepartCity:"return_depart_city",returnDepartTransportType:"return_depart_transport_type",returnDepartStation:"return_depart_station",returnArriveDate:"return_arrive_date",returnArriveCity:"return_arrive_city",returnArriveTransportType:"return_arrive_transport_type",returnArriveStation:"return_arrive_station",outDate:"out_date",outFrom:"out_from",outTo:"out_to",outNo:"out_no",outDeparture:"out_departure",outArrival:"out_arrival",returnDate:"return_date",returnFrom:"return_from",returnTo:"return_to",returnNo:"return_no",returnDeparture:"return_departure",returnArrival:"return_arrival",contactName:"contact_name",contactMobile:"contact_mobile",mslContact:"msl_contact",remarks:"remarks"};
     const configuredColumns=((meeting.registration_template as {columns?:Array<{key?:string,required?:boolean,custom?:boolean}>})?.columns || []);
     const templateColumns=configuredColumns.length ? configuredColumns : ["name","phone","region","idNumber","outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival","contactName","contactMobile"].map(key=>({key,required:true,custom:false}));
     const missingRequired=templateColumns.filter(column=>column.required).some(column=>{ const value=column.custom ? customFields[clean(column.key,80)] : values[keyToDb[clean(column.key,80)]]; return value === null || value === undefined || value === ""; });

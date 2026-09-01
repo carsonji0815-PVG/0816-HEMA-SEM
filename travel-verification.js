@@ -35,9 +35,11 @@
   function localIssues(attendee,segment){
     if(!hasJourney(attendee,segment))return [];
     const data=snapshot(attendee,segment),map=keys(segment),issues=[];
-    const local=segment==="outbound"&&transportMode(data)==="local";
+    const local=transportMode(data)==="local";
     for(const key of Object.keys(map)){
-      if(local&&["from","to","number","departure","arrival"].includes(key))continue;
+      const stationIsLocal=key==="from"&&data.departTransportType==="LOCAL_ATTEND"||key==="to"&&data.arriveTransportType==="LOCAL_ATTEND";
+      if(stationIsLocal){if(data[key])issues.push({field:map[key],message:`${labels[key]}在本地参会时必须为空`,current:data[key],expected:""});continue;}
+      if(local&&["number","departure","arrival"].includes(key))continue;
       if(!data[key])issues.push({field:map[key],message:`${labels[key]}未填写`});
       else if(["departure","arrival"].includes(key)&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(data[key]))issues.push({field:map[key],message:`${labels[key]}格式应为 HH:mm`});
       else if(["date","arriveDate"].includes(key)&&(!/^\d{4}-\d{2}-\d{2}$/.test(data[key])||!Number.isFinite(Date.parse(data[key]+"T00:00:00Z"))||new Date(data[key]+"T00:00:00Z").toISOString().slice(0,10)!==data[key]))issues.push({field:map[key],message:`${labels[key]}格式不正确`});
@@ -45,10 +47,22 @@
     }
     return issues;
   }
+  function dictionaryIssues(attendee,segment,dictionary=[]){
+    if(!root.TravelFields||!Array.isArray(dictionary)||!dictionary.length)return[];
+    const data=snapshot(attendee,segment),map=keys(segment),issues=[];
+    for(const side of [{city:"departCity",type:"departTransportType",station:"from"},{city:"arriveCity",type:"arriveTransportType",station:"to"}]){
+      if(data[side.type]==="LOCAL_ATTEND"||!data[side.city]||!data[side.type]||!data[side.station])continue;
+      const choices=root.TravelFields.stationList(dictionary,data[side.city],data[side.type]);
+      if(!choices.length)continue;
+      const official=root.TravelFields.officialStation(data[side.station],data[side.type],dictionary);
+      if(!choices.some(item=>item.name===official))issues.push({field:map[side.station],message:`场站与城市、出行方式不匹配`,current:data[side.station]});
+    }
+    return issues;
+  }
   function buildCheck(attendee,segment,result){
     if(!hasJourney(attendee,segment))return {status:'blank',fieldIssues:[],notices:[],fingerprint:fingerprint(attendee,segment)};
     const data=snapshot(attendee,segment),map=keys(segment),mode=result?.mode||transportMode(data);
-    const fieldIssues=localIssues(attendee,segment),notices=[...(Array.isArray(result?.warnings)?result.warnings:[])].map(String);
+    const fieldIssues=[...localIssues(attendee,segment),...dictionaryIssues(attendee,segment,result?.stationDictionary||[])],notices=[...(Array.isArray(result?.warnings)?result.warnings:[])].map(String);
     if(mode==="local"){return{mode,provider:"local",source:null,checkedAt:new Date().toISOString(),dateBasis:"local",match:null,fieldIssues,notices:[],warnings:fieldIssues.map(issue=>issue.message),status:fieldIssues.length?"issues":"verified",fingerprint:fingerprint(attendee,segment)};}
     const rawMatch=result?.found===false?null:result?.match;
     // Aliyun train returns a date-filtered candidate list, not a date on each row.
@@ -114,6 +128,6 @@
     if(issues.length)return 'review';
     return check?.status==='verified'?'verified':check?'unavailable':'pending';
   }
-  const api={keys,snapshot,fingerprint,hasJourney,transportMode,viewState,localIssues,buildCheck,currentIssues,verifiedField,resolveTerminal};
+  const api={keys,snapshot,fingerprint,hasJourney,transportMode,viewState,localIssues,dictionaryIssues,buildCheck,currentIssues,verifiedField,resolveTerminal};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.TravelVerification=Object.freeze(api);
 })(typeof window!=="undefined"?window:globalThis);

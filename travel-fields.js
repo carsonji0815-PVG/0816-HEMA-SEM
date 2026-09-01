@@ -18,7 +18,7 @@
     ["厦门","PLANE","厦门高崎国际机场T3航站楼"],["厦门","PLANE","厦门高崎国际机场T4航站楼"],["厦门","HIGH_SPEED_RAIL","厦门站"],["厦门","HIGH_SPEED_RAIL","厦门北站"],
     ["苏州","HIGH_SPEED_RAIL","苏州站"],["苏州","HIGH_SPEED_RAIL","苏州北站"],["苏州","HIGH_SPEED_RAIL","苏州园区站"],["苏州","HIGH_SPEED_RAIL","苏州新区站"],
   ].map(([city,type,name])=>({city,type,name}));
-  const clean=value=>String(value??"").trim().replace(/\s+/g," ");
+  const clean=value=>String(value??"").replace(/[\u200B-\u200D\uFEFF]/gu,"").replace(/\u3000/gu," ").trim().replace(/\s+/g," ");
   const normalizeCity=value=>clean(value).replace(/(?:市|地区)$/u,"");
   function normalizeType(value,number=""){
     const raw=clean(value);if(TYPE_ALIASES.has(raw))return TYPE_ALIASES.get(raw);
@@ -27,17 +27,21 @@
     return raw||number?"PLANE":"";
   }
   function normalizeEntry(entry){
-    const city=normalizeCity(entry?.city),type=normalizeType(entry?.type),name=clean(entry?.name);
-    return city&&["PLANE","HIGH_SPEED_RAIL"].includes(type)&&name?{city,type,name}:null;
+    const city=normalizeCity(entry?.city??entry?.city_name),type=normalizeType(entry?.type??entry?.transport_type),name=clean(entry?.name??entry?.station_name);
+    const shortName=clean(entry?.shortName??entry?.short_name??entry?.station_short_name);
+    return city&&["PLANE","HIGH_SPEED_RAIL"].includes(type)&&name?{city,type,name,shortName:shortName||displayStation(name,type)}:null;
   }
   function dictionary(custom){
     const items=Array.isArray(custom)?custom.map(normalizeEntry).filter(Boolean):[];
     const all=[...items,...DEFAULT_DICTIONARY],seen=new Set();
     return all.filter(item=>{const key=[item.city,item.type,item.name].join("|");if(seen.has(key))return false;seen.add(key);return true;});
   }
-  const options=(custom,city,type)=>dictionary(custom).filter(item=>item.city===normalizeCity(city)&&item.type===normalizeType(type)).map(item=>item.name);
-  function displayStation(value,type=""){
+  const stationList=(custom,city,type)=>dictionary(custom).filter(item=>item.city===normalizeCity(city)&&item.type===normalizeType(type));
+  const options=(custom,city,type)=>stationList(custom,city,type).map(item=>item.name);
+  function displayStation(value,type="",custom=[]){
     const raw=clean(value);if(!raw)return"";
+    const configured=dictionary(custom).find(item=>item.type===normalizeType(type)&&item.name===raw)?.shortName;
+    if(configured)return configured;
     if(normalizeType(type)==="HIGH_SPEED_RAIL")return /站$/u.test(raw)?raw:`${raw}站`;
     return raw.replace(/国际机场/gu,"").replace(/机场/gu,"").replace(/(?:T\s*)?(\d+)号?航站楼/giu,"T$1").replace(/航站楼/gu,"").replace(/T(\d+)$/u," T$1").replace(/\s+/g," ").trim();
   }
@@ -55,9 +59,9 @@
   function parseDictionary(text){
     const source=clean(text);if(!source)return[];
     if(source.startsWith("[")){const parsed=JSON.parse(source);if(!Array.isArray(parsed))throw new Error("场站字典 JSON 必须是数组");return parsed.map(normalizeEntry).filter(Boolean);}
-    return String(text).split(/\r?\n/).map((line,index)=>{if(!line.trim())return null;const [city,type,...rest]=line.split("|");const item=normalizeEntry({city,type,name:rest.join("|")});if(!item)throw new Error(`场站字典第 ${index+1} 行格式错误`);return item;}).filter(Boolean);
+    return String(text).split(/\r?\n/).map((line,index)=>{if(!line.trim())return null;const [city,type,name,shortName]=line.split("|");const item=normalizeEntry({city,type,name,shortName});if(!item)throw new Error(`场站字典第 ${index+1} 行格式错误`);return item;}).filter(Boolean);
   }
-  const stringifyDictionary=items=>dictionary(items).map(item=>`${item.city}|${item.type}|${item.name}`).join("\n");
+  const stringifyDictionary=items=>dictionary(items).map(item=>`${item.city}|${item.type}|${item.name}|${item.shortName||displayStation(item.name,item.type)}`).join("\n");
   function hydrate(attendee={}){
     const mode=normalizeType(attendee.departTransportType||attendee.outTransportType,attendee.outNo);
     const arrivalMode=normalizeType(attendee.arriveTransportType||mode,attendee.outNo);
@@ -93,33 +97,42 @@
     target.flight=fields.departTransportType==="PLANE"?"Y":"N";
     return target;
   }
-  function bindForm(form,{customDictionary=[],preserve=true}={}){
+  function bindForm(form,{customDictionary=[],preserve=true,loadStations=null}={}){
     if(!form)return()=>{};
     const cleanups=[];
     for(const side of ["depart","arrive","returnDepart","returnArrive"]){
       const city=form.elements[`${side}City`],type=form.elements[`${side}TransportType`];
       const select=form.querySelector(`[data-station-select="${side}"]`),input=form.querySelector(`[data-station-input="${side}"]`);
       if(!city||!type||!select||!input)continue;
-      const render=({clear=false}={})=>{
+      let requestId=0;
+      const render=async({clear=false}={})=>{
+        const currentRequest=++requestId;
         const old=clear?"":clean((select.name?select.value:input.value));
-        const local=type.value==="LOCAL_ATTEND",matches=local?[]:options(customDictionary,city.value,type.value);
+        const local=type.value==="LOCAL_ATTEND";
+        let matches=local?[]:stationList(customDictionary,city.value,type.value);
         select.name="";input.name="";select.hidden=true;input.hidden=true;select.disabled=true;input.disabled=true;
         if(local){select.value="";input.value="";return;}
+        if(clean(city.value)&&normalizeType(type.value)&&typeof loadStations==="function"){
+          select.setAttribute("aria-busy","true");
+          try{const loaded=await loadStations(city.value,type.value);if(currentRequest!==requestId)return;if(Array.isArray(loaded))matches=loaded.map(normalizeEntry).filter(Boolean);}catch{/* 本地字典继续兜底 */}
+          finally{select.removeAttribute("aria-busy");}
+        }
+        if(currentRequest!==requestId)return;
         if(matches.length){
-          select.innerHTML='<option value="">请选择场站</option>'+matches.map(value=>`<option value="${value.replace(/&/g,"&amp;").replace(/"/g,"&quot;")}">${displayStation(value,type.value)}</option>`).join("");
+          select.innerHTML='<option value="">请选择场站</option>'+matches.map(item=>`<option value="${item.name.replace(/&/g,"&amp;").replace(/"/g,"&quot;")}">${(item.shortName||displayStation(item.name,item.type)).replace(/&/g,"&amp;").replace(/</g,"&lt;")}</option>`).join("");
           select.name=`${side}Station`;select.disabled=false;select.hidden=false;
-          const official=officialStation(old,type.value,customDictionary);select.value=matches.includes(official)?official:"";
+          const official=officialStation(old,type.value,[...customDictionary,...matches]);select.value=matches.some(item=>item.name===official)?official:"";
         }else{
           input.name=`${side}Station`;input.disabled=false;input.hidden=false;input.placeholder="未查询到对应场站，请手动录入";
           input.value=old;
         }
       };
-      const change=()=>render({clear:true});city.addEventListener("change",change);type.addEventListener("change",change);
+      const change=()=>void render({clear:true});city.addEventListener("change",change);type.addEventListener("change",change);
       cleanups.push(()=>{city.removeEventListener("change",change);type.removeEventListener("change",change);});
-      render({clear:!preserve});
+      void render({clear:!preserve});
     }
     return()=>cleanups.forEach(fn=>fn());
   }
-  const api={TYPES,DEFAULT_DICTIONARY,normalizeCity,normalizeType,dictionary,options,displayStation,officialStation,cityForStation,parseDictionary,stringifyDictionary,hydrate,applyLegacy,bindForm};
+  const api={TYPES,DEFAULT_DICTIONARY,clean,normalizeCity,normalizeType,dictionary,stationList,options,displayStation,officialStation,cityForStation,parseDictionary,stringifyDictionary,hydrate,applyLegacy,bindForm};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.TravelFields=Object.freeze(api);
 })(typeof window!=="undefined"?window:globalThis);

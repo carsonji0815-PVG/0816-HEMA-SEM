@@ -14,6 +14,13 @@ test('VariFlight refuses prose, error payloads, and unrecognized response fields
  assert.throws(()=>decodeVariflight({structuredContent:{data:[{estimated:'10:00'}]}}));
  assert.equal(decodeVariflight({content:[{type:'text',text:JSON.stringify([f])}]}).length,1);
 });
+test('VariFlight safely parses its live text envelope and explains no-data responses',()=>{
+ const wrapped=`Flight details: {'code': 200, 'message': 'Success', 'data': {'error_code': 0, 'data': [{'FlightNo': 'MU1234', 'FlightDepcode': 'SHA', 'FlightArrcode': 'FOC', 'FlightDeptimePlanDate': '2026-09-01 10:00:00', 'FlightArrtimePlanDate': '2026-09-01 12:00:00', 'fcategory': '0', 'org_timezone': 28800, 'dst_timezone': 28800, 'FlightHTerminal': 'T1', 'FlightTerminal': 'T2', 'FlightState': '计划', 'VirtualFlag': None}]}}`;
+ assert.equal(decodeVariflight({content:[{type:'text',text:wrapped}]}).length,1);
+ const noData=`Flight details: {'code': 200, 'message': 'Success', 'data': {'error_code': 10, 'error': '暂无数据'}}`;
+ assert.throws(()=>decodeVariflight({content:[{type:'text',text:noData}]}),/已连接.*暂无计划数据/);
+ assert.throws(()=>decodeVariflight({content:[{type:'text',text:"Flight details: __import__('os')"}]}),/无法安全解析/);
+});
 test('VariFlight connection probe never calls a chargeable flight tool',async t=>{
  const methods=[];t.mock.method(globalThis,'fetch',async(url,opts)=>{const b=JSON.parse(opts.body);methods.push(b.method);assert.equal(url,variflightEndpoint);assert.equal(opts.headers['X-API-Key'],'synthetic-secret');
   return b.method==='notifications/initialized'?new Response(null,{status:202}):Response.json({jsonrpc:'2.0',id:b.id,result:b.method==='initialize'?{protocolVersion:'2025-03-26'}:{tools:[{name:'searchFlightsByNumber'}]}});

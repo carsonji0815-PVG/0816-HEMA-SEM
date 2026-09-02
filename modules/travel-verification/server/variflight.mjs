@@ -36,15 +36,23 @@ export function mapVariflight(f){
  const domestic=String(f.fcategory)==='0'&&Number(f.org_timezone)===28800&&Number(f.dst_timezone)===28800;
  return {code:normCode(f.FlightNo),date:domestic?dep?.date:undefined,arrivalDate:domestic?arr?.date:undefined,depart:domestic?dep?.time:undefined,arrive:domestic?arr?.time:undefined,from:normCode(f.FlightDepcode),to:normCode(f.FlightArrcode),fromName:f.FlightDepAirport||'',toName:f.FlightArrAirport||'',departureTerminal:f.FlightHTerminal||'',arrivalTerminal:f.FlightTerminal||'',basis:'scheduled',cancelled:/取消/.test(f.FlightState||''),diverted:/备降|返航/.test(f.FlightState||'')||['1','2'].includes(String(f.LegFlag)),virtual:String(f.VirtualFlag)==='1'};
 }
+function parsePythonLiteral(source){
+ let i=0;const failParse=()=>fail('unavailable','飞常准返回文本结构无法安全解析；未据此判定行程。');const ws=()=>{while(/\s/.test(source[i]||''))i++;};
+ const string=()=>{const quote=source[i++];let out='';while(i<source.length){const ch=source[i++];if(ch===quote)return out;if(ch==='\\'){const next=source[i++];if(next==='n')out+='\n';else if(next==='r')out+='\r';else if(next==='t')out+='\t';else if(next==='b')out+='\b';else if(next==='f')out+='\f';else if(next==='u'){const hex=source.slice(i,i+4);if(!/^[0-9a-f]{4}$/i.test(hex))failParse();out+=String.fromCharCode(parseInt(hex,16));i+=4;}else out+=next??'';}else out+=ch;}failParse();};
+ const value=()=>{ws();const ch=source[i];if(ch==="'"||ch==='"')return string();if(ch==='['){i++;const out=[];ws();if(source[i]===']'){i++;return out;}while(i<source.length){out.push(value());ws();if(source[i]===']'){i++;return out;}if(source[i++]!==',')failParse();}failParse();}if(ch==='{'){i++;const out={};ws();if(source[i]==='}'){i++;return out;}while(i<source.length){ws();if(source[i]!=="'"&&source[i]!=='"')failParse();const key=string();ws();if(source[i++]!==':')failParse();out[key]=value();ws();if(source[i]==='}'){i++;return out;}if(source[i++]!==',')failParse();}failParse();}const rest=source.slice(i);for(const[token,result]of[['True',true],['False',false],['None',null]])if(rest.startsWith(token)){i+=token.length;return result;}const number=rest.match(/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?/i)?.[0];if(number){i+=number.length;return Number(number);}failParse();};
+ const parsed=value();ws();if(i!==source.length)failParse();return parsed;
+}
+function parseToolText(text){const raw=String(text||'').trim();try{return JSON.parse(raw);}catch{/* VariFlight currently wraps a Python-literal payload in a text block. */}const match=raw.match(/^Flight details:\s*([\s\S]+)$/);if(!match)return null;return parsePythonLiteral(match[1]);}
 export function decodeVariflight(result){
  if(result.isError)fail('error','飞常准工具执行失败；未自动重试。请核对账号额度、日期和机场。');
  let payload=result.structuredContent;
  if(!payload){const blocks=result.content?.filter(c=>c.type==='text')||[];if(blocks.length!==1)fail('unavailable','飞常准返回非单一结构化结果；不从自然语言猜测时刻。');
-  try{payload=JSON.parse(blocks[0].text);}catch{fail('unavailable','飞常准未返回可核验的结构化航班数据；请检查返回格式或账号权限。');}}
+  payload=parseToolText(blocks[0].text);if(!payload)fail('unavailable','飞常准未返回可核验的结构化航班数据；请检查返回格式或账号权限。');}
  // Envelope support is explicit and shallow; never recursively hunt for apparent schedule fields.
  if(!payload||typeof payload!=='object')fail('unavailable','飞常准返回空值或非结构化内容。');
+ if(Number(payload.code)===200&&payload.data&&typeof payload.data==='object')payload=payload.data;
  if(payload.has_more||payload.hasMore||payload.next||payload.incomplete)fail('unavailable','飞常准结果不完整，不能证明唯一匹配。');
- if(payload.error_code!==undefined&&Number(payload.error_code)!==0)fail('error','飞常准上游返回业务错误，未将其转换为无航班。');
+ if(payload.error_code!==undefined&&Number(payload.error_code)!==0){if(Number(payload.error_code)===10||/暂无数据/.test(String(payload.error||'')))fail('unavailable','飞常准已连接，但该日期与航班暂无计划数据；暂不能确认核验通过。');fail('error','飞常准上游返回业务错误，未将其转换为无航班。');}
  const rows=Array.isArray(payload)?payload:Array.isArray(payload.data)?payload.data:Array.isArray(payload.result)?payload.result:null;
  if(!rows)fail('unavailable','飞常准返回结构尚未匹配适配器；需用账号真实响应联调，不能自动修正。');
  if(rows.length>2000)fail('unavailable','飞常准候选过多，未证明唯一匹配。');

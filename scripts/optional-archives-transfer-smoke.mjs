@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 
 const root=new URL("../",import.meta.url);
-const [app,html,edge,sql]=await Promise.all([
+const [app,html,edge,sql,attachmentSql]=await Promise.all([
   fs.readFile(new URL("app.js",root),"utf8"),
   fs.readFile(new URL("index.html",root),"utf8"),
   fs.readFile(new URL("supabase/functions/public-trip-query/index.ts",root),"utf8"),
   fs.readFile(new URL("supabase/migrations/2026090201_optional_archives_templates_quotas_transfers.sql",root),"utf8"),
+  fs.readFile(new URL("supabase/migrations/2026090202_registration_template_attachment_delete.sql",root),"utf8"),
 ]);
 
 assert.doesNotMatch(html,/data-page="documents"/);
@@ -21,6 +22,11 @@ assert.match(app,/data-document-replace/);
 assert.match(app,/get_project_registration_template_delete_status/);
 assert.match(app,/该模板已被报名数据使用，不允许删除/);
 assert.match(app,/确认删除该报名模板？删除后模板文件不可恢复/);
+assert.match(html,/id="removeProjectTemplateAttachment"/);
+assert.match(app,/remove_project_registration_template_attachment/);
+assert.match(app,/报名字段和历史数据已保留/);
+assert.match(attachmentSql,/template_name=null,template_storage_path=null/);
+assert.match(attachmentSql,/registrationTemplatePreserved/);
 assert.match(sql,/registration-template-files/);
 assert.match(sql,/template_is_system_default/);
 

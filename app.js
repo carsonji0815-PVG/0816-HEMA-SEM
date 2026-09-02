@@ -667,6 +667,7 @@
     $("#rosterFile").addEventListener("change", event => readRosterFile(event.target.files[0]));
     $("#projectTemplateFile").addEventListener("change", event => readProjectTemplate(event.target.files[0]));
     $("#downloadProjectTemplate").addEventListener("click", downloadProjectTemplate);
+    $("#removeProjectTemplateAttachment").addEventListener("click", removeProjectTemplateAttachment);
     $("#resetProjectTemplate").addEventListener("click", resetProjectTemplate);
     $("#registrationOpenSwitch").addEventListener("change", toggleRegistrationOpen);
     $("#managerEditSwitch").addEventListener("change", toggleManagerEdit);
@@ -1384,10 +1385,12 @@
     $("#transferCollectionSwitch").checked=!!state.settings.transferCollectionEnabled;const allowedTransferRoles=new Set(state.settings.transferCollectionRoles||[]);$$('[name="transferCollectionRole"]',form).forEach(input=>input.checked=allowedTransferRoles.has(input.value));$("#transferCollectionStatus").textContent=state.settings.transferCollectionEnabled?"已启用":"未启用";$("#transferCollectionStatus").className=`status ${state.settings.transferCollectionEnabled?"status-ok":"status-locked"}`;
     const template=state.settings.registrationTemplate?.columns?.length ? state.settings.registrationTemplate : {columns:[]};
     const customCount=template.columns.filter(column=>column.custom).length;
-    $("#templateStatus").innerHTML=state.settings.templateImported?`<span class="template-type-badge ${state.settings.templateIsSystemDefault?"default":"custom"}">${state.settings.templateIsSystemDefault?"系统内置默认模板":"自定义模板"}</span><strong>${escapeHtml(state.settings.templateName||"已导入报名模板")}</strong><small>${template.columns.filter(column=>column.key!=="sequence").length} 个报名字段${customCount?` · ${customCount} 个自定义字段`:""}</small>`:`<strong>尚未导入报名模板</strong><small>导入后才能开启项目报名</small>`;
+    $("#templateStatus").innerHTML=state.settings.templateImported?`<span class="template-type-badge ${state.settings.templateIsSystemDefault?"default":"custom"}">${state.settings.templateIsSystemDefault?"系统内置默认模板":"自定义模板"}</span><strong>${escapeHtml(state.settings.templateName||"报名字段配置已保留")}</strong><small>${template.columns.filter(column=>column.key!=="sequence").length} 个报名字段${customCount?` · ${customCount} 个自定义字段`:""}${!state.settings.templateName&&!state.settings.templateIsSystemDefault?" · 原始附件已删除":""}</small>`:`<strong>尚未导入报名模板</strong><small>导入后才能开启项目报名</small>`;
     $("#templateColumns").innerHTML=template.columns.length?template.columns.filter(column=>column.key!=="sequence").map(column=>`<span class="${column.custom?"custom":""}">${escapeHtml(column.header.replace(/\s+/g," "))}${column.required?" *":""}</span>`).join(""):`<span>等待导入 Excel / CSV 模板</span>`;
     $$('input,textarea,select,button[type="submit"]', form).forEach(input => input.disabled = !canManage() && input.id !== "resetDemo");
-    $("#projectTemplateFile").disabled=!canManage(); const templateDelete=$("#resetProjectTemplate");templateDelete.classList.toggle("is-hidden",!canManage());templateDelete.disabled=!state.settings.templateImported||state.settings.templateIsSystemDefault||state.settings.registrationOpen;templateDelete.title=state.settings.templateIsSystemDefault?"系统内置默认模板不允许删除":state.settings.registrationOpen?"请先关闭报名开关":"删除当前自定义模板";
+    $("#projectTemplateFile").disabled=!canManage();
+    const attachmentDelete=$("#removeProjectTemplateAttachment");attachmentDelete.classList.toggle("is-hidden",!canManage());attachmentDelete.disabled=!state.settings.templateImported||state.settings.templateIsSystemDefault||(!state.settings.templateName&&!state.settings.templateStoragePath);attachmentDelete.title=state.settings.templateIsSystemDefault?"系统内置默认模板没有可删除附件":(!state.settings.templateName&&!state.settings.templateStoragePath)?"原始模板附件已删除":"仅删除原始附件，报名字段和历史数据保留";
+    const templateDelete=$("#resetProjectTemplate");templateDelete.classList.toggle("is-hidden",!canManage());templateDelete.disabled=!state.settings.templateImported||state.settings.templateIsSystemDefault||state.settings.registrationOpen;templateDelete.title=state.settings.templateIsSystemDefault?"系统内置默认模板不允许删除":state.settings.registrationOpen?"请先关闭报名开关":"删除当前自定义模板及字段配置";
     $("#registrationOpenSwitch").checked=!!state.settings.registrationOpen;$("#registrationOpenSwitch").disabled=!canManage()||(!state.settings.templateImported&&!state.settings.registrationOpen);
     $("#registrationOpenStatus").textContent=state.settings.registrationOpen?"报名开放":"报名关闭";$("#registrationOpenStatus").className=`status ${state.settings.registrationOpen?"status-ok":"status-locked"}`;
     $("#registrationOpenHint").textContent=state.settings.templateImported?(state.settings.registrationOpen?"当前允许公开端新增报名":"关闭后仍可更改已报名和查询参会信息"):"必须先导入报名表模板";
@@ -1876,6 +1879,19 @@
     if(state.settings.templateIsSystemDefault||!state.settings.templateImported)return toast("系统内置默认模板不允许删除","error");
     if(state.settings.registrationOpen)return toast("请先关闭报名开关，再删除模板","error");
     try{let storagePath=state.settings.templateStoragePath||"";if(backend){const status=await backend.rpc("get_project_registration_template_delete_status",{p_meeting_id:backendMeetingId});if(status.error)throw status.error;if(status.data?.referenced)return toast("该模板已被报名数据使用，不允许删除","error");if(status.data?.system_default)return toast("系统内置默认模板不允许删除","error");storagePath=status.data?.storage_path||storagePath;}else if(state.attendees.length)return toast("该模板已被报名数据使用，不允许删除","error");if(!confirm("确认删除该报名模板？删除后模板文件不可恢复"))return;if(backend){const removed=await backend.rpc("remove_project_registration_template",{p_meeting_id:backendMeetingId});if(removed.error)throw removed.error;storagePath=removed.data||storagePath;if(storagePath){const deleted=await backend.storage.from("registration-template-files").remove([storagePath]);if(deleted.error)throw new Error(`模板记录已删除，但原始文件清理失败：${deleted.error.message}`);}}state.settings.templateName="";state.settings.templateStoragePath="";state.settings.templateIsSystemDefault=false;state.settings.registrationTemplate={version:1,columns:[]};state.settings.templateImported=false;const project=currentProject();if(project)project.templateImported=false;saveState();renderSettings();renderProjects();toast("报名模板已删除");}catch(error){toast(error.message||"模板删除失败","error");}
+  }
+  async function removeProjectTemplateAttachment() {
+    if (!canManage()) return;
+    if(state.settings.templateIsSystemDefault)return toast("系统内置默认模板没有可删除附件","error");
+    if(!state.settings.templateImported||(!state.settings.templateName&&!state.settings.templateStoragePath))return toast("当前没有可删除的报名模板附件","error");
+    if(!confirm("确认删除该报名模板附件？删除后原始文件不可恢复；已生成的报名字段、报名开关和现有报名数据将全部保留"))return;
+    try{
+      let storagePath=state.settings.templateStoragePath||"";let cleanupWarning="";
+      if(backend){const removed=await backend.rpc("remove_project_registration_template_attachment",{p_meeting_id:backendMeetingId});if(removed.error)throw removed.error;storagePath=removed.data||storagePath;if(storagePath){const deleted=await backend.storage.from("registration-template-files").remove([storagePath]);if(deleted.error)cleanupWarning=`；原始存储文件清理失败，请联系超级管理员：${deleted.error.message}`;}}
+      state.settings.templateName="";state.settings.templateStoragePath="";
+      addNotification("change",`${currentUser().name}删除了当前项目的报名模板附件，报名字段配置和历史报名数据已保留`);saveState();renderSettings();
+      toast(`报名模板附件已删除，报名字段和历史数据已保留${cleanupWarning}`,cleanupWarning?"error":undefined);
+    }catch(error){toast(error.message||"模板附件删除失败","error");}
   }
   function downloadProjectTemplate(){
     const base=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns;const keys=new Set(base.map(column=>column.key));const columns=[...base,...JOURNEY_FORM_COLUMNS.filter(column=>!keys.has(column.key))];

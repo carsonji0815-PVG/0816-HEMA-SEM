@@ -20,7 +20,7 @@
   ].map(([city,type,name])=>({city,type,name}));
   const clean=value=>String(value??"").replace(/[\u200B-\u200D\uFEFF]/gu,"").replace(/\u3000/gu," ").trim().replace(/\s+/g," ");
   const normalizeCity=value=>clean(value).replace(/(?:市|地区)$/u,"");
-  const canonicalStation=(value,type)=>normalizeType(type)==="PLANE"?clean(value).replace(/国际机场/gu,"机场"):clean(value);
+  const canonicalStation=(value,type)=>normalizeType(type)==="PLANE"?clean(value).replace(/国际机场/gu,"机场").replace(/(机场|航站楼)站$/u,"$1"):clean(value);
   function normalizeType(value,number=""){
     const raw=clean(value);if(TYPE_ALIASES.has(raw))return TYPE_ALIASES.get(raw);
     if(/本地参会|本地客户/u.test(raw)||/本地参会/u.test(number))return"LOCAL_ATTEND";

@@ -10,10 +10,12 @@ const labels=await page.evaluate(()=>{const format=window.__verificationTerminal
   format("银川河东机场 T3","CA1234","flight"),
   format("北京首都机场2号航站楼","CA1234","flight"),
   format("北京大兴机场","CZ1234","flight"),
+  format("大连周水子机场","G54484","flight"),
+  format("成都天府机场T2航站楼","G54484","flight"),
   format("上海虹桥","G1651","train"),
   format("福州南","G1651","train"),
 ];});
-const expected=["上海虹桥 T2","南通 T3","银川 T3","北京首都 T2","北京大兴","上海虹桥站","福州南站"];
+const expected=["上海虹桥 T2","南通 T3","银川 T3","北京首都 T2","北京大兴","大连","成都天府 T2","上海虹桥站","福州南站"];
 if(JSON.stringify(labels)!==JSON.stringify(expected))throw new Error(`Terminal labels mismatch: ${JSON.stringify({labels,expected})}`);
 const app=await fs.readFile(new URL("../app.js",import.meta.url),"utf8");
 const roomingExport=app.match(/function exportRoomingList\(\)[^\n]+/)?.[0]||"";

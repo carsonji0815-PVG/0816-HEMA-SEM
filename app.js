@@ -252,7 +252,7 @@
   const VERIFICATION_AIRPORT_CITIES=["南通","银川","广州","深圳","天津","重庆","南京","杭州","宁波","温州","福州","厦门","泉州","青岛","济南","大连","沈阳","长春","哈尔滨","武汉","长沙","郑州","西安","太原","石家庄","合肥","南昌","昆明","贵阳","南宁","海口","三亚","兰州","乌鲁木齐","呼和浩特","珠海","无锡","常州","烟台","威海","桂林","丽江","西宁","拉萨","宜昌","洛阳","扬州","徐州"];
   function verificationTerminalLabel(value,number,mode="") {
     const raw=String(value||"").trim();if(!raw)return"—";
-    const train=mode==="train"||isTrainNumber(number);
+    const train=mode?mode==="train":isTrainNumber(number);
     if(train){const station=TERMINAL_ALIASES.get(raw)||raw;return /站$/u.test(station)?station:`${station.replace(/(?:火车|高铁)站?$/u,"")}站`;}
     const terminal=raw.match(/(?:\bT\s*([1-9]\d*)\b|([1-9]\d*)\s*号?航站楼)/i);const terminalLabel=terminal?` T${terminal[1]||terminal[2]}`:"";
     let airport=raw.replace(/\bT\s*[1-9]\d*\b/ig,"").replace(/[1-9]\d*\s*号?航站楼/ug,"").replace(/航站楼|国际机场|机场/ug,"").trim();
@@ -1450,10 +1450,12 @@
     const notices=targetSegments.flatMap(segment=>verificationState(a,segment).notices);
     const fields=targetSegments.flatMap(segment=>Object.entries(TravelVerification.keys(segment)).map(([kind,key])=>{
       const number=a[segment==="return"?"returnNo":"outNo"];
+      const transportType=["from","to"].includes(kind)?TravelFields.normalizeType(a[key.replace("Station","TransportType")],number):"";
+      const terminalMode=transportType==="HIGH_SPEED_RAIL"?"train":transportType==="PLANE"?"flight":"";
       const problems=issues.filter(issue=>issue.field===key);
-      const value=["from","to"].includes(kind)?verificationTerminalLabel(a[key],number):a[key]||"";
+      const value=["from","to"].includes(kind)?verificationTerminalLabel(a[key],number,terminalMode):a[key]||"";
       const hint=problems.map(issue=>{
-        const expected=issue.expected?(["from","to"].includes(kind)?verificationTerminalLabel(issue.expected,number):issue.expected):"";
+        const expected=issue.expected?(["from","to"].includes(kind)?verificationTerminalLabel(issue.expected,number,terminalMode):issue.expected):"";
         return issue.message+(expected?"；计划值："+expected:"");
       }).join("；");
       const issue=problems.length?`aria-invalid="true" aria-describedby="issue-${key}"`:"";
@@ -1482,13 +1484,11 @@
       $(".trip-save-error",form).textContent="";
       try {
         const fd=new FormData(form),allowPaidRecheck=verification&&fd.get("allowPaidRecheck")==="on",draft={...a,customFields:{...(a.customFields||{})}},changes=[],changedSegments=new Set();
-        const candidates=verificationSegments.flatMap(segment=>{const match=a.customFields?._travelVerification?.[segment]?.match;return[match?.from,match?.to];});
         for(const segment of targetSegments){
           for(const [kind,key] of Object.entries(TravelVerification.keys(segment))){
             if(locked(key))continue;
             let next=String(fd.get(key)??"").trim();
-            if(["from","to"].includes(kind)&&segment==="return")next=TravelVerification.resolveTerminal(next,a[key]||"",String(fd.get("returnNo")||a.returnNo),candidates,verificationTerminalLabel);
-            if(["from","to"].includes(kind)&&segment==="outbound")next=TravelFields.officialStation(next,fd.get(key.replace("Station","TransportType"))||a[key.replace("Station","TransportType")],stationDictionary())||"";
+            if(["from","to"].includes(kind))next=TravelFields.officialStation(next,fd.get(key.replace("Station","TransportType"))||a[key.replace("Station","TransportType")],stationDictionary())||"";
             if(next!==(a[key]||"")){draft[key]=next;changes.push({field:key,label:FIELD_LABELS[key]||key,before:a[key]||"未填写",after:next||"未填写"});changedSegments.add(segment);}
           }
         }

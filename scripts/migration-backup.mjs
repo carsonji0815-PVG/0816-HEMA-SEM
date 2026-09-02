@@ -1,7 +1,7 @@
 // Export this project's source database using the Supabase CLI's own filtering.
 // No source data changes or restore operations. Credentials never go to stdout.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, writeFileSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, writeFileSync, statSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -10,7 +10,8 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const expectedRef = 'bupsipicxwyeuxunkvii';
 const linkedRef = readFileSync(path.join(root, 'supabase/.temp/project-ref'), 'utf8').trim();
 if (linkedRef !== expectedRef) throw new Error('Unexpected linked project; export stopped.');
-const clientBin = process.env.MIGRATION_PG_BIN || '/opt/homebrew/opt/libpq@17/bin';
+const defaultClientBins=['/opt/homebrew/opt/postgresql@17/bin','/opt/homebrew/opt/libpq@17/bin'];
+const clientBin = process.env.MIGRATION_PG_BIN || defaultClientBins.find(candidate=>existsSync(path.join(candidate,'pg_dump'))) || defaultClientBins[0];
 const version = spawnSync(path.join(clientBin, 'pg_dump'), ['--version'], { encoding: 'utf8' });
 if (version.status !== 0 || !/\b17\./.test(version.stdout)) throw new Error('PostgreSQL 17 client required.');
 
@@ -24,8 +25,13 @@ const saveManifest = () => writeFileSync(path.join(destination, 'manifest.json')
 saveManifest();
 
 for (const [filename, flags] of [['roles.sql', ['--role-only']], ['schema.sql', []], ['data.sql', ['--data-only', '--use-copy']]]) {
-  const cli = spawnSync('npx', ['--no-install', 'supabase', 'db', 'dump', '--linked', '--dry-run', ...flags],
-    { cwd: root, encoding: 'utf8', timeout: 90000, maxBuffer: 2 * 1024 * 1024 });
+  let cli;
+  for(let attempt=1;attempt<=3;attempt++){
+    cli = spawnSync('npx', ['--no-install', 'supabase', 'db', 'dump', '--linked', '--dry-run', ...flags],
+      { cwd: root, encoding: 'utf8', timeout: 90000, maxBuffer: 2 * 1024 * 1024 });
+    if(cli.status===0&&cli.stdout.startsWith('#!/usr/bin/env bash')&&cli.stdout.includes('pg_dump'))break;
+    if(attempt<3)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,1000*attempt);
+  }
   if (cli.status !== 0 || !cli.stdout.startsWith('#!/usr/bin/env bash') || !cli.stdout.includes('pg_dump')) {
     throw new Error(`Cannot prepare ${filename}; no credentials or raw CLI output displayed.`);
   }

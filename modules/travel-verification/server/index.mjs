@@ -91,7 +91,7 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
     if(groups.size>1)throw Object.assign(new Error('每次请求只接受一个去重后的行程，请分批核验'),{status:400});
     for(const group of groups.values()){
       const result=await verifyOne(group[0],allowPaid===true,options);
-      group.forEach(j=>results.push({...result,attendeeId:text(j.attendeeId),segment:j.segment==='return'?'return':'outbound'}));
+      group.forEach(j=>results.push({...result,attendeeId:text(j.attendeeId),segment:text(j.segment)}));
     }
     return {results,usage:{submitted:journeys.length,cacheHits:results.filter(r=>r.cached).length},providers:['rail_12306','variflight']};
   }

@@ -2,10 +2,19 @@
   "use strict";
   const suffixes={date:"Date",number:"No",from:"From",to:"To",departure:"Departure",arrival:"Arrival"};
   const labels={date:"出发日期",number:"航班号/车次号",from:"出发场站",to:"抵达场站",departure:"出发时间",arrival:"到达时间",departCity:"出发城市",departTransportType:"出发出行方式",arriveDate:"抵达日期",arriveCity:"抵达城市",arriveTransportType:"抵达出行方式"};
-  const keys=segment=>segment==="return"
-    ?{date:"returnDepartDate",departCity:"returnDepartCity",departTransportType:"returnDepartTransportType",from:"returnDepartStation",arriveDate:"returnArriveDate",arriveCity:"returnArriveCity",arriveTransportType:"returnArriveTransportType",to:"returnArriveStation",number:"returnNo",departure:"returnDeparture",arrival:"returnArrival"}
-    :{date:"departDate",departCity:"departCity",departTransportType:"departTransportType",from:"departStation",arriveDate:"arriveDate",arriveCity:"arriveCity",arriveTransportType:"arriveTransportType",to:"arriveStation",number:"outNo",departure:"outDeparture",arrival:"outArrival"};
-  const snapshot=(attendee,segment)=>Object.fromEntries(Object.entries(keys(segment)).map(([key,field])=>[key,String(attendee[field]||"").trim()]));
+  const direction=segment=>String(segment).startsWith("return")?"return":"outbound";
+  const extraId=segment=>String(segment).includes(":")?String(segment).split(":").slice(1).join(":"):"";
+  const extraSegment=(attendee,segment)=>attendee?.customFields?._journeySegments?.find(item=>String(item.id)===extraId(segment));
+  const segments=attendee=>["outbound",...(attendee?.customFields?._journeySegments||[]).filter(item=>item.direction!=="return").map(item=>`outbound:${item.id}`),"return",...(attendee?.customFields?._journeySegments||[]).filter(item=>item.direction==="return").map(item=>`return:${item.id}`)];
+  const keys=segment=>{
+    if(extraId(segment)){const id=extraId(segment),field=key=>`extra::${id}::${key}`;return{date:field("departDate"),departCity:field("departCity"),departTransportType:field("transportType"),from:field("departStation"),arriveDate:field("arriveDate"),arriveCity:field("arriveCity"),to:field("arriveStation"),number:field("number"),departure:field("departure"),arrival:field("arrival")};}
+    return direction(segment)==="return"
+      ?{date:"returnDepartDate",departCity:"returnDepartCity",departTransportType:"returnDepartTransportType",from:"returnDepartStation",arriveDate:"returnArriveDate",arriveCity:"returnArriveCity",to:"returnArriveStation",number:"returnNo",departure:"returnDeparture",arrival:"returnArrival"}
+      :{date:"departDate",departCity:"departCity",departTransportType:"departTransportType",from:"departStation",arriveDate:"arriveDate",arriveCity:"arriveCity",to:"arriveStation",number:"outNo",departure:"outDeparture",arrival:"outArrival"};
+  };
+  function getValue(attendee,field){const match=String(field).match(/^extra::(.+?)::(.+)$/);return match?extraSegment(attendee,`outbound:${match[1]}`)?.[match[2]]||"":attendee?.[field]||"";}
+  function setValue(attendee,field,value){const match=String(field).match(/^extra::(.+?)::(.+)$/);if(!match){attendee[field]=value;return;}const item=extraSegment(attendee,`outbound:${match[1]}`);if(item)item[match[2]]=value;}
+  const snapshot=(attendee,segment)=>{const data=Object.fromEntries(Object.entries(keys(segment)).map(([key,field])=>[key,String(getValue(attendee,field)||"").trim()]));data.arriveTransportType=data.departTransportType;return data;};
   const fingerprint=(attendee,segment)=>JSON.stringify(snapshot(attendee,segment));
   const hasJourney=(attendee,segment)=>Object.values(snapshot(attendee,segment)).some(Boolean);
   function transportMode(data){
@@ -83,7 +92,7 @@
         if(data[key]&&compare(key,data[key],mode)!==compare(key,match[key],mode))fieldIssues.push({field:map[key],message:`${labels[key]}与计划不一致`,current:data[key],expected:String(match[key])});
       }
     }else notices.push("未取得有效计划数据，暂不能确认核验通过");
-    if(match&&segment==="outbound"){
+    if(match){
       const extras=[
         ["departCity",match.fromCity],["arriveDate",match.arrivalDate||match.date],["arriveCity",match.toCity],
         ["departTransportType",mode==="flight"?"PLANE":mode==="train"?"HIGH_SPEED_RAIL":""],["arriveTransportType",mode==="flight"?"PLANE":mode==="train"?"HIGH_SPEED_RAIL":""],
@@ -129,6 +138,6 @@
     if(issues.length)return 'review';
     return check?.status==='verified'?'verified':check?'unavailable':'pending';
   }
-  const api={keys,snapshot,fingerprint,hasJourney,transportMode,viewState,localIssues,dictionaryIssues,buildCheck,currentIssues,verifiedField,resolveTerminal};
+  const api={keys,snapshot,fingerprint,hasJourney,transportMode,viewState,localIssues,dictionaryIssues,buildCheck,currentIssues,verifiedField,resolveTerminal,segments,direction,getValue,setValue};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.TravelVerification=Object.freeze(api);
 })(typeof window!=="undefined"?window:globalThis);

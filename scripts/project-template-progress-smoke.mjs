@@ -17,7 +17,7 @@ if(!templateText.includes("饮食禁忌")) throw new Error(`Custom template colu
 
 await page.goto("http://127.0.0.1:4173/#attendees",{waitUntil:"domcontentloaded"});
 const privacy=page.locator('[data-progress-field="privacyLetterStatus"]').first();
-await privacy.selectOption("complete");
+await privacy.selectOption("electronic");
 let guRow=page.locator("#attendeeTableBody tr",{hasText:"顾明远"});
 await guRow.locator('[data-progress-field="ticketStatus"]').selectOption("ticketed");
 guRow=page.locator("#attendeeTableBody tr",{hasText:"顾明远"});

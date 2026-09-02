@@ -71,7 +71,7 @@ try{
  assert.equal(calls,0);
  await page.evaluate(()=>{window.failWrite=false;window.testVerification.lock();});
  await page.locator("#cancelEdit").click();await page.locator("[data-review-travel]").first().click();
- assert.equal(await page.locator('#tripEditForm [name^="depart"]:disabled, #tripEditForm [name^="arrive"]:disabled, #tripEditForm [name^="out"]:disabled').count(),11);
+ assert.equal(await page.locator('#tripEditForm [name^="depart"]:disabled, #tripEditForm [name^="arrive"]:disabled, #tripEditForm [name^="out"]:disabled').count(),8);
  assert.equal(await page.locator('#tripEditForm [name^="return"]:disabled').count(),0);
  assert.deepEqual(errors,[]);
  console.log("PASS: field errors, manual-only save, no provider calls, retained return, safe export, save failure, column locks");

@@ -7,14 +7,18 @@
     const {data:row,error}=await backend.from('attendees').select(columns).eq('meeting_id',meetingId).eq('id',draft.id).single();
     if(error)throw error;
     if(!row||!row.updated_at||row.business_status==='cancelled')throw new Error('记录已删除、取消或缺少版本信息，请刷新名单');
-    if(Object.entries(fields).some(([key,column])=>normalized(key,row[column])!==normalized(key,baseline[key])))throw new Error('另一位负责人已修改该行程，请刷新名单后重新核验');
-    const custom={...(row.custom_fields||{}),_travelVerification:draft.customFields?._travelVerification||{},_travelVerifiedHighlights:draft.customFields?._travelVerifiedHighlights||[]};
+    const staleField=Object.entries(fields).find(([key,column])=>normalized(key,row[column])!==normalized(key,baseline[key]));
+    if(staleField)throw new Error(`另一位负责人已修改该行程（${staleField[0]}），请刷新名单后重新核验`);
+    if(JSON.stringify(row.custom_fields?._journeySegments||[])!==JSON.stringify(baseline.customFields?._journeySegments||[]))throw new Error('另一位负责人已修改多段行程，请刷新名单后重新核验');
+    const custom={...(row.custom_fields||{}),_journeySegments:draft.customFields?._journeySegments||[],_travelVerification:draft.customFields?._travelVerification||{},_travelVerifiedHighlights:draft.customFields?._travelVerifiedHighlights||[]};
     const patch={custom_fields:custom};
     if(edit){
       const changes=[];
       for(const [key,column] of Object.entries(fields))if(normalized(key,draft[key])!==normalized(key,baseline[key])){
         patch[column]=/Station$/.test(key)&&draft[key.replace("Station","TransportType")]==="LOCAL_ATTEND"?null:draft[key]||null;changes.push({field:key,before:baseline[key]||'',after:draft[key]||''});
       }
+      const beforeSegments=JSON.stringify(baseline.customFields?._journeySegments||[]),afterSegments=JSON.stringify(draft.customFields?._journeySegments||[]);
+      if(beforeSegments!==afterSegments)changes.push({field:'journeySegments',before:beforeSegments,after:afterSegments});
       if(changes.length){patch.approval=draft.approval;patch.risks=draft.risks||[];}
       if(changes.length)custom._travelReviewHistory=[...(custom._travelReviewHistory||[]),{at:new Date().toISOString(),operator,changes}];
       // Travel approval is separate; only invalidate the directions the editor changed.

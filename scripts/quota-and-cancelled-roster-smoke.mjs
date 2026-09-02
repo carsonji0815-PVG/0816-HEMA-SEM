@@ -25,7 +25,7 @@ assert.match(app,/unmatchedQuotaAttendeeCount/);
 assert.match(app,/不会自动生成非预设大区/);
 assert.doesNotMatch(app,/for\(const\[key,actual\]of actualMap\)/);
 assert.match(app,/unlimitedRole=activeQuotaRole==="角色嘉宾"/);
-assert.match(app,/角色嘉宾不限额，无缺口预警/);
+assert.match(app,/角色嘉宾"}\u6309实际报名统计，无缺口预警/);
 assert.match(app,/quota-status unlimited">实际统计/);
 assert.match(app,/if\(normalized\.role==="角色嘉宾"\)return/);
 assert.match(app,/guestMeetingRole/);

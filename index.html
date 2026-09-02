@@ -25,10 +25,10 @@
     </script>
     <script src="luggage-integration.js?v=20260831-01" defer></script>
     <script src="travel-fields.js?v=20260902-explicit-transport-01" defer></script>
-    <script src="travel-verification.js?v=20260902-airport-canonical-01" defer></script>
-    <script src="travel-verification-storage.js?v=20260831-verification-02" defer></script>
-    <script src="travel-verification-panel.js?v=20260902-verification-select-01" defer></script>
-    <script src="app.js?v=20260902-explicit-transport-02" defer></script>
+    <script src="travel-verification.js?v=20260902-multi-journey-01" defer></script>
+    <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
+    <script src="travel-verification-panel.js?v=20260902-multi-journey-01" defer></script>
+    <script src="app.js?v=20260902-multi-journey-01" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -114,11 +114,11 @@
                   <label data-journey-field="departStation">出发场站<select data-station-select="depart" hidden></select><input data-station-input="depart" hidden /></label>
                   <label data-journey-field="arriveDate">抵达日期<input name="arriveDate" type="date" required /></label>
                   <label data-journey-field="arriveCity">抵达城市<input name="arriveCity" required /></label>
-                  <label data-journey-field="arriveTransportType">抵达出行方式<select name="arriveTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label>
+                  <input name="arriveTransportType" type="hidden" />
                   <label data-journey-field="arriveStation">抵达场站<select data-station-select="arrive" hidden></select><input data-station-input="arrive" hidden /></label>
                   <label data-template-field="outNo">航班 / 车次号<input name="outNo" required /></label>
                   <label data-template-field="outDeparture">出发时间<input name="outDeparture" type="time" required /></label><label data-template-field="outArrival">到达时间<input name="outArrival" type="time" required /></label>
-                </div></section>
+                </div><div class="extra-journey-list" data-extra-journeys="outbound"></div><button class="button button-secondary add-journey-button" data-add-journey="outbound" type="button">＋ 新增一段去程</button></section>
                 <section class="public-form-section optional-transfer-section is-hidden" id="publicTransferCollectionSection"><h3>往返接送信息 <small>选填，不影响报名提交</small></h3><div class="public-field-grid">
                   <label>去程送站出发地点<input name="outboundTransferOrigin" placeholder="例如：住所 / 酒店 / 单位" /></label><label>预约送站时间<input name="outboundTransferTime" type="datetime-local" /></label><label class="span-2">去程送站备注<textarea name="outboundTransferNotes" rows="2"></textarea></label>
                   <label>返程接站送达目的地<input name="returnTransferDestination" placeholder="例如：住所 / 酒店 / 单位" /></label><label>预估接站时间<input name="returnTransferTime" type="datetime-local" /></label><label class="span-2">返程接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
@@ -127,9 +127,9 @@
                   <label data-journey-field="returnDepartDate">返程出发日期<input name="returnDepartDate" type="date" required /></label><label data-journey-field="returnDepartCity">返程出发城市<input name="returnDepartCity" required /></label>
                   <label data-journey-field="returnDepartTransportType">返程出发方式<select name="returnDepartTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label><label data-journey-field="returnDepartStation">返程出发场站<select data-station-select="returnDepart" hidden></select><input data-station-input="returnDepart" hidden /></label>
                   <label data-journey-field="returnArriveDate">返程抵达日期<input name="returnArriveDate" type="date" required /></label><label data-journey-field="returnArriveCity">返程抵达城市<input name="returnArriveCity" required /></label>
-                  <label data-journey-field="returnArriveTransportType">返程抵达方式<select name="returnArriveTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label><label data-journey-field="returnArriveStation">返程抵达场站<select data-station-select="returnArrive" hidden></select><input data-station-input="returnArrive" hidden /></label><label data-template-field="returnNo">航班 / 车次号<input name="returnNo" required /></label>
+                  <input name="returnArriveTransportType" type="hidden" /><label data-journey-field="returnArriveStation">返程抵达场站<select data-station-select="returnArrive" hidden></select><input data-station-input="returnArrive" hidden /></label><label data-template-field="returnNo">航班 / 车次号<input name="returnNo" required /></label>
                   <label data-template-field="returnDeparture">出发时间<input name="returnDeparture" type="time" required /></label><label data-template-field="returnArrival">到达时间<input name="returnArrival" type="time" required /></label>
-                </div></section>
+                </div><div class="extra-journey-list" data-extra-journeys="return"></div><button class="button button-secondary add-journey-button" data-add-journey="return" type="button">＋ 新增一段返程</button></section>
                 <section class="public-form-section is-hidden" id="publicCustomFieldsSection"><h3>项目补充信息</h3><div class="public-field-grid" id="publicCustomFields"></div></section>
                 <div id="publicFullRegistrationResult" class="lookup-result" aria-live="polite"></div>
                 <div class="public-form-actions"><button class="button button-secondary" id="backToPublicAuth" type="button">返回我的名单</button><button class="button button-primary" type="submit">保存参会人员信息</button></div>
@@ -272,11 +272,11 @@
                     <label data-journey-field="departStation">出发场站<select data-station-select="depart" hidden></select><input data-station-input="depart" hidden /></label>
                     <label data-journey-field="arriveDate">抵达日期<input name="arriveDate" type="date" required /></label>
                     <label data-journey-field="arriveCity">抵达城市<input name="arriveCity" required /></label>
-                    <label data-journey-field="arriveTransportType">抵达出行方式<select name="arriveTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label>
+                    <input name="arriveTransportType" type="hidden" />
                     <label data-journey-field="arriveStation">抵达场站<select data-station-select="arrive" hidden></select><input data-station-input="arrive" hidden /></label>
                     <label>航班 / 车次号<input name="outNo" required /></label>
                     <label>出发时间<input name="outDeparture" type="time" required /></label><label>到达时间<input name="outArrival" type="time" required /></label>
-                  </div>
+                  </div><div class="extra-journey-list" data-extra-journeys="outbound"></div><button class="button button-secondary add-journey-button" data-add-journey="outbound" type="button">＋ 新增一段去程</button>
                 </article>
                 <article class="panel form-section optional-transfer-section is-hidden" id="adminTransferCollectionSection">
                   <div class="section-number">03</div><div class="section-title"><h2>往返接送信息</h2><p>选填，仅收集信息，不参与行程核验</p></div><div class="field-grid">
@@ -290,9 +290,9 @@
                     <label data-journey-field="returnDepartDate">返程出发日期<input name="returnDepartDate" type="date" required /></label><label data-journey-field="returnDepartCity">返程出发城市<input name="returnDepartCity" required /></label>
                     <label data-journey-field="returnDepartTransportType">返程出发方式<select name="returnDepartTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label><label data-journey-field="returnDepartStation">返程出发场站<select data-station-select="returnDepart" hidden></select><input data-station-input="returnDepart" hidden /></label>
                     <label data-journey-field="returnArriveDate">返程抵达日期<input name="returnArriveDate" type="date" required /></label><label data-journey-field="returnArriveCity">返程抵达城市<input name="returnArriveCity" required /></label>
-                    <label data-journey-field="returnArriveTransportType">返程抵达方式<select name="returnArriveTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label><label data-journey-field="returnArriveStation">返程抵达场站<select data-station-select="returnArrive" hidden></select><input data-station-input="returnArrive" hidden /></label><label>航班 / 车次号<input name="returnNo" required /></label>
+                    <input name="returnArriveTransportType" type="hidden" /><label data-journey-field="returnArriveStation">返程抵达场站<select data-station-select="returnArrive" hidden></select><input data-station-input="returnArrive" hidden /></label><label>航班 / 车次号<input name="returnNo" required /></label>
                     <label>出发时间<input name="returnDeparture" type="time" required /></label><label>到达时间<input name="returnArrival" type="time" required /></label>
-                  </div>
+                  </div><div class="extra-journey-list" data-extra-journeys="return"></div><button class="button button-secondary add-journey-button" data-add-journey="return" type="button">＋ 新增一段返程</button>
                 </article>
               </div>
               <aside class="form-aside">

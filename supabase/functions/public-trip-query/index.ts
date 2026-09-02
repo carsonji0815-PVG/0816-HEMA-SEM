@@ -160,8 +160,11 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const requestedCustom = details.customFields && typeof details.customFields === "object" && !Array.isArray(details.customFields) ? details.customFields as Record<string,unknown> : {};
     const allowedCustom = new Set(((meeting.registration_template as {columns?:Array<{key?:string,custom?:boolean}>})?.columns || []).filter(column=>column.custom).map(column=>clean(column.key,80)));
     const internalCustom=Object.fromEntries(Object.entries((attendee?.custom_fields as Record<string,unknown>)||{}).filter(([key])=>key.startsWith("_")));
-    const customFields = {...internalCustom,...Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)]))};
-    const departType=transportType(details.departTransportType),arriveType=transportType(details.arriveTransportType),returnDepartType=transportType(details.returnDepartTransportType),returnArriveType=transportType(details.returnArriveTransportType);
+    const rawJourneySegments=Array.isArray(details.journeySegments)?details.journeySegments:[];
+    if(rawJourneySegments.length>18)return reply({error:"单个参会人员最多可增加18段行程"},400);
+    const journeySegments=rawJourneySegments.map((raw,index)=>{const item=(raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{}) as Record<string,unknown>,type=transportType(item.transportType);return{id:/^[a-zA-Z0-9-]{8,80}$/.test(clean(item.id,80))?clean(item.id,80):crypto.randomUUID(),direction:item.direction==="return"?"return":"outbound",order:index+2,departDate:clean(item.departDate,10),departCity:clean(item.departCity,50),transportType:type,departStation:type==="LOCAL_ATTEND"?"":clean(item.departStation,120),arriveDate:clean(item.arriveDate,10),arriveCity:clean(item.arriveCity,50),arriveStation:type==="LOCAL_ATTEND"?"":clean(item.arriveStation,120),number:clean(item.number,30),departure:clean(item.departure,5),arrival:clean(item.arrival,5)};});
+    const customFields = {...internalCustom,...Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)])),_journeySegments:journeySegments};
+    const departType=transportType(details.departTransportType),arriveType=departType,returnDepartType=transportType(details.returnDepartTransportType),returnArriveType=returnDepartType;
     let departStation=departType==="LOCAL_ATTEND"?null:clean(details.departStation,120)||null,arriveStation=arriveType==="LOCAL_ATTEND"?null:clean(details.arriveStation,120)||null;
     let returnDepartStation=returnDepartType==="LOCAL_ATTEND"?null:clean(details.returnDepartStation,120)||null,returnArriveStation=returnArriveType==="LOCAL_ATTEND"?null:clean(details.returnArriveStation,120)||null;
     const stationChecks=[
@@ -169,6 +172,10 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       {label:"抵达场站",city:details.arriveCity,type:arriveType,value:arriveStation,set:(value:string)=>arriveStation=value},
       {label:"返程出发场站",city:details.returnDepartCity,type:returnDepartType,value:returnDepartStation,set:(value:string)=>returnDepartStation=value},
       {label:"返程抵达场站",city:details.returnArriveCity,type:returnArriveType,value:returnArriveStation,set:(value:string)=>returnArriveStation=value},
+      ...journeySegments.flatMap((segment,index)=>[
+        {label:`${segment.direction==="return"?"返程":"去程"}新增第${index+2}段出发场站`,city:segment.departCity,type:segment.transportType,value:segment.departStation,set:(value:string)=>segment.departStation=value},
+        {label:`${segment.direction==="return"?"返程":"去程"}新增第${index+2}段抵达场站`,city:segment.arriveCity,type:segment.transportType,value:segment.arriveStation,set:(value:string)=>segment.arriveStation=value},
+      ]),
     ].filter(item=>item.type!=="LOCAL_ATTEND"&&item.city&&item.value);
     const stationResults=await Promise.all(stationChecks.map(item=>db.rpc("get_station_list",{p_city_name:clean(item.city,50),p_transport_type:item.type})));
     for(let index=0;index<stationChecks.length;index++){
@@ -195,13 +202,16 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const templateColumns=configuredColumns.length ? configuredColumns : ["name","phone","region","idNumber","outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival","contactName","contactMobile"].map(key=>({key,required:true,custom:false}));
     const missingRequired=templateColumns.filter(column=>column.required).some(column=>{ const value=column.custom ? customFields[clean(column.key,80)] : values[keyToDb[clean(column.key,80)]]; return value === null || value === undefined || value === ""; });
     const validDate=(value:unknown)=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||""))&&!Number.isNaN(Date.parse(`${value}T00:00:00Z`))&&new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
-    const journeyMissing=!validDate(values.depart_date)||!values.depart_city||!departType||!validDate(values.arrive_date)||!values.arrive_city||!arriveType||(departType!=="LOCAL_ATTEND"&&!departStation)||(arriveType!=="LOCAL_ATTEND"&&!arriveStation)||!validDate(values.return_depart_date)||!values.return_depart_city||!returnDepartType||!validDate(values.return_arrive_date)||!values.return_arrive_city||!returnArriveType||(returnDepartType!=="LOCAL_ATTEND"&&!returnDepartStation)||(returnArriveType!=="LOCAL_ATTEND"&&!returnArriveStation);
+    const validTime=(value:unknown)=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||""));
+    const extraJourneyMissing=journeySegments.some(item=>!validDate(item.departDate)||!item.departCity||!item.transportType||!validDate(item.arriveDate)||!item.arriveCity||!item.number||!validTime(item.departure)||!validTime(item.arrival)||(item.transportType!=="LOCAL_ATTEND"&&(!item.departStation||!item.arriveStation)));
+    const journeyMissing=!validDate(values.depart_date)||!values.depart_city||!departType||!validDate(values.arrive_date)||!values.arrive_city||!arriveType||(departType!=="LOCAL_ATTEND"&&!departStation)||(arriveType!=="LOCAL_ATTEND"&&!arriveStation)||!validDate(values.return_depart_date)||!values.return_depart_city||!returnDepartType||!validDate(values.return_arrive_date)||!values.return_arrive_city||!returnArriveType||(returnDepartType!=="LOCAL_ATTEND"&&!returnDepartStation)||(returnArriveType!=="LOCAL_ATTEND"&&!returnArriveStation)||extraJourneyMissing;
     if (missingRequired||journeyMissing) return reply({ error:"请完整填写当前项目报名模板和行程信息" }, 400);
 
     if (attendee) {
       const { data:locks } = await db.from("column_locks").select("field_group").eq("meeting_id",meeting.id).eq("locked",true);
       const groups:Record<string,string[]>={identity:["attendee_type","name","city","hospital","department","title","venue","sex","id_number","phone","hcp_id","region"],contact:["contact_name","contact_mobile"],outbound:["depart_date","depart_city","depart_transport_type","depart_station","arrive_date","arrive_city","arrive_transport_type","arrive_station","out_date","out_from","out_to","out_no","out_departure","out_arrival"],return:["return_depart_date","return_depart_city","return_depart_transport_type","return_depart_station","return_arrive_date","return_arrive_city","return_arrive_transport_type","return_arrive_station","return_date","return_from","return_to","return_no","return_departure","return_arrival"],accommodation:["accommodation","is_flight"],remarks:["msl_contact","remarks"]};
-      const lockedChange=(locks || []).find(lock=>(groups[lock.field_group] || []).some(key=>String(attendee?.[key] ?? "") !== String(values[key] ?? "")));
+      const oldSegments=Array.isArray((attendee.custom_fields as Record<string,unknown>)?._journeySegments)?((attendee.custom_fields as Record<string,unknown>)._journeySegments as Array<Record<string,unknown>>):[];
+      const lockedChange=(locks || []).find(lock=>(groups[lock.field_group] || []).some(key=>String(attendee?.[key] ?? "") !== String(values[key] ?? ""))||["outbound","return"].includes(lock.field_group)&&JSON.stringify(oldSegments.filter(item=>(item.direction==="return"?"return":"outbound")===lock.field_group))!==JSON.stringify(journeySegments.filter(item=>item.direction===lock.field_group)));
       if (lockedChange) return reply({ error:`${lockedChange.field_group} 相关字段已锁定，不能修改` }, 423);
     }
 

@@ -205,6 +205,45 @@
     }
     return TravelFields.stationList(stationDictionary(),cleanedCity,type);
   }
+  const EXTRA_JOURNEY_FIELDS=["departDate","departCity","transportType","departStation","arriveDate","arriveCity","arriveStation","number","departure","arrival"];
+  const extraJourneyId=()=>crypto.randomUUID?.()||`segment-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  function normalizedExtraJourneys(value){
+    if(!Array.isArray(value))return[];
+    return value.slice(0,18).map((item,index)=>({id:String(item?.id||extraJourneyId()),direction:item?.direction==="return"?"return":"outbound",order:Number(item?.order)||index+2,...Object.fromEntries(EXTRA_JOURNEY_FIELDS.map(key=>[key,String(item?.[key]||"").trim()]))}));
+  }
+  function collectExtraJourneys(form){
+    return [...form.querySelectorAll("[data-extra-journey-card]")].map((card,index)=>{
+      const item={id:card.dataset.extraJourneyCard,direction:card.dataset.direction,order:index+2};
+      EXTRA_JOURNEY_FIELDS.forEach(key=>item[key]=String(card.querySelector(`[data-extra-field="${key}"]`)?.value||"").trim());
+      item.transportType=TravelFields.normalizeType(item.transportType,item.number);
+      if(item.transportType==="LOCAL_ATTEND")item.departStation=item.arriveStation="";
+      else {item.departStation=TravelFields.officialStation(item.departStation,item.transportType,stationDictionary());item.arriveStation=TravelFields.officialStation(item.arriveStation,item.transportType,stationDictionary());}
+      return item;
+    });
+  }
+  function extraJourneyCard(item,index){
+    const prefix=item.direction==="return"?"返程":"去程",types=Object.entries(TravelFields.TYPES).map(([value,label])=>`<option value="${value}" ${item.transportType===value?"selected":""}>${label}</option>`).join("");
+    const field=(key,label,type="text")=>`<label>${label}<input data-extra-field="${key}" type="${type}" value="${escapeHtml(item[key]||"")}" required /></label>`;
+    return `<article class="extra-journey-card" data-extra-journey-card="${escapeHtml(item.id)}" data-direction="${item.direction}"><header><div><strong>${prefix}第 ${index+2} 段</strong><small>本段将单独参加真实性核验</small></div><button class="text-button danger" data-remove-journey="${escapeHtml(item.id)}" type="button">删除本段</button></header><div class="public-field-grid extra-journey-grid">${field("departDate","出发日期","date")}${field("departCity","出发城市")}<label>出行方式<select data-extra-field="transportType" required><option value="">请选择</option>${types}</select></label>${field("departStation","出发场站")}${field("arriveDate","抵达日期","date")}${field("arriveCity","抵达城市")}${field("arriveStation","抵达场站")}${field("number","航班 / 车次号")}${field("departure","出发时间","time")}${field("arrival","到达时间","time")}</div><datalist data-extra-stations="depart"></datalist><datalist data-extra-stations="arrive"></datalist></article>`;
+  }
+  function initMultiJourneyForm(form,attendee={}){
+    if(!form)return;
+    form._extraJourneys=normalizedExtraJourneys(attendee.customFields?._journeySegments||attendee.journeySegments||[]);
+    const render=()=>{
+      for(const direction of ["outbound","return"]){
+        const list=form.querySelector(`[data-extra-journeys="${direction}"]`);if(!list)continue;
+        const items=form._extraJourneys.filter(item=>item.direction===direction);list.innerHTML=items.map(extraJourneyCard).join("");
+      }
+      form.querySelectorAll("[data-remove-journey]").forEach(button=>button.onclick=()=>{form._extraJourneys=collectExtraJourneys(form).filter(item=>item.id!==button.dataset.removeJourney);render();});
+      form.querySelectorAll("[data-extra-journey-card]").forEach(card=>{
+        const mode=card.querySelector('[data-extra-field="transportType"]'),departCity=card.querySelector('[data-extra-field="departCity"]'),arriveCity=card.querySelector('[data-extra-field="arriveCity"]');
+        const refresh=async(side,clear=false)=>{const station=card.querySelector(`[data-extra-field="${side}Station"]`),city=card.querySelector(`[data-extra-field="${side}City"]`);if(clear)station.value="";const local=mode.value==="LOCAL_ATTEND";station.disabled=local;if(local){station.required=false;station.value="";return;}station.required=true;const rows=await loadJourneyStations(city.value,mode.value);const datalist=card.querySelector(`[data-extra-stations="${side}"]`),listId=`stations-${card.dataset.extraJourneyCard}-${side}`;datalist.id=listId;datalist.innerHTML=rows.map(row=>`<option value="${escapeHtml(row.shortName||TravelFields.displayStation(row.name,row.type))}"></option>`).join("");station.setAttribute("list",listId);station.placeholder=rows.length?"可输入关键词筛选场站":"未查询到对应场站，请手动录入";};
+        mode.onchange=()=>{refresh("depart",true);refresh("arrive",true);};departCity.onchange=()=>refresh("depart",true);arriveCity.onchange=()=>refresh("arrive",true);refresh("depart");refresh("arrive");
+      });
+    };
+    form.querySelectorAll("[data-add-journey]").forEach(button=>button.onclick=()=>{form._extraJourneys=[...collectExtraJourneys(form),{id:extraJourneyId(),direction:button.dataset.addJourney,order:99,...Object.fromEntries(EXTRA_JOURNEY_FIELDS.map(key=>[key,""]))}];render();});
+    render();
+  }
   function bindJourneyForm(form,attendee={}){
     journeyBindings.get(form)?.();
     const values=TravelFields.hydrate(attendee);
@@ -214,7 +253,13 @@
       const select=form.querySelector(`[data-station-select="${side}"]`),input=form.querySelector(`[data-station-input="${side}"]`);
       if(select)select.value=values[`${side}Station`]||"";if(input)input.value=values[`${side}Station`]||"";
     }
+    for(const [depart,arrive] of [["departTransportType","arriveTransportType"],["returnDepartTransportType","returnArriveTransportType"]]){
+      if(!form.elements[depart]||!form.elements[arrive])continue;
+      const sync=()=>{form.elements[arrive].value=form.elements[depart].value;form.elements[arrive].dispatchEvent(new Event("change",{bubbles:true}));};
+      if(!form.elements[arrive].value)form.elements[arrive].value=form.elements[depart].value;form.elements[depart].addEventListener("change",sync);
+    }
     journeyBindings.set(form,TravelFields.bindForm(form,{customDictionary:stationDictionary(),preserve:true,loadStations:loadJourneyStations}));
+    initMultiJourneyForm(form,attendee);
   }
   function toast(message, type = "success") {
     const node = document.createElement("div"); node.className = `toast ${type === "error" ? "error" : ""}`; node.textContent = message;
@@ -997,7 +1042,7 @@
     const baseColumns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns.filter(column=>column.key!=="sequence");
     const baseKeys=new Set(baseColumns.map(column=>column.key));const templateColumns=[...baseColumns,...JOURNEY_FORM_COLUMNS.filter(column=>!baseKeys.has(column.key))];
     return visibleAttendees().filter(a => {
-      const haystack = [a.name,a.city,a.hospital,a.department,a.outNo,a.returnNo,a.departCity,a.departStation,a.arriveCity,a.arriveStation].join(" ").toLowerCase();
+      const haystack = [a.name,a.city,a.hospital,a.department,a.outNo,a.returnNo,a.departCity,a.departStation,a.arriveCity,a.arriveStation,...(a.customFields?._journeySegments||[]).flatMap(item=>[item.departCity,item.departStation,item.arriveCity,item.arriveStation,item.number])].join(" ").toLowerCase();
       const hasMissing=templateColumns.some(column=>{const value=column.custom?a.customFields?.[column.key]:a[column.key];return value===null||value===undefined||String(value).trim()==="";});
       const matchesArchive=cancelledRosterView?a.businessStatus==="cancelled":a.businessStatus!=="cancelled";
       return matchesArchive && (!query || haystack.includes(query)) && (risk === "all" || a.approval === risk) && (venue === "all" || normalizeVenueLabel(a.venue) === venue) && (!incompleteRosterOnly||hasMissing);
@@ -1023,8 +1068,8 @@
     const templateCell=(attendee,column,index)=>{const raw=templateValue(attendee,column,index);const empty=raw===null||raw===undefined||String(raw).trim()==="";const display=empty?"未填写":String(raw);const verified=TravelVerification.verifiedField(attendee,column.key);return `<td class="template-data-cell ${verified?"travel-verified-cell":""}" data-template-key="${escapeHtml(column.key||"")}" title="${escapeHtml(display)}"><span class="${empty?"template-empty":""}">${escapeHtml(display)}</span>${verified?'<small class="travel-verified-label">✓ 已核验</small>':""}</td>`;};
     const selectable=list.filter(a=>a.businessStatus!=="cancelled"&&!isLocked(a)&&canEditAttendeeData()&&(currentUser().role!=="sales"||a.ownerId===currentUser().id));
     const allSelected=selectable.length>0&&selectable.every(a=>selectedAttendeeIds.has(a.id));
-    $("#attendeeTableHead").innerHTML=`<th class="roster-check-cell"><input id="selectVisibleAttendees" type="checkbox" aria-label="全选当前名单" ${allSelected?"checked":""} ${selectable.length?"":"disabled"}></th>${templateColumns.map(column=>`<th data-template-key="${escapeHtml(column.key||"")}">${templateHeader(column)}</th>`).join("")}<th>去程送站地点</th><th>预约送站时间</th><th>去程送站备注</th><th>返程接站目的地</th><th>预估接站时间</th><th>返程接站备注</th><th>报名状态</th><th>隐私沟通函</th><th>出票状态</th><th>负责人</th><th>行程审批</th><th>操作</th>`;
-    $("#attendeeTableBody").innerHTML = list.map((a,index) => {const selectableRow=a.businessStatus!=="cancelled"&&!isLocked(a)&&canEditAttendeeData()&&(currentUser().role!=="sales"||a.ownerId===currentUser().id);const transferCell=value=>`<td class="template-data-cell"><span class="${value?"":"template-empty"}">${escapeHtml(value||"未填写")}</span></td>`;return `<tr class="${a.businessStatus==="cancelled"?"cancelled-row":""}"><td class="roster-check-cell"><input type="checkbox" data-select-attendee="${a.id}" aria-label="选择${escapeHtml(a.name)}" ${selectedAttendeeIds.has(a.id)?"checked":""} ${selectableRow?"":"disabled"}></td>${templateColumns.map(column=>templateCell(a,column,index)).join("")}${transferCell(a.outboundTransferOrigin)}${transferCell(a.outboundTransferTime)}${transferCell(a.outboundTransferNotes)}${transferCell(a.returnTransferDestination)}${transferCell(a.returnTransferTime)}${transferCell(a.returnTransferNotes)}<td><span class="status ${a.businessStatus==="cancelled"?"status-pending":"status-normal"}">${a.businessStatus==="cancelled"?"已取消报名":"有效报名"}</span></td><td>${privacyControl(a)}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><div class="approval-status-stack">${segmentBadge(a,"outbound","去程")}${segmentBadge(a,"return","返程")}</div></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`;}).join("");
+    $("#attendeeTableHead").innerHTML=`<th class="roster-check-cell"><input id="selectVisibleAttendees" type="checkbox" aria-label="全选当前名单" ${allSelected?"checked":""} ${selectable.length?"":"disabled"}></th>${templateColumns.map(column=>`<th data-template-key="${escapeHtml(column.key||"")}">${templateHeader(column)}</th>`).join("")}<th>新增多段行程</th><th>去程送站地点</th><th>预约送站时间</th><th>去程送站备注</th><th>返程接站目的地</th><th>预估接站时间</th><th>返程接站备注</th><th>报名状态</th><th>隐私沟通函</th><th>出票状态</th><th>负责人</th><th>行程审批</th><th>操作</th>`;
+    $("#attendeeTableBody").innerHTML = list.map((a,index) => {const selectableRow=a.businessStatus!=="cancelled"&&!isLocked(a)&&canEditAttendeeData()&&(currentUser().role!=="sales"||a.ownerId===currentUser().id);const transferCell=value=>`<td class="template-data-cell"><span class="${value?"":"template-empty"}">${escapeHtml(value||"未填写")}</span></td>`;const directionCounts={outbound:1,return:1};const extra=(a.customFields?._journeySegments||[]).map(item=>{const direction=item.direction==="return"?"return":"outbound";directionCounts[direction]+=1;return `${direction==="return"?"返程":"去程"}${directionCounts[direction]}：${item.number||"未填写"} ${item.departCity||"—"}→${item.arriveCity||"—"}`;}).join("；");return `<tr class="${a.businessStatus==="cancelled"?"cancelled-row":""}"><td class="roster-check-cell"><input type="checkbox" data-select-attendee="${a.id}" aria-label="选择${escapeHtml(a.name)}" ${selectedAttendeeIds.has(a.id)?"checked":""} ${selectableRow?"":"disabled"}></td>${templateColumns.map(column=>templateCell(a,column,index)).join("")}${transferCell(extra)}${transferCell(a.outboundTransferOrigin)}${transferCell(a.outboundTransferTime)}${transferCell(a.outboundTransferNotes)}${transferCell(a.returnTransferDestination)}${transferCell(a.returnTransferTime)}${transferCell(a.returnTransferNotes)}<td><span class="status ${a.businessStatus==="cancelled"?"status-pending":"status-normal"}">${a.businessStatus==="cancelled"?"已取消报名":"有效报名"}</span></td><td>${privacyControl(a)}</td><td>${progressSelect(a,"ticketStatus",[["pending","待出票"],["processing","出票中"],["ticketed","已出票"],["changed","改签"],["refunded","已退票"]])}</td><td>${escapeHtml(userName(a.ownerId))}</td><td><div class="approval-status-stack">${segmentBadge(a,"outbound","去程")}${segmentBadge(a,"return","返程")}</div></td><td><button class="row-action" data-open-attendee="${a.id}" aria-label="查看详情">•••</button></td></tr>`;}).join("");
     $("#selectVisibleAttendees").onchange=event=>{selectable.forEach(a=>event.target.checked?selectedAttendeeIds.add(a.id):selectedAttendeeIds.delete(a.id));renderAttendeeTable();};
     $$('[data-select-attendee]').forEach(input=>input.onchange=()=>{input.checked?selectedAttendeeIds.add(input.dataset.selectAttendee):selectedAttendeeIds.delete(input.dataset.selectAttendee);updateSelectedAttendeeControls();});
     $$('[data-progress-field]').forEach(select=>select.onchange=()=>updateProgressField(select));
@@ -1142,11 +1187,11 @@
     return `${schedule}｜${verificationProviderLabel(check)}｜${check.checkedAt?new Date(check.checkedAt).toLocaleString("zh-CN",{hour12:false}):"时间未知"}${warnings}`;
   }
   function verificationDetails(attendee) {
-    const checks=attendee.customFields?._travelVerification||{}; if(!checks.outbound&&!checks.return)return"";
+    const checks=attendee.customFields?._travelVerification||{}; if(!Object.keys(checks).length)return"";
     const card=(segment,label)=>{const check=checks[segment];if(!check)return`<div><small>${label}计划核验</small><strong>尚未核验</strong></div>`;const match=check.match;const source=(check.fingerprint!==TravelVerification.fingerprint(attendee,segment)?"旧核验记录（不适用于当前行程） · ":"")+verificationProviderLabel(check);const checked=check.checkedAt?new Date(check.checkedAt).toLocaleString("zh-CN",{hour12:false}):"时间未知";const reference=check.source?.referenceUrl?` · <a href="${escapeHtml(check.source.referenceUrl)}" target="_blank" rel="noopener">查看公开参考</a>`:"";return`<div><small>${label}计划核验</small><strong>${match?`${escapeHtml(match.departure||"—")} → ${escapeHtml(verifiedArrivalTime(match))}`:"未查询到计划时刻"}</strong><span>${escapeHtml(source)} · ${escapeHtml(checked)}${reference}</span></div>`;};
-    return `<div class="detail-grid verification-grid">${card("outbound","去程")}${card("return","返程")}</div>`;
+    const labels={outbound:0,return:0};return `<div class="detail-grid verification-grid">${verificationSegments(attendee).map(segment=>{const direction=TravelVerification.direction(segment),number=++labels[direction];return card(segment,`${direction==="return"?"返程":"去程"}第 ${number} 段`);}).join("")}</div>`;
   }
-  const verificationSegments = ["outbound","return"];
+  const verificationSegments = attendee => TravelVerification.segments(attendee);
   function verificationState(attendee,segment) {
     const check=attendee.customFields?._travelVerification?.[segment];
     const issues=TravelVerification.currentIssues(attendee,segment);
@@ -1172,7 +1217,7 @@
   async function verifyTravelAttendees(attendees,{allowPaid=false,selection=null}={}) {
     const meetingId=backendMeetingId;
     const isSelected=(attendee,segment)=>!selection||selection.has(verificationSelectionKey(attendee.id,segment));
-    const journeys=attendees.flatMap(attendee=>verificationSegments.filter(segment=>isSelected(attendee,segment)&&TravelVerification.hasJourney(attendee,segment)).map(segment=>{
+    const journeys=attendees.flatMap(attendee=>verificationSegments(attendee).filter(segment=>isSelected(attendee,segment)&&TravelVerification.hasJourney(attendee,segment)).map(segment=>{
       const data=TravelVerification.snapshot(attendee,segment);
       return {attendeeId:attendee.id,segment,...data,mode:TravelVerification.transportMode(data)};
     }));
@@ -1183,6 +1228,7 @@
       if(prior?.match&&prior.fingerprint===TravelVerification.fingerprint(attendee,journey.segment)&&age>=0&&age<15*60000){results.push({...journey,found:true,match:prior.match,source:prior.source,provider:prior.provider,warnings:prior.notices||[]});continue;}
       let warning='';
       if(journey.mode==='local')continue;
+      if(journey.mode==='flight'&&!allowPaid){results.push({...journey,found:false,skippedNoAuthorization:true,warnings:['本次未授权查询飞常准收费接口；未取得有效计划数据，暂不能确认核验通过']});continue;}
       if(!journey.number||!journey.date||!journey.from||!journey.to)warning='请补全日期、班次和具体场站';
       else if(journey.mode==='unknown')warning='航班或车次号有歧义，请人工确认交通类型和编号';
       if(warning){results.push({...journey,found:false,warnings:[warning]});continue;}
@@ -1217,9 +1263,9 @@
     }
     attendees.forEach(attendee=>{
       const checks={...(attendee.customFields?._travelVerification||{})};
-      verificationSegments.filter(segment=>isSelected(attendee,segment)).forEach(segment=>{
+      verificationSegments(attendee).filter(segment=>isSelected(attendee,segment)).forEach(segment=>{
         const result=results.find(item=>item.attendeeId===attendee.id&&item.segment===segment);
-        checks[segment]=TravelVerification.buildCheck(attendee,segment,{...(result||{found:false,warnings:[failure||'本段尚未查询']}),stationDictionary:stationDictionary()});
+        if(result?.skippedNoAuthorization)delete checks[segment];else checks[segment]=TravelVerification.buildCheck(attendee,segment,{...(result||{found:false,warnings:[failure||'本段尚未查询']}),stationDictionary:stationDictionary()});
       });
       const highlights=new Set(attendee.customFields?._travelVerifiedHighlights||[]);
       for(const [segment,check] of Object.entries(checks))if(check.status==="verified")Object.values(TravelVerification.keys(segment)).filter(field=>/Station$/.test(field)).forEach(field=>highlights.add(field));
@@ -1263,12 +1309,12 @@
     verificationRunning=true;
     const button=$("#verifyRosterButton");updateVerificationSelectionControls();
     try {
-      const attendeeIds=new Set([...selection].map(key=>key.slice(0,key.lastIndexOf(":"))));const attendees=activeVisibleAttendees().filter(attendee=>attendeeIds.has(String(attendee.id))).map(attendee=>({...attendee,customFields:{...(attendee.customFields||{}),_travelVerification:{...(attendee.customFields?._travelVerification||{})}}}));
+      const attendees=activeVisibleAttendees().filter(attendee=>[...selection].some(key=>key.startsWith(`${attendee.id}:`))).map(attendee=>({...attendee,customFields:{...(attendee.customFields||{}),_journeySegments:normalizedExtraJourneys(attendee.customFields?._journeySegments||[]),_travelVerification:{...(attendee.customFields?._travelVerification||{})}}}));
       const meetingId=backendMeetingId;
       const {failure}=await verifyTravelAttendees(attendees,{allowPaid:$("#verificationAllowPaid").checked,selection});
       if(meetingId!==backendMeetingId||attendees.some(attendee=>{
         const current=state.attendees.find(item=>item.id===attendee.id);
-        return !current||current.businessStatus==="cancelled"||verificationSegments.filter(segment=>selection.has(verificationSelectionKey(attendee.id,segment))).some(segment=>TravelVerification.fingerprint(current,segment)!==TravelVerification.fingerprint(attendee,segment));
+        return !current||current.businessStatus==="cancelled"||verificationSegments(attendee).filter(segment=>selection.has(verificationSelectionKey(attendee.id,segment))).some(segment=>TravelVerification.fingerprint(current,segment)!==TravelVerification.fingerprint(attendee,segment));
       }))throw new Error("核验期间会议或行程已变化，请重新核验");
       attendees.forEach(attendee=>{const current=state.attendees.find(item=>item.id===attendee.id);Object.assign(attendee,{...current,customFields:{...(current.customFields||{}),_travelVerification:attendee.customFields._travelVerification,_travelVerifiedHighlights:attendee.customFields._travelVerifiedHighlights||current.customFields?._travelVerifiedHighlights||[]}});});
       await persistVerifiedAttendees(attendees);
@@ -1438,30 +1484,33 @@
     const a = state.attendees.find(item => item.id === id); if (!a) return;
     const locked = isLocked(a); const canEdit = !locked && canEditAttendeeData() && (canManage() || isSystemAdmin() || a.ownerId === currentUser().id);
     $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">ATTENDEE DETAIL</span><h2>${escapeHtml(a.name)}</h2><p>${escapeHtml(a.hospital)} · ${escapeHtml(a.department)} · ${escapeHtml(userName(a.ownerId))}负责</p></div><div class="detail-body"><div class="detail-grid"><div class="detail-block"><small>手机号</small><strong>${escapeHtml(a.phone)}</strong></div><div class="detail-block"><small>客户编号</small><strong>${escapeHtml(a.hcpId)}</strong></div><div class="detail-block"><small>去程</small><strong>${escapeHtml(a.outNo)} · ${fmtDate(a.outDate)} ${escapeHtml(a.outDeparture)}</strong></div><div class="detail-block"><small>返程</small><strong>${escapeHtml(a.returnNo)} · ${fmtDate(a.returnDate)} ${escapeHtml(a.returnDeparture)}</strong></div><div class="detail-block"><small>去程路线</small><strong>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</strong></div><div class="detail-block"><small>返程路线</small><strong>${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</strong></div></div>${verificationDetails(a)}${a.risks.length ? `<div class="risk-preview warning">${a.risks.map(r => `△ ${escapeHtml(r)}`).join("<br>")}</div>` : `<div class="risk-preview ok">✓ 当前行程符合预设规则</div>`}<div class="detail-actions">${canEdit ? `<button class="button button-primary" id="editTripButton">修改行程</button>` : `<span class="status status-locked">${locked ? "名单已锁定" : "无修改权限"}</span>`}<button class="button button-secondary" id="closeDetailButton">关闭</button></div></div>`;
+    const extras=a.customFields?._journeySegments||[];if(extras.length){const counts={outbound:1,return:1},html=extras.map(item=>{const direction=item.direction==="return"?"return":"outbound",label=`${direction==="return"?"返程":"去程"}第 ${++counts[direction]} 段`;return `<div class="detail-block"><small>${escapeHtml(label)} · ${escapeHtml(TravelFields.TYPES[item.transportType]||item.transportType||"未选择")}</small><strong>${escapeHtml(item.number||"未填写")} · ${escapeHtml(item.departDate||"—")} ${escapeHtml(item.departure||"—")}</strong><span>${escapeHtml(item.departCity||"—")} / ${escapeHtml(TravelFields.displayStation(item.departStation,item.transportType,stationDictionary())||"—")} → ${escapeHtml(item.arriveCity||"—")} / ${escapeHtml(TravelFields.displayStation(item.arriveStation,item.transportType,stationDictionary())||"—")}</span></div>`;}).join("");$("#attendeeDetail .detail-grid").insertAdjacentHTML("afterend",`<div class="detail-grid extra-trip-detail-grid">${html}</div>`);}
     if(state.settings.transferCollectionEnabled){const block=`<div class="detail-grid transfer-detail-grid"><div class="detail-block"><small>去程送站地点</small><strong>${escapeHtml(a.outboundTransferOrigin||"未填写")}</strong></div><div class="detail-block"><small>预约送站时间</small><strong>${escapeHtml(a.outboundTransferTime||"未填写")}</strong></div><div class="detail-block"><small>去程送站备注</small><strong>${escapeHtml(a.outboundTransferNotes||"未填写")}</strong></div><div class="detail-block"><small>返程接站目的地</small><strong>${escapeHtml(a.returnTransferDestination||"未填写")}</strong></div><div class="detail-block"><small>预估接站时间</small><strong>${escapeHtml(a.returnTransferTime||"未填写")}</strong></div><div class="detail-block"><small>返程接站备注</small><strong>${escapeHtml(a.returnTransferNotes||"未填写")}</strong></div></div>`;$("#attendeeDetail .detail-body").insertAdjacentHTML("afterbegin",block);if(canEdit)$("#attendeeDetail .detail-actions").insertAdjacentHTML("afterbegin",'<button class="button button-secondary" id="editTransferCollectionButton">编辑接送信息</button>');}
     const dialog = $("#attendeeDialog"); dialog.showModal(); $("#closeDetailButton").onclick = () => dialog.close(); if (canEdit) $("#editTripButton").onclick = () => showTripEditor(a);if($("#editTransferCollectionButton"))$("#editTransferCollectionButton").onclick=()=>showTransferCollectionEditor(a);
   }
 
   function showTransferCollectionEditor(a){if(!canEditAttendeeData())return deny();const fields=[["outboundTransferOrigin","去程送站出发地点","text"],["outboundTransferTime","预约送站时间","datetime-local"],["outboundTransferNotes","去程送站备注","textarea"],["returnTransferDestination","返程接站送达目的地","text"],["returnTransferTime","预估接站时间","datetime-local"],["returnTransferNotes","返程接站备注","textarea"]];$("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">OPTIONAL TRANSFER</span><h2>编辑 ${escapeHtml(a.name)} 的接送信息</h2><p>全部选填，不参与行程真实性核验或审批。</p></div><form class="detail-body" id="transferCollectionEditForm"><div class="field-grid">${fields.map(([key,label,type])=>`<label class="${type==="textarea"?"span-2":""}">${label}${type==="textarea"?`<textarea name="${key}" rows="2">${escapeHtml(a[key]||"")}</textarea>`:`<input name="${key}" type="${type}" value="${escapeHtml(a[key]||"")}" />`}</label>`).join("")}</div><div class="detail-actions"><button class="button button-primary" type="submit">保存接送信息</button><button class="button button-secondary" type="button" id="cancelTransferCollectionEdit">取消</button></div></form>`;$("#cancelTransferCollectionEdit").onclick=()=>openAttendee(a.id);$("#transferCollectionEditForm").onsubmit=async event=>{event.preventDefault();Object.assign(a,Object.fromEntries(new FormData(event.currentTarget)));try{if(backend){const{error}=await backend.from("attendees").update({outbound_transfer_origin:a.outboundTransferOrigin||null,outbound_transfer_time:a.outboundTransferTime||null,outbound_transfer_notes:a.outboundTransferNotes||null,return_transfer_destination:a.returnTransferDestination||null,return_transfer_time:a.returnTransferTime||null,return_transfer_notes:a.returnTransferNotes||null}).eq("id",a.id);if(error)throw error;}addNotification("change",`${currentUser().name}更新了${a.name}的往返接送信息`);saveState();renderAll();openAttendee(a.id);toast("接送信息已保存");}catch(error){toast(error.message||"保存失败","error");}};}
 
-  function showTripEditor(a,{verification=false,segments=verificationSegments}={}) {
+  function showTripEditor(a,{verification=false,segments=null}={}) {
     if(!canEditAttendeeData())return deny();
-    const targetSegments=segments.filter(segment=>verificationSegments.includes(segment));
+    const baseline=structuredClone(a);
+    const targetSegments=(segments||verificationSegments(a)).filter(segment=>verificationSegments(a).includes(segment));
     const issues=targetSegments.flatMap(segment=>TravelVerification.currentIssues(a,segment));
     const notices=targetSegments.flatMap(segment=>verificationState(a,segment).notices);
     const fields=targetSegments.flatMap(segment=>Object.entries(TravelVerification.keys(segment)).map(([kind,key])=>{
-      const number=a[segment==="return"?"returnNo":"outNo"];
-      const transportType=["from","to"].includes(kind)?TravelFields.normalizeType(a[key.replace("Station","TransportType")],number):"";
+      const segmentData=TravelVerification.snapshot(a,segment),number=segmentData.number;
+      const transportType=["from","to"].includes(kind)?TravelFields.normalizeType(segmentData.departTransportType,number):"";
       const terminalMode=transportType==="HIGH_SPEED_RAIL"?"train":transportType==="PLANE"?"flight":"";
       const problems=issues.filter(issue=>issue.field===key);
-      const value=["from","to"].includes(kind)?verificationTerminalLabel(a[key],number,terminalMode):a[key]||"";
+      const rawValue=TravelVerification.getValue(a,key),value=["from","to"].includes(kind)?verificationTerminalLabel(rawValue,number,terminalMode):rawValue||"";
       const hint=problems.map(issue=>{
         const expected=issue.expected?(["from","to"].includes(kind)?verificationTerminalLabel(issue.expected,number,terminalMode):issue.expected):"";
         return issue.message+(expected?"；计划值："+expected:"");
       }).join("；");
       const issue=problems.length?`aria-invalid="true" aria-describedby="issue-${key}"`:"";
       let control;
-      if(/TransportType$/.test(key))control=`<select name="${key}" ${issue}><option value="">请选择</option>${Object.entries(TravelFields.TYPES).map(([type,label])=>`<option value="${type}" ${a[key]===type?"selected":""}>${label}</option>`).join("")}</select>`;
+      if(kind==="departTransportType")control=`<select name="${key}" ${issue}><option value="">请选择</option>${Object.entries(TravelFields.TYPES).map(([type,label])=>`<option value="${type}" ${rawValue===type?"selected":""}>${label}</option>`).join("")}</select>`;
+      else if(["from","to"].includes(kind)&&key.startsWith("extra::"))control=`<input name="${key}" type="text" value="${escapeHtml(value)}" ${issue}>`;
       else if(/Station$/.test(key)){const side=key.startsWith("returnDepart")?"returnDepart":key.startsWith("returnArrive")?"returnArrive":key.startsWith("depart")?"depart":"arrive";control=`<select data-station-select="${side}" hidden></select><input data-station-input="${side}" hidden ${issue}>`;}
       else control=`<input name="${key}" type="${["date","arriveDate"].includes(kind)?"date":["departure","arrival"].includes(kind)?"time":"text"}" value="${escapeHtml(value)}" ${issue}>`;
       return `<label class="${problems.length?"travel-problem-field":""}">${escapeHtml(FIELD_LABELS[key]||key)}${control}${problems.length?`<small id="issue-${key}" class="travel-field-issue">⚠ ${escapeHtml(hint)}</small>`:""}</label>`;
@@ -1470,7 +1519,8 @@
     $("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">EDIT TRAVEL</span><h2>修改 ${escapeHtml(a.name)} 的行程</h2><p>仅本次检出的异常字段标色；其他字段也可编辑。场站显示简称，保存及对外导出保留完整名称。</p></div><form class="detail-body" id="tripEditForm"><div class="risk-preview warning" role="status">${issues.length?"请检查下方标色字段。":"本次没有定位到具体异常字段。"}${escapeHtml([...new Set(notices)].join("；"))}</div><div class="trip-save-error lookup-error" role="alert"></div><div class="field-grid">${fields}</div>${paidRecheck}<div class="detail-actions"><button class="button button-primary" type="submit">${verification?"保存并重新核验":"保存人工修改"}</button><button class="button button-secondary" type="button" id="cancelEdit">取消</button></div></form>`;
     const form=$("#tripEditForm"),dialog=$("#attendeeDialog");
     bindJourneyForm(form,a);
-    const locked=key=>isFieldLocked(a,key.startsWith("return")?"return":"outbound")||isFieldLocked(a,key);
+    targetSegments.filter(segment=>segment.includes(":")).forEach(segment=>{const keys=TravelVerification.keys(segment),mode=form.elements[keys.departTransportType],from=form.elements[keys.from],to=form.elements[keys.to];if(!mode)return;const sync=clear=>{if(clear){from.value="";to.value="";}const local=mode.value==="LOCAL_ATTEND";from.disabled=to.disabled=local;if(local)from.value=to.value="";};mode.addEventListener("change",()=>sync(true));sync(false);});
+    const locked=key=>isFieldLocked(a,TravelVerification.direction(key.includes("extra::")?targetSegments.find(segment=>Object.values(TravelVerification.keys(segment)).includes(key))||"outbound":key))||isFieldLocked(a,key);
     $$("input,select",form).forEach(input=>{if(input.name)input.disabled=locked(input.name);});
     if($$("input,select",form).some(input=>input.disabled))form.insertAdjacentHTML("afterbegin",'<div class="risk-preview warning">部分字段已按名单锁定规则锁定；异常标色本身不会锁定字段。</div>');
     $("#cancelEdit").onclick=()=>{if(verification){dialog.close();renderTravelVerificationResults();}else openAttendee(a.id);};
@@ -1484,13 +1534,13 @@
       const preventClose=event=>event.preventDefault();dialog.addEventListener("cancel",preventClose);
       $(".trip-save-error",form).textContent="";
       try {
-        const fd=new FormData(form),allowPaidRecheck=verification&&fd.get("allowPaidRecheck")==="on",draft={...a,customFields:{...(a.customFields||{})}},changes=[],changedSegments=new Set();
+        const fd=new FormData(form),allowPaidRecheck=verification&&fd.get("allowPaidRecheck")==="on",draft={...a,customFields:{...(a.customFields||{}),_journeySegments:normalizedExtraJourneys(a.customFields?._journeySegments||[])}},changes=[],changedSegments=new Set();
         for(const segment of targetSegments){
           for(const [kind,key] of Object.entries(TravelVerification.keys(segment))){
             if(locked(key))continue;
             let next=String(fd.get(key)??"").trim();
-            if(["from","to"].includes(kind))next=TravelFields.officialStation(next,fd.get(key.replace("Station","TransportType"))||a[key.replace("Station","TransportType")],stationDictionary())||"";
-            if(next!==(a[key]||"")){draft[key]=next;changes.push({field:key,label:FIELD_LABELS[key]||key,before:a[key]||"未填写",after:next||"未填写"});changedSegments.add(segment);}
+            if(["from","to"].includes(kind))next=TravelFields.officialStation(next,fd.get(TravelVerification.keys(segment).departTransportType)||TravelVerification.snapshot(a,segment).departTransportType,stationDictionary())||"";
+            const previous=String(TravelVerification.getValue(a,key)||"");if(next!==previous){TravelVerification.setValue(draft,key,next);changes.push({field:key,label:FIELD_LABELS[key]||({date:"出发日期",departCity:"出发城市",departTransportType:"出行方式",from:"出发场站",arriveDate:"抵达日期",arriveCity:"抵达城市",to:"抵达场站",number:"航班 / 车次号",departure:"出发时间",arrival:"到达时间"}[kind]||key),before:previous||"未填写",after:next||"未填写"});changedSegments.add(segment);}
           }
         }
         TravelFields.applyLegacy(draft);
@@ -1498,7 +1548,8 @@
         draft.customFields._travelVerification={...(a.customFields?._travelVerification||{})};
         changedSegments.forEach(segment=>delete draft.customFields._travelVerification[segment]);
         if(changedSegments.size)refreshTravelApprovals(draft,changedSegments);
-        await persistVerifiedAttendees([draft],{baseline:a,edit:true,operator:currentUser().name});
+        await persistVerifiedAttendees([draft],{baseline,edit:true,operator:currentUser().name});
+        Object.assign(a,draft);
         if(verification){await verifyTravelAttendees([draft],{allowPaid:allowPaidRecheck,selection:new Set(targetSegments.map(segment=>verificationSelectionKey(draft.id,segment)))});await persistVerifiedAttendees([draft]);}
         Object.assign(a,draft);
         if(changes.length)addNotification("change",`${currentUser().name}修改了${a.name}的行程，共${changes.length}个字段`,{attendeeName:a.name,changes});
@@ -1579,9 +1630,9 @@
 
   function submitRegistration(event) {
     event.preventDefault(); if(!canEditAttendeeData())return toast("当前账号仅有查看权限，请由原始填报人修改或开启管理员编辑权限","error");if (state.locks.master) return toast("全名单已锁定，不能新增报名", "error");
-    const data = Object.fromEntries(new FormData(event.currentTarget)); TravelFields.applyLegacy(data); data.phone = normalizePhone(data.phone); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");
+    const data = Object.fromEntries(new FormData(event.currentTarget)); TravelFields.applyLegacy(data); data.arriveTransportType=data.departTransportType;data.returnArriveTransportType=data.returnDepartTransportType;data.phone = normalizePhone(data.phone); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");
     if (state.attendees.some(a => a.phone === data.phone)) return toast("该手机号已存在报名记录", "error");
-    data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); refreshTravelApprovals(data); data.privacyLetterStatus="pending"; data.ticketStatus="pending"; data.customFields={}; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point: "会议酒店大堂" } };
+    data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); refreshTravelApprovals(data); data.privacyLetterStatus="pending"; data.ticketStatus="pending"; data.customFields={_journeySegments:collectExtraJourneys(event.currentTarget)}; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time: `${data.outDate} ${data.outArrival}`, point: `${data.outTo}到达口` }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point: "会议酒店大堂" } };
     state.attendees.unshift(data); addNotification("create", `${currentUser().name}新增报名：${data.name} · ${data.venue}${data.risks.length ? "（行程待审批）" : ""}`); saveState(); event.currentTarget.reset(); bindJourneyForm(event.currentTarget); renderAll(); toast(data.risks.length ? "报名已保存，异常行程已提交审批" : "报名已保存"); location.hash = "attendees";
   }
 
@@ -1642,7 +1693,7 @@
     applyPublicFieldConfig(publicProjectConfig?.fieldConfig || {});
     bindJourneyForm(form,attendee||{});
     const updateTransferVisibility=()=>$("#publicTransferCollectionSection").classList.toggle("is-hidden",!transferCollectionAllowed(form.elements.attendeeType.value,publicProjectConfig));updateTransferVisibility();form.elements.attendeeType.oninput=updateTransferVisibility;
-    const locked=attendee?.businessStatus==="cancelled"||!!attendee?.rowLocked || !!publicProjectConfig?.masterLocked; form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=locked || input.readOnly); form.querySelector('button[type="submit"]').classList.toggle("is-hidden",locked);
+    const locked=attendee?.businessStatus==="cancelled"||!!attendee?.rowLocked || !!publicProjectConfig?.masterLocked; form.querySelectorAll("input,select,textarea").forEach(input=>input.disabled=locked || input.readOnly); form.querySelectorAll("[data-add-journey],[data-remove-journey]").forEach(button=>button.disabled=locked); form.querySelector('button[type="submit"]').classList.toggle("is-hidden",locked);
     $("#publicEditorTitle").textContent=attendee ? `${locked ? "查看" : "修改"}参会人员：${attendee.name}` : "新增参会人员";
     $("#publicFullRegistrationResult").innerHTML=""; $("#publicAttendeeEditor").classList.remove("is-hidden");
     $("#publicAttendeeEditor").scrollIntoView({behavior:"smooth",block:"start"});
@@ -1707,7 +1758,7 @@
   async function submitPublicFullRegistration(event) {
     event.preventDefault(); if (!publicAuthSession) return resetPublicRegistrationStep();
     const form = event.currentTarget; const result = $("#publicFullRegistrationResult"); const submit = form.querySelector('button[type="submit"]');
-    const details = Object.fromEntries(new FormData(form)); TravelFields.applyLegacy(details);
+    const details = Object.fromEntries(new FormData(form)); TravelFields.applyLegacy(details);details.arriveTransportType=details.departTransportType;details.returnArriveTransportType=details.returnDepartTransportType;details.journeySegments=collectExtraJourneys(form);
     details.customFields={}; Object.keys(details).filter(key=>key.startsWith("custom__")).forEach(key=>{ details.customFields[key.slice(8)]=details[key]; delete details[key]; });
     details.phone = normalizePhone(details.phone); details.region=publicAuthSession.region; details.contactName=publicAuthSession.name;details.contactMobile=normalizePhone(details.contactMobile);
     if (details.phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的参会人员手机号。</div>`; return; }
@@ -2031,7 +2082,7 @@
     if(!isSystemAdmin()&&!['ops','client','sales'].includes(currentUser().role))return toast("当前账号没有导出权限","error");
     const columns=(state.settings.registrationTemplate?.columns?.length?state.settings.registrationTemplate:standardTemplate()).columns;
     const existingKeys=new Set(columns.map(column=>column.key));const journeyColumns=JOURNEY_FORM_COLUMNS.filter(column=>!existingKeys.has(column.key));const exportColumns=[...columns,...journeyColumns];
-    const headers=[...exportColumns.map(column=>column.header),"去程送站出发地点","预约送站时间","去程送站备注","返程接站送达目的地","预估接站时间","返程接站备注","报名状态","隐私沟通函状态","去程审批状态","返程审批状态","出票状态","去程计划时刻核验","返程计划时刻核验"];
+    const headers=[...exportColumns.map(column=>column.header),"新增多段行程明细","新增多段行程核验","去程送站出发地点","预约送站时间","去程送站备注","返程接站送达目的地","预估接站时间","返程接站备注","报名状态","隐私沟通函状态","去程审批状态","返程审批状态","出票状态","去程计划时刻核验","返程计划时刻核验"];
     const progressLabels={pending:"未完成",electronic:"已完成（隐私沟通函电子版）",paper:"已完成（隐私沟通函纸质版）",processing:"出票中",ticketed:"已出票",changed:"改签",refunded:"已退票"};
     const segmentLabels={normal:"无需审批",pending:"待审批",approved:"已审批",rejected:"已退回"};
     const rows=visibleAttendees().map((a,i)=>[...exportColumns.map(column=>{
@@ -2041,7 +2092,7 @@
       if(/TransportType$/.test(column.key))return TravelFields.TYPES[a[column.key]]||a[column.key]||"";
       if(/Station$/.test(column.key))return TravelFields.officialStation(a[column.key],a[column.key.replace("Station","TransportType")],stationDictionary())||"";
       return column.custom ? a.customFields?.[column.key]||"" : a[column.key]||"";
-    }),a.outboundTransferOrigin||"",a.outboundTransferTime||"",a.outboundTransferNotes||"",a.returnTransferDestination||"",a.returnTransferTime||"",a.returnTransferNotes||"",a.businessStatus==="cancelled"?"已取消报名":"有效报名",progressLabels[a.privacyLetterStatus||"pending"],segmentLabels[segmentApproval(a,"outbound")],segmentLabels[segmentApproval(a,"return")],progressLabels[a.ticketStatus||"pending"],verificationExport(a.customFields?._travelVerification?.outbound,a,"outbound"),verificationExport(a.customFields?._travelVerification?.return,a,"return")]);
+    }),JSON.stringify(a.customFields?._journeySegments||[]),(a.customFields?._journeySegments||[]).map(item=>{const segment=`${item.direction==="return"?"return":"outbound"}:${item.id}`;return `${item.number||"未填写"}：${verificationExport(a.customFields?._travelVerification?.[segment],a,segment)}`;}).join("；"),a.outboundTransferOrigin||"",a.outboundTransferTime||"",a.outboundTransferNotes||"",a.returnTransferDestination||"",a.returnTransferTime||"",a.returnTransferNotes||"",a.businessStatus==="cancelled"?"已取消报名":"有效报名",progressLabels[a.privacyLetterStatus||"pending"],segmentLabels[segmentApproval(a,"outbound")],segmentLabels[segmentApproval(a,"return")],progressLabels[a.ticketStatus||"pending"],verificationExport(a.customFields?._travelVerification?.outbound,a,"outbound"),verificationExport(a.customFields?._travelVerification?.return,a,"return")]);
     if (window.XLSX) { const ws = XLSX.utils.aoa_to_sheet([headers,...rows]); ws["!cols"] = headers.map((_,i) => ({ wch: i === 0 ? 7 : 18 })); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"报名表"); XLSX.writeFile(wb,`${state.settings.slug||"项目"}-报名表-${new Date().toISOString().slice(0,10)}.xlsx`); toast("Excel 已按当前项目模板导出"); }
     else { const csv = [headers,...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n"); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob(["\ufeff",csv],{type:"text/csv"})); link.download = "HEMA-SEM-报名表.csv"; link.click(); toast("已导出兼容 Excel 的 CSV 文件"); }
   }

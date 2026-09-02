@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import {createRequire} from "node:module";
+import {readFile} from "node:fs/promises";
+const require=createRequire(import.meta.url),V=require("../travel-verification.js"),P=require("../travel-verification-panel.js");
+const attendee={id:"a1",name:"多段测试",region:"华东",departDate:"2026-09-03",departCity:"上海",departTransportType:"PLANE",departStation:"上海虹桥机场T2航站楼",arriveDate:"2026-09-03",arriveCity:"武汉",arriveTransportType:"PLANE",arriveStation:"武汉天河机场T2航站楼",outNo:"MU2501",outDeparture:"08:00",outArrival:"10:00",returnDepartDate:"2026-09-06",returnDepartCity:"大连",returnDepartTransportType:"HIGH_SPEED_RAIL",returnDepartStation:"大连北站",returnArriveDate:"2026-09-06",returnArriveCity:"北京",returnArriveTransportType:"HIGH_SPEED_RAIL",returnArriveStation:"北京南站",returnNo:"G3501",returnDeparture:"12:00",returnArrival:"16:00",customFields:{_journeySegments:[{id:"extra-out-001",direction:"outbound",departDate:"2026-09-03",departCity:"武汉",transportType:"HIGH_SPEED_RAIL",departStation:"武汉站",arriveDate:"2026-09-03",arriveCity:"长沙",arriveStation:"长沙南站",number:"G1001",departure:"12:00",arrival:"13:30"},{id:"extra-ret-001",direction:"return",departDate:"2026-09-06",departCity:"北京",transportType:"PLANE",departStation:"北京大兴机场",arriveDate:"2026-09-06",arriveCity:"上海",arriveStation:"上海浦东机场T2航站楼",number:"MU5102",departure:"18:00",arrival:"20:10"}]}};
+assert.deepEqual(V.segments(attendee),["outbound","outbound:extra-out-001","return","return:extra-ret-001"]);
+const extra=V.snapshot(attendee,"outbound:extra-out-001");assert.equal(extra.number,"G1001");assert.equal(extra.arriveTransportType,"HIGH_SPEED_RAIL");
+assert.equal(V.buildCheck(attendee,"outbound:extra-out-001",{found:true,mode:"train",match:extra}).status,"verified");
+const rendered=P.render([attendee],V,{selected:new Set(["a1:outbound:extra-out-001"])});assert.equal(rendered.selectableKeys.length,4);assert.match(rendered.html,/去程第 2 段/);assert.match(rendered.html,/返程第 2 段/);
+const html=await readFile(new URL("../index.html",import.meta.url),"utf8");assert.equal((html.match(/data-add-journey="outbound"/g)||[]).length,2);assert.equal((html.match(/data-add-journey="return"/g)||[]).length,2);assert.doesNotMatch(html,/抵达出行方式<select/);assert.doesNotMatch(html,/返程抵达方式<select/);
+console.log("PASS: multi-segment storage, labels, selection and single transport-type UI");

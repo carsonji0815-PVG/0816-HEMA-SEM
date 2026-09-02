@@ -38,6 +38,7 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
   const getCache=db.prepare('SELECT * FROM travel_api_cache WHERE cache_key=? AND expires_at>?');
   const putCache=db.prepare(`INSERT INTO travel_api_cache(cache_key,provider,request_json,response_json,status,fetched_at,expires_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET response_json=excluded.response_json,status=excluded.status,fetched_at=excluded.fetched_at,expires_at=excluded.expires_at`);
   const takeQuota=db.prepare('INSERT INTO travel_verification_usage(day,queries) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET queries=queries+1 WHERE queries<?');
+  const refundQuota=db.prepare('UPDATE travel_verification_usage SET queries=CASE WHEN queries>0 THEN queries-1 ELSE 0 END WHERE day=?');
   let queue=Promise.resolve();
   const status=()=>({version:2,train:{configured:railEnabled,provider:'12306 公共查询',providerId:'rail_12306'},flight:{configured:!!flightKey&&flightEnabled,provider:'飞常准',providerId:'variflight',dailyLimit:cap},manualReviewOnly:true});
   async function verifyOne(j,allowPaid){
@@ -55,9 +56,11 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
     const key=createHash('sha256').update(JSON.stringify({version:2,provider,...query})).digest('hex');
     const cached=getCache.get(key,new Date().toISOString());
     if(cached){try{return {...JSON.parse(cached.response_json),cached:true};}catch{/* Corrupt cache is never evidence. */}}
+    let quotaReserved=false;
     if(j.mode==='flight'){
       if(!allowPaid)return unavailable('本次未授权消耗飞常准额度');
       if(!cap||takeQuota.run(today(),cap).changes!==1)return unavailable('已达到服务器每日航班查询上限，未发起收费请求');
+      quotaReserved=true;
     }
     let result;
     try{
@@ -67,7 +70,7 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
       const selected=data.incomplete?{match:null,warnings:['结果不完整，不能确认唯一行程']}:chooseMatch(query,data.candidates||[]);
       const checkedAt=new Date().toISOString();
       result={...base,...selected,found:!!selected.match,source:{provider,label:j.mode==='flight'?'飞常准 · 公布计划时刻':'12306 · 日期限定查询',checkedAt,referenceUrl:j.mode==='flight'?'https://mcp.variflight.com/docs/tripmatch':'https://www.12306.cn/'}};
-    }catch(error){result=unavailable(error?.message||'数据源暂时不可用，未判定行程填写错误');}
+    }catch(error){if(quotaReserved)refundQuota.run(today());result=unavailable(error?.message||'数据源暂时不可用，未判定行程填写错误');}
     const now=Date.now();putCache.run(key,provider,JSON.stringify(query),JSON.stringify(result),result.found?'ok':'error',new Date(now).toISOString(),new Date(now+(result.found?15:5)*60000).toISOString());
     return result;
   }

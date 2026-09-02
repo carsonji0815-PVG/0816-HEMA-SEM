@@ -64,11 +64,12 @@ test('provider deduplicates, shares cache, and transmits only date / number',asy
  const again=await p.verifyBatch([j],{allowPaid:false});assert.equal(calls,1);assert.equal(again.results[0].cached,true);
  assert.ok(!database.prepare('SELECT request_json FROM travel_api_cache').get().request_json.includes('attendeeId'));database.close();
 });
-test('daily flight budget is persistent, enforced before request, and not retried',async()=>{
- const database=db();let calls=0;const options={env:{VARIFLIGHT_API_KEY:'synthetic',VARIFLIGHT_ENABLED:'true',VARIFLIGHT_DAILY_LIMIT:'1'},flightQuery:async()=>{calls++;throw new Error('不可用');}};
+test('failed provider calls release the local quota reservation; successful calls retain it',async()=>{
+ const database=db();let calls=0;const options={env:{VARIFLIGHT_API_KEY:'synthetic',VARIFLIGHT_ENABLED:'true',VARIFLIGHT_DAILY_LIMIT:'1'},flightQuery:async trip=>{calls++;if(calls===1)throw new Error('不可用');return {candidates:[{...candidate,code:trip.code}]};}};
  await createTravelProviders(database,options).verifyBatch([j],{allowPaid:true});
- const result=await createTravelProviders(database,options).verifyBatch([{...j,number:'MU5102'}],{allowPaid:true});
- assert.equal(calls,1);assert.match(result.results[0].warnings[0],/上限/);database.close();
+ const success=await createTravelProviders(database,options).verifyBatch([{...j,number:'MU5102'}],{allowPaid:true});
+ const blocked=await createTravelProviders(database,options).verifyBatch([{...j,number:'MU5103'}],{allowPaid:true});
+ assert.equal(calls,2);assert.equal(success.results[0].found,true);assert.match(blocked.results[0].warnings[0],/上限/);database.close();
 });
 test('historical and distant rail dates never hit live provider',async()=>{
  const database=db();let calls=0;const p=createTravelProviders(database,{env:{},trainQuery:async()=>{calls++;return {candidates:[]};}});

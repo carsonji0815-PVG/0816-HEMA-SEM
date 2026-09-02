@@ -33,15 +33,18 @@ export function chooseMatch(journey,candidates){
 export function createTravelProviders(db,{env=process.env,flightQuery=variflightSchedule,trainQuery=railSchedule}={}){
   const flightKey=text(env.VARIFLIGHT_API_KEY),flightEnabled=env.VARIFLIGHT_ENABLED==='true';
   const railEnabled=env.RAIL_12306_ENABLED!=='false';
-  const cap=Math.max(0,Math.min(100,Number(env.VARIFLIGHT_DAILY_LIMIT??5)||0));
+  const fallbackCap=Math.max(1,Math.min(10000,Math.trunc(Number(env.VARIFLIGHT_DAILY_LIMIT??5)||5)));
   db.exec('CREATE TABLE IF NOT EXISTS travel_verification_usage(day TEXT PRIMARY KEY, queries INTEGER NOT NULL DEFAULT 0)');
   const getCache=db.prepare('SELECT * FROM travel_api_cache WHERE cache_key=? AND expires_at>?');
   const putCache=db.prepare(`INSERT INTO travel_api_cache(cache_key,provider,request_json,response_json,status,fetched_at,expires_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET response_json=excluded.response_json,status=excluded.status,fetched_at=excluded.fetched_at,expires_at=excluded.expires_at`);
   const takeQuota=db.prepare('INSERT INTO travel_verification_usage(day,queries) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET queries=queries+1 WHERE queries<?');
+  const recordQuota=db.prepare('INSERT INTO travel_verification_usage(day,queries) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET queries=queries+1');
   const refundQuota=db.prepare('UPDATE travel_verification_usage SET queries=CASE WHEN queries>0 THEN queries-1 ELSE 0 END WHERE day=?');
+  const getUsage=db.prepare('SELECT queries FROM travel_verification_usage WHERE day=?');
   let queue=Promise.resolve();
-  const status=()=>({version:2,train:{configured:railEnabled,provider:'12306 公共查询',providerId:'rail_12306'},flight:{configured:!!flightKey&&flightEnabled,provider:'飞常准',providerId:'variflight',dailyLimit:cap},manualReviewOnly:true});
-  async function verifyOne(j,allowPaid){
+  const quotaPolicy=options=>({unlimited:options?.flightUnlimited===true,dailyLimit:Math.max(1,Math.min(10000,Math.trunc(Number(options?.flightDailyLimit)||fallbackCap)))});
+  const status=(options={})=>{const policy=quotaPolicy(options),usedToday=Number(getUsage.get(today())?.queries||0);return{version:2,train:{configured:railEnabled,provider:'12306 公共查询',providerId:'rail_12306'},flight:{configured:!!flightKey&&flightEnabled,provider:'飞常准',providerId:'variflight',dailyLimit:policy.unlimited?null:policy.dailyLimit,unlimited:policy.unlimited,usedToday,remaining:policy.unlimited?null:Math.max(0,policy.dailyLimit-usedToday)},manualReviewOnly:true};};
+  async function verifyOne(j,allowPaid,options){
     const provider=j.mode==='flight'?'variflight':'rail_12306',query={mode:j.mode,date:text(j.date),number:normCode(j.number),from:text(j.from),to:text(j.to)};
     const base={mode:j.mode,provider,requested:query,found:false,match:null,cached:false};
     const unavailable=message=>({...base,warnings:[message]});
@@ -59,7 +62,9 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
     let quotaReserved=false;
     if(j.mode==='flight'){
       if(!allowPaid)return unavailable('本次未授权消耗飞常准额度');
-      if(!cap||takeQuota.run(today(),cap).changes!==1)return unavailable('已达到服务器每日航班查询上限，未发起收费请求');
+      const policy=quotaPolicy(options);
+      if(policy.unlimited)recordQuota.run(today());
+      else if(takeQuota.run(today(),policy.dailyLimit).changes!==1)return unavailable('已达到服务器每日航班查询上限，未发起收费请求');
       quotaReserved=true;
     }
     let result;
@@ -74,7 +79,8 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
     const now=Date.now();putCache.run(key,provider,JSON.stringify(query),JSON.stringify(result),result.found?'ok':'error',new Date(now).toISOString(),new Date(now+(result.found?15:5)*60000).toISOString());
     return result;
   }
-  async function run(journeys,{allowPaid=false}={}){
+  async function run(journeys,options={}){
+    const {allowPaid=false}=options;
     if(!Array.isArray(journeys)||!journeys.length||journeys.length>200)throw Object.assign(new Error('请提交1至200条待核验行程'),{status:400});
     const groups=new Map(),results=[];
     for(const j of journeys){
@@ -84,7 +90,7 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
     // Frontend sends one unique trip per HTTP request to bound provider latency.
     if(groups.size>1)throw Object.assign(new Error('每次请求只接受一个去重后的行程，请分批核验'),{status:400});
     for(const group of groups.values()){
-      const result=await verifyOne(group[0],allowPaid===true);
+      const result=await verifyOne(group[0],allowPaid===true,options);
       group.forEach(j=>results.push({...result,attendeeId:text(j.attendeeId),segment:j.segment==='return'?'return':'outbound'}));
     }
     return {results,usage:{submitted:journeys.length,cacheHits:results.filter(r=>r.cached).length},providers:['rail_12306','variflight']};

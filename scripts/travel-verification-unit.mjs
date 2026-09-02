@@ -78,6 +78,14 @@ test('failed provider calls release the local quota reservation; successful call
  const blocked=await createTravelProviders(database,options).verifyBatch([{...j,number:'MU5103'}],{allowPaid:true});
  assert.equal(calls,2);assert.equal(success.results[0].found,true);assert.match(blocked.results[0].warnings[0],/上限/);database.close();
 });
+test('runtime quota policy supports a configured limit and unlimited mode',async()=>{
+ const database=db();let calls=0;const p=createTravelProviders(database,{env:{VARIFLIGHT_API_KEY:'synthetic',VARIFLIGHT_ENABLED:'true',VARIFLIGHT_DAILY_LIMIT:'5'},flightQuery:async trip=>{calls++;return{candidates:[{...candidate,code:trip.code}]};}});
+ await p.verifyBatch([{...j,number:'MU5201'}],{allowPaid:true,flightDailyLimit:1});
+ const blocked=await p.verifyBatch([{...j,number:'MU5202'}],{allowPaid:true,flightDailyLimit:1});
+ assert.match(blocked.results[0].warnings[0],/上限/);
+ const unlimited=await p.verifyBatch([{...j,number:'MU5203'}],{allowPaid:true,flightUnlimited:true});
+ assert.equal(unlimited.results[0].found,true);assert.equal(calls,2);assert.equal(p.status({flightUnlimited:true}).flight.unlimited,true);database.close();
+});
 test('historical and distant rail dates never hit live provider',async()=>{
  const database=db();let calls=0;const p=createTravelProviders(database,{env:{},trainQuery:async()=>{calls++;return {candidates:[]};}});
  for(const date of ['2020-01-01','2099-01-01']){const r=await p.verifyBatch([{...j,mode:'train',number:'G101',from:'北京南站',to:'上海虹桥站',date}]);assert.equal(r.results[0].found,false);}

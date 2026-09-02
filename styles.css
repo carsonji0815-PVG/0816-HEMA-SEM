@@ -618,6 +618,30 @@ table tbody tr:hover { background: #fff7f5; }
   background: #fff8f5;
 }
 
+/* Keep every global navigation item inside the viewport. */
+.sidebar {
+  height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.sidebar > .brand,
+.sidebar > .event-switcher,
+.sidebar > .sidebar-footer { flex: 0 0 auto; }
+.side-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 4px 14px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--lilly-red-25) transparent;
+}
+.side-nav::-webkit-scrollbar { width: 6px; }
+.side-nav::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--lilly-red-25); }
+.sidebar-footer { margin-top: 0; padding-top: 12px; }
+
 .button-primary,
 .page .button-primary { box-shadow: 0 10px 24px rgba(213,43,30,.2); }
 .button-primary:hover { background: #b82419; }

@@ -113,6 +113,7 @@
   let incompleteRosterOnly = false;
   let cancelledRosterView = false;
   const selectedAttendeeIds = new Set();
+  const selectedVerificationSegments = new Set();
   let backend = null;
   let backendMeetingId = null;
   let syncTimer = null;
@@ -1167,9 +1168,11 @@
     }
     localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
   }
-  async function verifyTravelAttendees(attendees,{allowPaid=false}={}) {
+  const verificationSelectionKey=(attendeeId,segment)=>`${attendeeId}:${segment}`;
+  async function verifyTravelAttendees(attendees,{allowPaid=false,selection=null}={}) {
     const meetingId=backendMeetingId;
-    const journeys=attendees.flatMap(attendee=>verificationSegments.filter(segment=>TravelVerification.hasJourney(attendee,segment)).map(segment=>{
+    const isSelected=(attendee,segment)=>!selection||selection.has(verificationSelectionKey(attendee.id,segment));
+    const journeys=attendees.flatMap(attendee=>verificationSegments.filter(segment=>isSelected(attendee,segment)&&TravelVerification.hasJourney(attendee,segment)).map(segment=>{
       const data=TravelVerification.snapshot(attendee,segment);
       return {attendeeId:attendee.id,segment,...data,mode:TravelVerification.transportMode(data)};
     }));
@@ -1212,8 +1215,8 @@
       $("#verificationProgress").textContent=`已处理 ${++completed} / ${groups.size} 个不重复行程；不会自动覆盖名单。`;
     }
     attendees.forEach(attendee=>{
-      const checks={};
-      verificationSegments.forEach(segment=>{
+      const checks={...(attendee.customFields?._travelVerification||{})};
+      verificationSegments.filter(segment=>isSelected(attendee,segment)).forEach(segment=>{
         const result=results.find(item=>item.attendeeId===attendee.id&&item.segment===segment);
         checks[segment]=TravelVerification.buildCheck(attendee,segment,{...(result||{found:false,warnings:[failure||'本段尚未查询']}),stationDictionary:stationDictionary()});
       });
@@ -1224,19 +1227,25 @@
     return {failure,cacheHits};
   }
   function renderVerificationPage() {
-    const result=TravelVerificationPanel.render(activeVisibleAttendees(),TravelVerification,{filter:$("#verificationFilter").value,query:$("#verificationSearch").value.trim(),canEdit:canManage()&&canEditAttendeeData(),isLocked});
+    const result=TravelVerificationPanel.render(activeVisibleAttendees(),TravelVerification,{filter:$("#verificationFilter").value,query:$("#verificationSearch").value.trim(),canEdit:canManage()&&canEditAttendeeData(),isLocked,selected:selectedVerificationSegments});
+    const selectable=new Set(result.selectableKeys);for(const key of [...selectedVerificationSegments])if(!selectable.has(key))selectedVerificationSegments.delete(key);
     $("#verificationPageSummary").innerHTML=result.summary;
     $("#verificationPageResults").innerHTML=result.html;
     $("#verificationNav").classList.toggle("is-hidden",!canManage());
-    $("#verifyRosterButton").disabled=verificationRunning||!canManage();
     $("#verificationAllowPaid").disabled=verificationRunning||!canManage();
+    const visible=new Set(result.visibleSelectableKeys),selectVisible=$("#verificationSelectVisible");
+    const syncVisibleSelection=()=>{const selectedVisible=[...visible].filter(key=>selectedVerificationSegments.has(key)).length;selectVisible.checked=visible.size>0&&selectedVisible===visible.size;selectVisible.indeterminate=selectedVisible>0&&selectedVisible<visible.size;};
+    $$('[data-select-verification]',$('#verificationPageResults')).forEach(input=>input.onchange=()=>{const key=verificationSelectionKey(input.dataset.selectVerification,input.dataset.selectSegment);input.checked?selectedVerificationSegments.add(key):selectedVerificationSegments.delete(key);input.closest('.verify-card')?.classList.toggle('verify-card-selected',input.checked);syncVisibleSelection();updateVerificationSelectionControls();});
+    syncVisibleSelection();selectVisible.disabled=verificationRunning||!canManage()||!visible.size;selectVisible.onchange=()=>{visible.forEach(key=>selectVisible.checked?selectedVerificationSegments.add(key):selectedVerificationSegments.delete(key));renderVerificationPage();};
+    updateVerificationSelectionControls();
     $$('[data-review-travel]',$("#verificationPageResults")).forEach(button=>button.onclick=()=>{
       const attendee=activeVisibleAttendees().find(item=>item.id===button.dataset.reviewTravel);
       if(!attendee||!canManage()||!canEditAttendeeData()||isLocked(attendee))return deny();
-      $("#attendeeDialog").showModal();showTripEditor(attendee,{verification:true});
+      $("#attendeeDialog").showModal();showTripEditor(attendee,{verification:true,segments:[button.dataset.reviewSegment]});
     });
     $$('[data-reset-travel]',$("#verificationPageResults")).forEach(button=>button.onclick=()=>resetTravelVerification(button.dataset.resetTravel,button.dataset.resetSegment));
   }
+  function updateVerificationSelectionControls(){const count=selectedVerificationSegments.size;$("#verificationSelectionCount").textContent=`已选 ${count} 段行程`;const button=$("#verifyRosterButton");button.textContent=verificationRunning?"⌛ 正在核验已选行程":`核验已选行程 (${count})`;button.disabled=verificationRunning||!canManage()||!count;}
   async function resetTravelVerification(attendeeId,segment){
     const attendee=activeVisibleAttendees().find(item=>item.id===attendeeId);if(!attendee||!canManage()||isLocked(attendee))return deny();
     if(!confirm(`确认重置${segment==="return"?"返程":"去程"}核验状态及持久高亮？`))return;
@@ -1249,25 +1258,26 @@
   let verificationRunning=false;
   async function auditRosterTravel() {
     if(!canManage()||verificationRunning)return deny();
+    const selection=new Set(selectedVerificationSegments);if(!selection.size)return toast("请先勾选需要核验的去程或返程","error");
     verificationRunning=true;
-    const button=$("#verifyRosterButton"),originalText=button.textContent;button.disabled=true;button.textContent="⌛ 正在核验计划时刻";
+    const button=$("#verifyRosterButton");updateVerificationSelectionControls();
     try {
-      const attendees=activeVisibleAttendees().map(attendee=>({...attendee,customFields:{...(attendee.customFields||{})}}));
+      const attendeeIds=new Set([...selection].map(key=>key.slice(0,key.lastIndexOf(":"))));const attendees=activeVisibleAttendees().filter(attendee=>attendeeIds.has(String(attendee.id))).map(attendee=>({...attendee,customFields:{...(attendee.customFields||{}),_travelVerification:{...(attendee.customFields?._travelVerification||{})}}}));
       const meetingId=backendMeetingId;
-      const {failure}=await verifyTravelAttendees(attendees,{allowPaid:$("#verificationAllowPaid").checked});
+      const {failure}=await verifyTravelAttendees(attendees,{allowPaid:$("#verificationAllowPaid").checked,selection});
       if(meetingId!==backendMeetingId||attendees.some(attendee=>{
         const current=state.attendees.find(item=>item.id===attendee.id);
-        return !current||current.businessStatus==="cancelled"||verificationSegments.some(segment=>TravelVerification.fingerprint(current,segment)!==TravelVerification.fingerprint(attendee,segment));
+        return !current||current.businessStatus==="cancelled"||verificationSegments.filter(segment=>selection.has(verificationSelectionKey(attendee.id,segment))).some(segment=>TravelVerification.fingerprint(current,segment)!==TravelVerification.fingerprint(attendee,segment));
       }))throw new Error("核验期间会议或行程已变化，请重新核验");
-      attendees.forEach(attendee=>{const current=state.attendees.find(item=>item.id===attendee.id);Object.assign(attendee,{...current,customFields:{...(current.customFields||{}),_travelVerification:attendee.customFields._travelVerification}});});
+      attendees.forEach(attendee=>{const current=state.attendees.find(item=>item.id===attendee.id);Object.assign(attendee,{...current,customFields:{...(current.customFields||{}),_travelVerification:attendee.customFields._travelVerification,_travelVerifiedHighlights:attendee.customFields._travelVerifiedHighlights||current.customFields?._travelVerifiedHighlights||[]}});});
       await persistVerifiedAttendees(attendees);
       attendees.forEach(attendee=>{const current=state.attendees.find(item=>item.id===attendee.id);if(current)current.customFields=attendee.customFields;});
-      addNotification("change",`${currentUser().name}完成行程真实性核验；未触发审批`);
+      addNotification("change",`${currentUser().name}完成${selection.size}段已选行程真实性核验；未触发审批`);
       localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
-      renderAll();renderTravelVerificationResults();
+      selectedVerificationSegments.clear();renderAll();renderTravelVerificationResults();
       if(failure)toast(failure,"error");
     } catch(error) {toast(`核验结果尚未保存：${error.message}`,"error");}
-    finally {verificationRunning=false;button.disabled=!canManage();button.textContent=originalText;$("#verificationAllowPaid").checked=false;$("#verificationAllowPaid").disabled=!canManage();}
+    finally {verificationRunning=false;$("#verificationAllowPaid").checked=false;$("#verificationAllowPaid").disabled=!canManage();updateVerificationSelectionControls();}
   }
 
   function timeBucket(value,minutes) {
@@ -1433,11 +1443,12 @@
 
   function showTransferCollectionEditor(a){if(!canEditAttendeeData())return deny();const fields=[["outboundTransferOrigin","去程送站出发地点","text"],["outboundTransferTime","预约送站时间","datetime-local"],["outboundTransferNotes","去程送站备注","textarea"],["returnTransferDestination","返程接站送达目的地","text"],["returnTransferTime","预估接站时间","datetime-local"],["returnTransferNotes","返程接站备注","textarea"]];$("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">OPTIONAL TRANSFER</span><h2>编辑 ${escapeHtml(a.name)} 的接送信息</h2><p>全部选填，不参与行程真实性核验或审批。</p></div><form class="detail-body" id="transferCollectionEditForm"><div class="field-grid">${fields.map(([key,label,type])=>`<label class="${type==="textarea"?"span-2":""}">${label}${type==="textarea"?`<textarea name="${key}" rows="2">${escapeHtml(a[key]||"")}</textarea>`:`<input name="${key}" type="${type}" value="${escapeHtml(a[key]||"")}" />`}</label>`).join("")}</div><div class="detail-actions"><button class="button button-primary" type="submit">保存接送信息</button><button class="button button-secondary" type="button" id="cancelTransferCollectionEdit">取消</button></div></form>`;$("#cancelTransferCollectionEdit").onclick=()=>openAttendee(a.id);$("#transferCollectionEditForm").onsubmit=async event=>{event.preventDefault();Object.assign(a,Object.fromEntries(new FormData(event.currentTarget)));try{if(backend){const{error}=await backend.from("attendees").update({outbound_transfer_origin:a.outboundTransferOrigin||null,outbound_transfer_time:a.outboundTransferTime||null,outbound_transfer_notes:a.outboundTransferNotes||null,return_transfer_destination:a.returnTransferDestination||null,return_transfer_time:a.returnTransferTime||null,return_transfer_notes:a.returnTransferNotes||null}).eq("id",a.id);if(error)throw error;}addNotification("change",`${currentUser().name}更新了${a.name}的往返接送信息`);saveState();renderAll();openAttendee(a.id);toast("接送信息已保存");}catch(error){toast(error.message||"保存失败","error");}};}
 
-  function showTripEditor(a,{verification=false}={}) {
+  function showTripEditor(a,{verification=false,segments=verificationSegments}={}) {
     if(!canEditAttendeeData())return deny();
-    const issues=verificationSegments.flatMap(segment=>TravelVerification.currentIssues(a,segment));
-    const notices=verificationSegments.flatMap(segment=>verificationState(a,segment).notices);
-    const fields=verificationSegments.flatMap(segment=>Object.entries(TravelVerification.keys(segment)).map(([kind,key])=>{
+    const targetSegments=segments.filter(segment=>verificationSegments.includes(segment));
+    const issues=targetSegments.flatMap(segment=>TravelVerification.currentIssues(a,segment));
+    const notices=targetSegments.flatMap(segment=>verificationState(a,segment).notices);
+    const fields=targetSegments.flatMap(segment=>Object.entries(TravelVerification.keys(segment)).map(([kind,key])=>{
       const number=a[segment==="return"?"returnNo":"outNo"];
       const problems=issues.filter(issue=>issue.field===key);
       const value=["from","to"].includes(kind)?verificationTerminalLabel(a[key],number):a[key]||"";
@@ -1452,7 +1463,8 @@
       else control=`<input name="${key}" type="${["date","arriveDate"].includes(kind)?"date":["departure","arrival"].includes(kind)?"time":"text"}" value="${escapeHtml(value)}" ${issue}>`;
       return `<label class="${problems.length?"travel-problem-field":""}">${escapeHtml(FIELD_LABELS[key]||key)}${control}${problems.length?`<small id="issue-${key}" class="travel-field-issue">⚠ ${escapeHtml(hint)}</small>`:""}</label>`;
     })).join("");
-    $("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">EDIT TRAVEL</span><h2>修改 ${escapeHtml(a.name)} 的行程</h2><p>仅本次检出的异常字段标色；其他字段也可编辑。场站显示简称，保存及对外导出保留完整名称。</p></div><form class="detail-body" id="tripEditForm"><div class="risk-preview warning" role="status">${issues.length?"请检查下方标色字段。":"本次没有定位到具体异常字段。"}${escapeHtml([...new Set(notices)].join("；"))}</div><div class="trip-save-error lookup-error" role="alert"></div><div class="field-grid">${fields}</div><div class="detail-actions"><button class="button button-primary" type="submit">${verification?"保存并重新核验":"保存人工修改"}</button><button class="button button-secondary" type="button" id="cancelEdit">取消</button></div></form>`;
+    const paidRecheck=verification?`<label class="verify-recheck-paid"><input type="checkbox" name="allowPaidRecheck"><span><strong>本次允许查询飞常准</strong><small>仅在存在新航班查询时消耗额度；单次最多查询 1 个不同航班。</small></span></label>`:"";
+    $("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">EDIT TRAVEL</span><h2>修改 ${escapeHtml(a.name)} 的行程</h2><p>仅本次检出的异常字段标色；其他字段也可编辑。场站显示简称，保存及对外导出保留完整名称。</p></div><form class="detail-body" id="tripEditForm"><div class="risk-preview warning" role="status">${issues.length?"请检查下方标色字段。":"本次没有定位到具体异常字段。"}${escapeHtml([...new Set(notices)].join("；"))}</div><div class="trip-save-error lookup-error" role="alert"></div><div class="field-grid">${fields}</div>${paidRecheck}<div class="detail-actions"><button class="button button-primary" type="submit">${verification?"保存并重新核验":"保存人工修改"}</button><button class="button button-secondary" type="button" id="cancelEdit">取消</button></div></form>`;
     const form=$("#tripEditForm"),dialog=$("#attendeeDialog");
     bindJourneyForm(form,a);
     const locked=key=>isFieldLocked(a,key.startsWith("return")?"return":"outbound")||isFieldLocked(a,key);
@@ -1469,9 +1481,9 @@
       const preventClose=event=>event.preventDefault();dialog.addEventListener("cancel",preventClose);
       $(".trip-save-error",form).textContent="";
       try {
-        const fd=new FormData(form),draft={...a,customFields:{...(a.customFields||{})}},changes=[],changedSegments=new Set();
+        const fd=new FormData(form),allowPaidRecheck=verification&&fd.get("allowPaidRecheck")==="on",draft={...a,customFields:{...(a.customFields||{})}},changes=[],changedSegments=new Set();
         const candidates=verificationSegments.flatMap(segment=>{const match=a.customFields?._travelVerification?.[segment]?.match;return[match?.from,match?.to];});
-        for(const segment of verificationSegments){
+        for(const segment of targetSegments){
           for(const [kind,key] of Object.entries(TravelVerification.keys(segment))){
             if(locked(key))continue;
             let next=String(fd.get(key)??"").trim();
@@ -1486,13 +1498,13 @@
         changedSegments.forEach(segment=>delete draft.customFields._travelVerification[segment]);
         if(changedSegments.size)refreshTravelApprovals(draft,changedSegments);
         await persistVerifiedAttendees([draft],{baseline:a,edit:true,operator:currentUser().name});
-        if(verification){await verifyTravelAttendees([draft],{allowPaid:false});await persistVerifiedAttendees([draft]);}
+        if(verification){await verifyTravelAttendees([draft],{allowPaid:allowPaidRecheck,selection:new Set(targetSegments.map(segment=>verificationSelectionKey(draft.id,segment)))});await persistVerifiedAttendees([draft]);}
         Object.assign(a,draft);
         if(changes.length)addNotification("change",`${currentUser().name}修改了${a.name}的行程，共${changes.length}个字段`,{attendeeName:a.name,changes});
         localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
         renderAll();renderTravelVerificationResults();
-        const remaining=verificationSegments.flatMap(segment=>TravelVerification.currentIssues(a,segment));
-        if(verification&&remaining.length){showTripEditor(a,{verification:true});toast("已保存并重新核验，请继续修改标色字段","error");}
+        const remaining=targetSegments.flatMap(segment=>TravelVerification.currentIssues(a,segment));
+        if(verification&&remaining.length){showTripEditor(a,{verification:true,segments:targetSegments});toast("已保存并重新核验，请继续修改标色字段","error");}
         else{dialog.close();toast(verification?"已保存并重新核验":"已保存人工修改；变更的行程待重新核验");}
       }catch(error){
         $(".trip-save-error",form).textContent=`保存或重新核验未完成：${error.message}。请重试，当前未确认核验通过。`;

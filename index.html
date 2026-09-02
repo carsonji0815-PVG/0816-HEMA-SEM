@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260902-public-entry-fixes-01" />
+    <link rel="stylesheet" href="styles.css?v=20260902-verification-select-01" />
     <script src="assets/vendor/qrcode.min.js" defer></script>
     <script src="assets/vendor/xlsx.full.min.js" defer></script>
     <script src="assets/vendor/jszip.min.js" defer></script>
@@ -27,8 +27,8 @@
     <script src="travel-fields.js?v=20260901-journey-fields-01" defer></script>
     <script src="travel-verification.js?v=20260901-journey-fields-01" defer></script>
     <script src="travel-verification-storage.js?v=20260831-verification-02" defer></script>
-    <script src="travel-verification-panel.js?v=20260831-verification-02" defer></script>
-    <script src="app.js?v=20260902-public-entry-fixes-01" defer></script>
+    <script src="travel-verification-panel.js?v=20260902-verification-select-01" defer></script>
+    <script src="app.js?v=20260902-verification-select-01" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -311,10 +311,10 @@
           </section>
 
           <section class="page" data-page="verification">
-            <div class="page-heading heading-with-action"><div><span class="eyebrow">TRAVEL VERIFICATION</span><h1>行程核验</h1><p>直接读取本项目参会名单的去程与返程。只标注差异，由会务负责人审核修改。</p></div><button class="button button-primary" id="verifyRosterButton">查询并核验名单</button></div>
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">TRAVEL VERIFICATION</span><h1>行程核验</h1><p>直接读取本项目参会名单的去程与返程。只核验已勾选行程，未勾选人员不会调用数据源。</p></div><button class="button button-primary" id="verifyRosterButton" disabled>核验已选行程 (0)</button></div>
             <div class="panel verify-help"><strong>同一份名单，无需重复导入</strong><p>红色：与计划数据有差异；黄色：需补全或人工确认；灰色：未查询、接口不可用或日期尚不可查。查不到不等于填写错误。核验不代表已出票。</p><label><input type="checkbox" id="verificationAllowPaid"> 本次允许飞常准查询（可能消耗账户额度；每次最多 1 个新的航班查询）</label><p id="verificationProviderStatus">密钥仅由服务器保存。未勾选时航班只做本地检查，不发起收费查询；高铁按已接入数据源查询。</p></div>
             <div id="verificationPageSummary" class="verification-summary verify-summary-grid" aria-live="polite"></div>
-            <div class="verify-toolbar"><label>核验状态 <select id="verificationFilter"><option value="all">全部有效行程</option><option value="difference">计划有差异</option><option value="review">需人工确认</option><option value="pending">待核验 / 待重查</option><option value="verified">核验通过</option><option value="blank">未提供行程</option></select></label><label>搜索 <input id="verificationSearch" type="search" placeholder="姓名、班次、日期或场站"></label></div>
+            <div class="verify-toolbar"><label>核验状态 <select id="verificationFilter"><option value="all">全部有效行程</option><option value="difference">计划有差异</option><option value="review">需人工确认</option><option value="pending">待核验 / 待重查</option><option value="verified">核验通过</option><option value="blank">未提供行程</option></select></label><label>搜索 <input id="verificationSearch" type="search" placeholder="姓名、班次、日期或场站"></label><label class="verify-select-visible"><input type="checkbox" id="verificationSelectVisible"> 勾选当前列表</label><strong id="verificationSelectionCount">已选 0 段行程</strong></div>
             <p id="verificationProgress" role="status"></p><div id="verificationPageResults" class="verification-result-list"></div>
           </section>
 

@@ -18,7 +18,7 @@ for(let page=0;page<30;page++){
   const response=await fetch(url,{signal:AbortSignal.timeout(30000)});
   if(!response.ok)continue;
   const html=await response.text();
-  for(const match of html.matchAll(/<td[^>]*>\s*([^<>\r\n]{2,40}机场)\s*<\/td>/gu))airportNames.add(clean(match[1]));
+  for(const match of html.matchAll(/<td[^>]*>\s*([^<>\r\n]{2,40}机场)\s*<\/td>/gu))airportNames.add(clean(match[1]).replace(/国际(?=机场)/gu,""));
 }
 if(airportNames.size<200)throw new Error(`CAAC airport scrape incomplete: ${airportNames.size}`);
 
@@ -26,10 +26,10 @@ const airportCityOverrides={
   "阿里昆莎机场":"阿里","阿里普兰机场":"阿里","陇南成县机场":"陇南","黔江武陵山机场":"重庆","重庆仙女山机场":"重庆","重庆巫山机场":"重庆","大兴安岭鄂伦春机场":"大兴安岭","神农架红坪机场":"神农架","湘西边城机场":"湘西","甘孜格萨尔机场":"甘孜","甘孜甘孜机场":"甘孜","甘孜康定机场":"甘孜","甘孜稻城亚丁机场":"甘孜"
 };
 const terminalOverrides={
-  "北京首都国际机场":["T1","T2","T3"],"上海虹桥国际机场":["T1","T2"],"上海浦东国际机场":["T1","T2"],"广州白云国际机场":["T1","T2"],"深圳宝安国际机场":["T3"],"成都双流国际机场":["T1","T2"],"成都天府国际机场":["T1","T2"],"重庆江北国际机场":["T2","T3"],"昆明长水国际机场":["T1"],"西安咸阳国际机场":["T2","T3"],"杭州萧山国际机场":["T3","T4"],"南京禄口国际机场":["T1","T2"],"厦门高崎国际机场":["T3","T4"],"武汉天河国际机场":["T2","T3"],"长沙黄花国际机场":["T1","T2"],"郑州新郑国际机场":["T2"],"青岛胶东国际机场":["T1"],"天津滨海国际机场":["T1","T2"],"沈阳桃仙国际机场":["T3"],"哈尔滨太平国际机场":["T1","T2"],"海口美兰国际机场":["T1","T2"],"三亚凤凰国际机场":["T1","T2"],"乌鲁木齐天山国际机场":["T1","T2","T3","T4"]
+  "北京首都机场":["T1","T2","T3"],"上海虹桥机场":["T1","T2"],"上海浦东机场":["T1","T2"],"广州白云机场":["T1","T2"],"深圳宝安机场":["T3"],"成都双流机场":["T1","T2"],"成都天府机场":["T1","T2"],"重庆江北机场":["T2","T3"],"昆明长水机场":["T1"],"西安咸阳机场":["T2","T3"],"杭州萧山机场":["T3","T4"],"南京禄口机场":["T1","T2"],"厦门高崎机场":["T3","T4"],"武汉天河机场":["T2","T3"],"长沙黄花机场":["T1","T2"],"郑州新郑机场":["T2"],"青岛胶东机场":["T1"],"天津滨海机场":["T1","T2"],"沈阳桃仙机场":["T3"],"哈尔滨太平机场":["T1","T2"],"海口美兰机场":["T1","T2"],"三亚凤凰机场":["T1","T2"],"乌鲁木齐天山机场":["T1","T2","T3","T4"]
 };
-const cityForAirport=name=>airportCityOverrides[name]||cities.find(city=>name.startsWith(city))||clean(name.replace(/国际机场$|机场$/u,"")).slice(0,12);
-const shortAirport=name=>clean(name.replace(/国际机场/gu,"").replace(/机场/gu,"").replace(/T(\d+)航站楼$/u," T$1"));
+const cityForAirport=name=>airportCityOverrides[name]||cities.find(city=>name.startsWith(city))||clean(name.replace(/机场$/u,"")).slice(0,12);
+const shortAirport=name=>clean(name.replace(/机场/gu,"").replace(/T(\d+)航站楼$/u," T$1"));
 const airportRows=[...airportNames].flatMap(name=>(terminalOverrides[name]||[""]).map(terminal=>({city:cityForAirport(name),name:terminal?`${name}${terminal}航站楼`:name,shortName:shortAirport(terminal?`${name}${terminal}航站楼`:name)}))).filter(row=>row.city);
 
 const acceptanceRail=[

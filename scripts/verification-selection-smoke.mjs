@@ -7,7 +7,7 @@ const panel=require("../travel-verification-panel.js");
 const attendees=[{id:"person-1",name:"测试人员",region:"华东大区",outNo:"MU1001",returnNo:"",customFields:{}}];
 const V={
   viewState:(_attendee,segment)=>segment==="outbound"?"pending":"blank",
-  snapshot:(_attendee,segment)=>segment==="outbound"?{number:"MU1001",date:"2026-09-03",from:"上海虹桥国际机场",to:"大连周水子国际机场"}:{},
+  snapshot:(_attendee,segment)=>segment==="outbound"?{number:"MU1001",date:"2026-09-03",from:"上海虹桥机场",to:"大连周水子机场"}:{},
   currentIssues:()=>[],
   keys:segment=>segment==="outbound"?{date:"outDate",departCity:"departCity",departTransportType:"departTransportType",from:"outFrom",arriveDate:"arriveDate",arriveCity:"arriveCity",arriveTransportType:"arriveTransportType",to:"outTo",number:"outNo",departure:"outDeparture",arrival:"outArrival"}:{date:"returnDate",departCity:"returnDepartCity",departTransportType:"returnDepartTransportType",from:"returnFrom",arriveDate:"returnArriveDate",arriveCity:"returnArriveCity",arriveTransportType:"returnArriveTransportType",to:"returnTo",number:"returnNo",departure:"returnDeparture",arrival:"returnArrival"}
 };

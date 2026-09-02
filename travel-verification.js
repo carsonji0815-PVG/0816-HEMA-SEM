@@ -30,6 +30,7 @@
     if(!identity)return {different:true};
     const a=declared.match(/T\d+[A-Z]?$/)?.[0],b=expected.match(/T\d+[A-Z]?$/)?.[0];
     if(a&&b&&a!==b)return {different:true};
+    if(!a&&!b)return{};
     return !a||!b?{notice:'机场相符，航站楼信息尚未完整确认'}:{};
   }
   function localIssues(attendee,segment){

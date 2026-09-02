@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {validDate,normCode,today,railStation} from './core.mjs';
-import {airport,terminal} from './airports.mjs';
+import {airport,terminal,rawTerminal} from './airports.mjs';
 import {variflightSchedule} from './variflight.mjs';
 import {railSchedule} from './rail.mjs';
 
@@ -19,8 +19,8 @@ export function chooseMatch(journey,candidates){
   if(c.cancelled||c.diverted||c.virtual)return {match:null,warnings:['班次存在取消、备降、返航或虚拟标记，请人工核实']};
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(c.depart||'')||!/^([01]\d|2[0-3]):[0-5]\d$/.test(c.arrive||'')||!validDate(c.arrivalDate)||c.arrivalDate<c.date||!c.from||!c.to)return {match:null,warnings:['计划字段不完整，暂不能确认通过']};
   const flight=journey.mode==='flight',warnings=[];
-  if(flight&&!c.departureTerminal)warnings.push('接口未返回出发航站楼，航站楼待确认');
-  if(flight&&!c.arrivalTerminal)warnings.push('接口未返回抵达航站楼，航站楼待确认');
+  if(flight&&!c.departureTerminal&&rawTerminal(journey.from))warnings.push('接口未返回出发航站楼，航站楼待确认');
+  if(flight&&!c.arrivalTerminal&&rawTerminal(journey.to))warnings.push('接口未返回抵达航站楼，航站楼待确认');
   return {match:{date:c.date,departureDate:c.date,arrivalDate:c.arrivalDate,number:c.code,
     from:flight?label(c.from,c.fromName,c.departureTerminal):c.from+'站',to:flight?label(c.to,c.toName,c.arrivalTerminal):c.to+'站',
     fromCode:flight?c.from:'',toCode:flight?c.to:'',fromCity:CITY[c.from]||'',toCity:CITY[c.to]||'',

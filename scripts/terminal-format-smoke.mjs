@@ -5,11 +5,11 @@ const browser=await chromium.launch({headless:true,executablePath:"/Applications
 const page=await browser.newPage();const errors=[];page.on("pageerror",error=>errors.push(error.message));
 await page.goto("http://127.0.0.1:4173/?preview=terminal#attendees",{waitUntil:"domcontentloaded"});
 const labels=await page.evaluate(()=>{const format=window.__verificationTerminalLabel;return[
-  format("上海虹桥国际机场T2航站楼","MU5101","flight"),
-  format("南通兴东国际机场T3航站楼","ZH1234","flight"),
-  format("银川河东国际机场 T3","CA1234","flight"),
-  format("北京首都国际机场2号航站楼","CA1234","flight"),
-  format("北京大兴国际机场","CZ1234","flight"),
+  format("上海虹桥机场T2航站楼","MU5101","flight"),
+  format("南通兴东机场T3航站楼","ZH1234","flight"),
+  format("银川河东机场 T3","CA1234","flight"),
+  format("北京首都机场2号航站楼","CA1234","flight"),
+  format("北京大兴机场","CZ1234","flight"),
   format("上海虹桥","G1651","train"),
   format("福州南","G1651","train"),
 ];});

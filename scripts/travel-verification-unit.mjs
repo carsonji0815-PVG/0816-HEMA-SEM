@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createTravelProviders,chooseMatch} from '../modules/travel-verification/server/index.mjs';
 import {today} from '../modules/travel-verification/server/core.mjs';
 const require=createRequire(import.meta.url),F=require('../travel-fields.js'),V=require('../travel-verification.js'),P=require('../travel-verification-panel.js'),S=require('../travel-verification-storage.js');
-const a=F.applyLegacy({id:'a',name:'测试记录',departDate:today(),departCity:'上海',departTransportType:'PLANE',departStation:'上海虹桥国际机场T2航站楼',arriveDate:today(),arriveCity:'北京',arriveTransportType:'PLANE',arriveStation:'北京首都国际机场T3航站楼',outNo:'MU5101',outDeparture:'09:00',outArrival:'11:00'});
+const a=F.applyLegacy({id:'a',name:'测试记录',departDate:today(),departCity:'上海',departTransportType:'PLANE',departStation:'上海虹桥机场T2航站楼',arriveDate:today(),arriveCity:'北京',arriveTransportType:'PLANE',arriveStation:'北京首都机场T3航站楼',outNo:'MU5101',outDeparture:'09:00',outArrival:'11:00'});
 const plan=V.snapshot(a,'outbound');
 const candidate={code:'MU5101',date:today(),arrivalDate:today(),from:'SHA',to:'PEK',depart:'09:30',arrive:'11:30',departureTerminal:'T2',arrivalTerminal:'T3'};
 const j={attendeeId:'a',segment:'outbound',mode:'flight',date:today(),number:'MU5101',from:a.outFrom,to:a.outTo,departure:'09:00',arrival:'11:00'};
@@ -27,9 +27,16 @@ test('city and missing terminal are uncertainty; wrong terminal is a discrepancy
  const match={...plan,fromCode:'SHA',fromCity:'上海'};
  assert.equal(V.buildCheck({...a,departStation:'上海'},'outbound',{found:true,match}).fieldIssues.length,0);
  assert.equal(V.buildCheck({...a,departStation:'SHA'},'outbound',{found:true,match}).status,'unavailable');
- assert.equal(V.buildCheck({...a,departStation:'上海虹桥国际机场T1航站楼'},'outbound',{found:true,match}).fieldIssues[0].field,'departStation');
+ assert.equal(V.buildCheck({...a,departStation:'上海虹桥机场T1航站楼'},'outbound',{found:true,match}).fieldIssues[0].field,'departStation');
  const missing=V.buildCheck(a,'outbound',{found:true,match:{...match,from:'上海虹桥机场'},warnings:['接口未返回出发航站楼']});
  assert.equal(missing.fieldIssues.length,0);assert.equal(missing.status,'unavailable');
+});
+test('an airport without a terminal number is fully matched without a terminal warning',()=>{
+ const attendee=F.applyLegacy({id:'d',departDate:today(),departCity:'大连',departTransportType:'PLANE',departStation:'大连周水子机场',arriveDate:today(),arriveCity:'上海',arriveTransportType:'PLANE',arriveStation:'上海虹桥机场T2航站楼',outNo:'MU5698',outDeparture:'18:45',outArrival:'20:55'});
+ const match={date:today(),arrivalDate:today(),number:'MU5698',from:'大连周水子机场',to:'上海虹桥机场T2航站楼',fromCode:'DLC',toCode:'SHA',fromCity:'大连',toCity:'上海',departure:'18:45',arrival:'20:55',departureTerminal:'',arrivalTerminal:'T2'};
+ assert.equal(V.buildCheck(attendee,'outbound',{found:true,mode:'flight',match,warnings:[]}).status,'verified');
+ const selected=chooseMatch({mode:'flight',date:today(),number:'MU5698',from:'大连周水子机场',to:'上海虹桥机场T2航站楼'},[{...candidate,code:'MU5698',from:'DLC',to:'SHA',depart:'18:45',arrive:'20:55',departureTerminal:'',arrivalTerminal:'T2'}]);
+ assert.deepEqual(selected.warnings,[]);
 });
 test('changed direction invalidates prior evidence; unrelated direction remains intact',()=>{
  const check=V.buildCheck(a,'outbound',{found:true,match:plan});

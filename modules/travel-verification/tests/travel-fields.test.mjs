@@ -8,8 +8,8 @@ const TravelVerification=require("../../../travel-verification.js");
 
 const dictionary=[
   {city:"上海",type:"HIGH_SPEED_RAIL",name:"上海虹桥站",shortName:"上海虹桥站"},
-  {city:"成都",type:"PLANE",name:"成都双流国际机场T1航站楼",shortName:"成都双流 T1"},
-  {city:"成都",type:"PLANE",name:"成都天府国际机场T2航站楼",shortName:"成都天府 T2"},
+  {city:"成都",type:"PLANE",name:"成都双流机场T1航站楼",shortName:"成都双流 T1"},
+  {city:"成都",type:"PLANE",name:"成都天府机场T2航站楼",shortName:"成都天府 T2"},
 ];
 
 test("city cleanup removes full-width and zero-width whitespace",()=>{
@@ -18,9 +18,9 @@ test("city cleanup removes full-width and zero-width whitespace",()=>{
 
 test("station options keep official values and short UI labels",()=>{
   const rows=TravelFields.stationList(dictionary," 成都市 ","飞机");
-  assert.deepEqual(rows.map(row=>row.name),["成都双流国际机场T1航站楼","成都天府国际机场T2航站楼"]);
+  assert.deepEqual(rows.map(row=>row.name),["成都双流机场T1航站楼","成都天府机场T2航站楼"]);
   assert.equal(TravelFields.displayStation(rows[0].name,"PLANE",dictionary),"成都双流 T1");
-  assert.equal(TravelFields.officialStation("成都双流 T1","PLANE",dictionary),"成都双流国际机场T1航站楼");
+  assert.equal(TravelFields.officialStation("成都双流 T1","PLANE",dictionary),"成都双流机场T1航站楼");
 });
 
 test("station search filters only the current city/type result set by short label",()=>{

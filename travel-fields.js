@@ -7,19 +7,20 @@
     ["本地参会","LOCAL_ATTEND"],["本地","LOCAL_ATTEND"],["local","LOCAL_ATTEND"],["LOCAL_ATTEND","LOCAL_ATTEND"],
   ]);
   const DEFAULT_DICTIONARY=[
-    ["上海","PLANE","上海虹桥国际机场T1航站楼"],["上海","PLANE","上海虹桥国际机场T2航站楼"],["上海","PLANE","上海浦东国际机场T1航站楼"],["上海","PLANE","上海浦东国际机场T2航站楼"],
+    ["上海","PLANE","上海虹桥机场T1航站楼"],["上海","PLANE","上海虹桥机场T2航站楼"],["上海","PLANE","上海浦东机场T1航站楼"],["上海","PLANE","上海浦东机场T2航站楼"],
     ["上海","HIGH_SPEED_RAIL","上海虹桥站"],["上海","HIGH_SPEED_RAIL","上海站"],["上海","HIGH_SPEED_RAIL","上海西站"],["上海","HIGH_SPEED_RAIL","上海松江南站"],["上海","HIGH_SPEED_RAIL","安亭站"],["上海","HIGH_SPEED_RAIL","安亭北站"],
-    ["北京","PLANE","北京首都国际机场T1航站楼"],["北京","PLANE","北京首都国际机场T2航站楼"],["北京","PLANE","北京首都国际机场T3航站楼"],["北京","PLANE","北京大兴国际机场"],
+    ["北京","PLANE","北京首都机场T1航站楼"],["北京","PLANE","北京首都机场T2航站楼"],["北京","PLANE","北京首都机场T3航站楼"],["北京","PLANE","北京大兴机场"],
     ["北京","HIGH_SPEED_RAIL","北京南站"],["北京","HIGH_SPEED_RAIL","北京西站"],["北京","HIGH_SPEED_RAIL","北京站"],["北京","HIGH_SPEED_RAIL","北京朝阳站"],["北京","HIGH_SPEED_RAIL","北京丰台站"],["北京","HIGH_SPEED_RAIL","清河站"],
-    ["大连","PLANE","大连周水子国际机场"],["大连","HIGH_SPEED_RAIL","大连站"],["大连","HIGH_SPEED_RAIL","大连北站"],
-    ["福州","PLANE","福州长乐国际机场"],["福州","HIGH_SPEED_RAIL","福州站"],["福州","HIGH_SPEED_RAIL","福州南站"],
-    ["杭州","PLANE","杭州萧山国际机场T3航站楼"],["杭州","PLANE","杭州萧山国际机场T4航站楼"],["杭州","HIGH_SPEED_RAIL","杭州东站"],["杭州","HIGH_SPEED_RAIL","杭州西站"],["杭州","HIGH_SPEED_RAIL","杭州南站"],
-    ["南京","PLANE","南京禄口国际机场T1航站楼"],["南京","PLANE","南京禄口国际机场T2航站楼"],["南京","HIGH_SPEED_RAIL","南京站"],["南京","HIGH_SPEED_RAIL","南京南站"],
-    ["厦门","PLANE","厦门高崎国际机场T3航站楼"],["厦门","PLANE","厦门高崎国际机场T4航站楼"],["厦门","HIGH_SPEED_RAIL","厦门站"],["厦门","HIGH_SPEED_RAIL","厦门北站"],
+    ["大连","PLANE","大连周水子机场"],["大连","HIGH_SPEED_RAIL","大连站"],["大连","HIGH_SPEED_RAIL","大连北站"],
+    ["福州","PLANE","福州长乐机场"],["福州","HIGH_SPEED_RAIL","福州站"],["福州","HIGH_SPEED_RAIL","福州南站"],
+    ["杭州","PLANE","杭州萧山机场T3航站楼"],["杭州","PLANE","杭州萧山机场T4航站楼"],["杭州","HIGH_SPEED_RAIL","杭州东站"],["杭州","HIGH_SPEED_RAIL","杭州西站"],["杭州","HIGH_SPEED_RAIL","杭州南站"],
+    ["南京","PLANE","南京禄口机场T1航站楼"],["南京","PLANE","南京禄口机场T2航站楼"],["南京","HIGH_SPEED_RAIL","南京站"],["南京","HIGH_SPEED_RAIL","南京南站"],
+    ["厦门","PLANE","厦门高崎机场T3航站楼"],["厦门","PLANE","厦门高崎机场T4航站楼"],["厦门","HIGH_SPEED_RAIL","厦门站"],["厦门","HIGH_SPEED_RAIL","厦门北站"],
     ["苏州","HIGH_SPEED_RAIL","苏州站"],["苏州","HIGH_SPEED_RAIL","苏州北站"],["苏州","HIGH_SPEED_RAIL","苏州园区站"],["苏州","HIGH_SPEED_RAIL","苏州新区站"],
   ].map(([city,type,name])=>({city,type,name}));
   const clean=value=>String(value??"").replace(/[\u200B-\u200D\uFEFF]/gu,"").replace(/\u3000/gu," ").trim().replace(/\s+/g," ");
   const normalizeCity=value=>clean(value).replace(/(?:市|地区)$/u,"");
+  const canonicalStation=(value,type)=>normalizeType(type)==="PLANE"?clean(value).replace(/国际机场/gu,"机场"):clean(value);
   function normalizeType(value,number=""){
     const raw=clean(value);if(TYPE_ALIASES.has(raw))return TYPE_ALIASES.get(raw);
     if(/本地参会|本地客户/u.test(raw)||/本地参会/u.test(number))return"LOCAL_ATTEND";
@@ -27,7 +28,7 @@
     return raw||number?"PLANE":"";
   }
   function normalizeEntry(entry){
-    const city=normalizeCity(entry?.city??entry?.city_name),type=normalizeType(entry?.type??entry?.transport_type),name=clean(entry?.name??entry?.station_name);
+    const city=normalizeCity(entry?.city??entry?.city_name),type=normalizeType(entry?.type??entry?.transport_type),name=canonicalStation(entry?.name??entry?.station_name,type);
     const shortName=clean(entry?.shortName??entry?.short_name??entry?.station_short_name);
     return city&&["PLANE","HIGH_SPEED_RAIL"].includes(type)&&name?{city,type,name,shortName:shortName||displayStation(name,type)}:null;
   }
@@ -51,7 +52,7 @@
     return raw.replace(/国际机场/gu,"").replace(/机场/gu,"").replace(/(?:T\s*)?(\d+)号?航站楼/giu,"T$1").replace(/航站楼/gu,"").replace(/T(\d+)$/u," T$1").replace(/\s+/g," ").trim();
   }
   function officialStation(value,type,custom){
-    const raw=clean(value);if(!raw||normalizeType(type)==="LOCAL_ATTEND")return null;
+    const raw=canonicalStation(value,type);if(!raw||normalizeType(type)==="LOCAL_ATTEND")return null;
     const found=dictionary(custom).find(item=>item.type===normalizeType(type)&&(item.name===raw||displayStation(item.name,item.type)===raw));
     if(found)return found.name;
     return normalizeType(type)==="HIGH_SPEED_RAIL"&&!/站$/u.test(raw)?`${raw}站`:raw;
@@ -177,6 +178,6 @@
     }
     return()=>cleanups.forEach(fn=>fn());
   }
-  const api={TYPES,DEFAULT_DICTIONARY,clean,normalizeCity,normalizeType,dictionary,stationList,options,filterStationOptions,displayStation,officialStation,cityForStation,parseDictionary,stringifyDictionary,hydrate,applyLegacy,bindForm};
+  const api={TYPES,DEFAULT_DICTIONARY,clean,normalizeCity,normalizeType,canonicalStation,dictionary,stationList,options,filterStationOptions,displayStation,officialStation,cityForStation,parseDictionary,stringifyDictionary,hydrate,applyLegacy,bindForm};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.TravelFields=Object.freeze(api);
 })(typeof window!=="undefined"?window:globalThis);

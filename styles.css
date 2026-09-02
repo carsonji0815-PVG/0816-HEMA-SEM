@@ -866,6 +866,19 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
 .template-data-cell.travel-verified-cell { background:#edf4fc; box-shadow:inset 0 -2px #7e9dbc; }
 .travel-verified-label { display:block; margin-top:5px; font-size:11px; color:#24527b; font-weight:600; }
 .trip-save-error:empty { display:none; }
+.station-combobox-field { position:relative; z-index:1; }
+.station-combobox-field:focus-within { z-index:40; }
+.station-search-input { padding-right:38px!important; background-image:linear-gradient(45deg,transparent 50%,#7b6f70 50%),linear-gradient(135deg,#7b6f70 50%,transparent 50%)!important; background-position:calc(100% - 17px) 50%,calc(100% - 12px) 50%!important; background-size:5px 5px,5px 5px!important; background-repeat:no-repeat!important; }
+.station-search-input:disabled { color:#9b9293; background-color:#f1eeec!important; cursor:not-allowed; }
+.station-search-listbox { position:absolute; top:calc(100% + 5px); left:0; right:0; z-index:60; max-height:250px; overflow:auto; padding:6px; border:1px solid #dfd5d1; border-radius:12px; background:#fff; box-shadow:0 16px 38px rgba(65,39,39,.18); }
+.station-search-listbox[hidden] { display:none; }
+.station-search-listbox button { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 11px; border:0; border-radius:8px; color:var(--ink); background:transparent; text-align:left; cursor:pointer; }
+.station-search-listbox button:hover,.station-search-listbox button.active { color:#8f2019; background:#fff0ec; }
+.station-search-listbox button span { font-weight:700; }
+.station-search-listbox button small { overflow:hidden; color:var(--ink-soft); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.station-search-empty { padding:13px 11px; color:#9a5147; background:#fff5f1; border-radius:8px; font-size:11px; line-height:1.5; }
+[data-theme="dark"] .station-search-listbox { border-color:var(--line); background:#222734; box-shadow:0 18px 42px rgba(0,0,0,.42); }
+[data-theme="dark"] .station-search-listbox button:hover,[data-theme="dark"] .station-search-listbox button.active { color:#ffd4cc; background:#472b2b; }
 [data-theme="dark"] .field-grid .travel-problem-field { background:#482622; color:#ffd2c6; }
 [data-theme="dark"] .field-grid .travel-problem-field input, [data-theme="dark"] .field-grid .travel-problem-field select { background:#302526; color:#fff; }
 [data-theme="dark"] .travel-field-issue { color:#ffb5a5; }

@@ -23,6 +23,18 @@ test("station options keep official values and short UI labels",()=>{
   assert.equal(TravelFields.officialStation("成都双流 T1","PLANE",dictionary),"成都双流国际机场T1航站楼");
 });
 
+test("station search filters only the current city/type result set by short label",()=>{
+  const beijing=[
+    {city:"北京",type:"HIGH_SPEED_RAIL",name:"北京南站",shortName:"北京南站"},
+    {city:"北京",type:"HIGH_SPEED_RAIL",name:"北京丰台站",shortName:"北京丰台站"},
+    {city:"北京",type:"HIGH_SPEED_RAIL",name:"北京西站",shortName:"北京西站"},
+  ];
+  assert.deepEqual(TravelFields.filterStationOptions(beijing,"北京南").map(item=>item.name),["北京南站"]);
+  assert.deepEqual(TravelFields.filterStationOptions(beijing,"北京").map(item=>item.name),["北京南站","北京丰台站","北京西站"]);
+  assert.deepEqual(TravelFields.filterStationOptions(beijing,"丰台").map(item=>item.name),["北京丰台站"]);
+  assert.equal(TravelFields.filterStationOptions(beijing,"广州").length,0);
+});
+
 test("local attendance clears every corresponding station",()=>{
   const item=TravelFields.applyLegacy({departTransportType:"LOCAL_ATTEND",departStation:"错误场站",arriveTransportType:"LOCAL_ATTEND",arriveStation:"错误场站",returnDepartTransportType:"LOCAL_ATTEND",returnDepartStation:"错误场站",returnArriveTransportType:"LOCAL_ATTEND",returnArriveStation:"错误场站"});
   assert.equal(item.departStation,"");assert.equal(item.arriveStation,"");assert.equal(item.returnDepartStation,"");assert.equal(item.returnArriveStation,"");

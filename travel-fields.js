@@ -38,6 +38,11 @@
   }
   const stationList=(custom,city,type)=>dictionary(custom).filter(item=>item.city===normalizeCity(city)&&item.type===normalizeType(type));
   const options=(custom,city,type)=>stationList(custom,city,type).map(item=>item.name);
+  const filterStationOptions=(items,query)=>{
+    const keyword=clean(query).toLocaleLowerCase("zh-CN");
+    if(!keyword)return[...(Array.isArray(items)?items:[])];
+    return(Array.isArray(items)?items:[]).filter(item=>clean(item?.shortName||displayStation(item?.name,item?.type)).toLocaleLowerCase("zh-CN").includes(keyword));
+  };
   function displayStation(value,type="",custom=[]){
     const raw=clean(value);if(!raw)return"";
     const configured=dictionary(custom).find(item=>item.type===normalizeType(type)&&item.name===raw)?.shortName;
@@ -104,35 +109,74 @@
       const city=form.elements[`${side}City`],type=form.elements[`${side}TransportType`];
       const select=form.querySelector(`[data-station-select="${side}"]`),input=form.querySelector(`[data-station-input="${side}"]`);
       if(!city||!type||!select||!input)continue;
-      let requestId=0;
+      let requestId=0,matches=[],filtered=[],activeIndex=-1;
+      const field=input.closest("label")||input.parentElement;
+      const listbox=document.createElement("div");
+      const listboxId=`station-list-${side}-${Math.random().toString(36).slice(2,9)}`;
+      listbox.id=listboxId;listbox.className="station-search-listbox";listbox.setAttribute("role","listbox");listbox.hidden=true;
+      field?.classList.add("station-combobox-field");field?.append(listbox);
+      input.classList.add("station-search-input");input.setAttribute("autocomplete","off");input.setAttribute("role","combobox");input.setAttribute("aria-autocomplete","list");input.setAttribute("aria-controls",listboxId);input.setAttribute("aria-expanded","false");
+      const closeList=()=>{listbox.hidden=true;input.setAttribute("aria-expanded","false");activeIndex=-1;};
+      const openList=()=>{if(input.disabled||!matches.length)return;listbox.hidden=false;input.setAttribute("aria-expanded","true");};
+      const setActive=index=>{
+        const nodes=[...listbox.querySelectorAll('[role="option"]')];if(!nodes.length)return;
+        activeIndex=(index+nodes.length)%nodes.length;nodes.forEach((node,i)=>node.classList.toggle("active",i===activeIndex));nodes[activeIndex].scrollIntoView?.({block:"nearest"});
+      };
+      const selectStation=item=>{
+        select.value=item.name;select.name=`${side}Station`;input.name="";input.value=item.shortName||displayStation(item.name,item.type);input.dataset.stationMode="selected";closeList();input.dispatchEvent(new Event("change",{bubbles:true}));
+      };
+      const drawOptions=(query="",{clearSelection=true}={})=>{
+        filtered=filterStationOptions(matches,query);activeIndex=-1;
+        if(clearSelection){select.value="";input.dataset.stationMode="search";}
+        if(query&&filtered.length===0){
+          select.name="";input.name=`${side}Station`;input.dataset.stationMode="manual";input.placeholder="未查询到对应场站，请手动录入";
+          listbox.innerHTML='<div class="station-search-empty">未查询到对应场站，请手动录入</div>';openList();return;
+        }
+        select.name=`${side}Station`;input.name="";input.placeholder="输入关键词搜索或选择场站";
+        listbox.innerHTML=filtered.map((item,index)=>`<button type="button" role="option" data-index="${index}" aria-selected="false"><span>${(item.shortName||displayStation(item.name,item.type)).replace(/&/g,"&amp;").replace(/</g,"&lt;")}</span><small>${item.name.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</small></button>`).join("");
+        if(filtered.length)openList();else closeList();
+      };
+      const onInput=()=>drawOptions(input.value);
+      const onFocus=()=>drawOptions(input.dataset.stationMode==="selected"?"":input.value,{clearSelection:input.dataset.stationMode!=="selected"});
+      const onKeydown=event=>{
+        const optionCount=listbox.querySelectorAll('[role="option"]').length;
+        if(event.key==="ArrowDown"&&optionCount){event.preventDefault();openList();setActive(activeIndex+1);}
+        else if(event.key==="ArrowUp"&&optionCount){event.preventDefault();openList();setActive(activeIndex-1);}
+        else if(event.key==="Enter"&&activeIndex>=0){event.preventDefault();const item=filtered[activeIndex];if(item)selectStation(item);}
+        else if(event.key==="Escape")closeList();
+      };
+      const onOptionClick=event=>{const option=event.target.closest('[role="option"]');if(!option)return;const item=filtered[Number(option.dataset.index)];if(item)selectStation(item);};
+      const onOutside=event=>{if(!field?.contains(event.target))closeList();};
+      input.addEventListener("input",onInput);input.addEventListener("focus",onFocus);input.addEventListener("keydown",onKeydown);listbox.addEventListener("mousedown",event=>event.preventDefault());listbox.addEventListener("click",onOptionClick);document.addEventListener("mousedown",onOutside);
       const render=async({clear=false}={})=>{
         const currentRequest=++requestId;
         const old=clear?"":clean((select.name?select.value:input.value));
         const local=type.value==="LOCAL_ATTEND";
-        let matches=local?[]:stationList(customDictionary,city.value,type.value);
-        select.name="";input.name="";select.hidden=true;input.hidden=true;select.disabled=true;input.disabled=true;
-        if(local){select.value="";input.value="";return;}
+        matches=local?[]:stationList(customDictionary,city.value,type.value);
+        closeList();select.name="";input.name="";select.hidden=true;select.disabled=true;input.hidden=false;input.disabled=true;input.removeAttribute("required");
+        if(local){select.value="";input.value="";input.placeholder="本地参会无需填写场站";input.dataset.stationMode="local";return;}
         if(clean(city.value)&&normalizeType(type.value)&&typeof loadStations==="function"){
-          select.setAttribute("aria-busy","true");
+          input.setAttribute("aria-busy","true");input.placeholder="正在加载场站…";
           try{const loaded=await loadStations(city.value,type.value);if(currentRequest!==requestId)return;if(Array.isArray(loaded))matches=loaded.map(normalizeEntry).filter(Boolean);}catch{/* 本地字典继续兜底 */}
-          finally{select.removeAttribute("aria-busy");}
+          finally{input.removeAttribute("aria-busy");}
         }
         if(currentRequest!==requestId)return;
         if(matches.length){
           select.innerHTML='<option value="">请选择场站</option>'+matches.map(item=>`<option value="${item.name.replace(/&/g,"&amp;").replace(/"/g,"&quot;")}">${(item.shortName||displayStation(item.name,item.type)).replace(/&/g,"&amp;").replace(/</g,"&lt;")}</option>`).join("");
-          select.name=`${side}Station`;select.disabled=false;select.hidden=false;
-          const official=officialStation(old,type.value,[...customDictionary,...matches]);select.value=matches.some(item=>item.name===official)?official:"";
+          select.name=`${side}Station`;select.disabled=false;input.disabled=false;
+          const official=officialStation(old,type.value,[...customDictionary,...matches]),selected=matches.find(item=>item.name===official);
+          if(selected){select.value=selected.name;input.value=selected.shortName||displayStation(selected.name,selected.type);input.dataset.stationMode="selected";input.placeholder="输入关键词搜索或选择场站";}
+          else{select.value="";input.value=old;drawOptions(old,{clearSelection:false});if(old&&!filtered.length){select.name="";input.name=`${side}Station`;input.dataset.stationMode="manual";}else closeList();}
         }else{
-          input.name=`${side}Station`;input.disabled=false;input.hidden=false;input.placeholder="未查询到对应场站，请手动录入";
-          input.value=old;
+          input.name=`${side}Station`;input.disabled=false;input.placeholder="未查询到对应场站，请手动录入";input.dataset.stationMode="manual";input.value=old;listbox.innerHTML="";
         }
       };
       const change=()=>void render({clear:true});city.addEventListener("change",change);type.addEventListener("change",change);
-      cleanups.push(()=>{city.removeEventListener("change",change);type.removeEventListener("change",change);});
+      cleanups.push(()=>{city.removeEventListener("change",change);type.removeEventListener("change",change);input.removeEventListener("input",onInput);input.removeEventListener("focus",onFocus);input.removeEventListener("keydown",onKeydown);listbox.removeEventListener("click",onOptionClick);document.removeEventListener("mousedown",onOutside);listbox.remove();field?.classList.remove("station-combobox-field");});
       void render({clear:!preserve});
     }
     return()=>cleanups.forEach(fn=>fn());
   }
-  const api={TYPES,DEFAULT_DICTIONARY,clean,normalizeCity,normalizeType,dictionary,stationList,options,displayStation,officialStation,cityForStation,parseDictionary,stringifyDictionary,hydrate,applyLegacy,bindForm};
+  const api={TYPES,DEFAULT_DICTIONARY,clean,normalizeCity,normalizeType,dictionary,stationList,options,filterStationOptions,displayStation,officialStation,cityForStation,parseDictionary,stringifyDictionary,hydrate,applyLegacy,bindForm};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.TravelFields=Object.freeze(api);
 })(typeof window!=="undefined"?window:globalThis);

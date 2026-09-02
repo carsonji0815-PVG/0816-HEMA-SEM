@@ -2,7 +2,7 @@
 
 > 2026-08-31：已合并独立「行程核验」板块，直接读取参会名单，差异高亮后由负责人手动修改。飞常准与12306适配代码统一维护在本项目。已于2026-08-31发布至阿里云正式入口，14项线上检查通过；飞常准收费查询仍关闭，真实数据联调待完成。详见 [行程核验维护说明](docs/TRAVEL-VERIFICATION.md)。
 
-面向医疗会议的报名、异常行程审批、名单锁定和接送机查询工具。前端为纯 HTML/CSS/JavaScript，可部署到 GitHub Pages；正式数据、账号权限和审计记录使用 Supabase 托管服务，不需要自建或维护服务器。
+面向医疗会议的报名、异常行程审批、名单锁定和接送机查询工具。正式环境完整运行在阿里云：Nginx 提供 HTTPS 与静态前端，服务器内自托管 PostgreSQL、Auth、REST、Storage 和 Edge Runtime，附件与加密备份写入阿里云 OSS。GitHub Pages 和 Supabase 托管平台均不是生产运行依赖。
 
 ## 已实现
 
@@ -15,7 +15,7 @@
 - 报名和行程变更记录、会务提醒
 - 接机司机、车辆、集合点及送机安排
 - 参会者输入手机号查询最小化的接送机信息，不使用短信验证码
-- GitHub Actions 自动发布 GitHub Pages
+- 阿里云不可变版本发布、发布前备份、校验失败自动停止与旧版本回滚
 - 多项目新建、复制与切换；各项目独立名单、角色、二维码、报名字段和接送规则
 - 会务负责人可直接导入线下收到的 `.xlsx` / `.xls` / `.csv` 名单，导入前预览新增、更新和错误行
 - 无绿色分类视觉：报名、名单、审批、接送、锁定和提醒采用独立识别色，每个项目自动分配图标与项目色
@@ -46,12 +46,14 @@ python3 -m http.server 4173
 
 访问 `http://localhost:4173`。默认 `config.js` 使用演示模式，数据只保存在当前浏览器。演示查询号码：`13800005201`。
 
-## 正式上线
+## 正式环境
 
-### 1. 建立 Supabase 项目
+正式入口：<https://139.196.97.236/meeting/>。生产配置和切换记录见 [`docs/ALIYUN-MIGRATION.md`](docs/ALIYUN-MIGRATION.md)，源码归档和发布说明见 [`docs/ALIYUN-SOURCE-OPERATIONS.md`](docs/ALIYUN-SOURCE-OPERATIONS.md)。
 
-1. 在 Supabase 新建项目。
-2. 新项目先在 SQL Editor 完整执行 `supabase/schema.sql`，再按文件名顺序执行 `supabase/migrations/` 内的升级脚本。已有项目执行尚未运行的升级脚本；本次行程/分房/锁定/审计与系统设置更新对应 `2026083001_workflow_rooming_audit.sql`。
+### 1. 阿里云自托管数据服务
+
+1. 数据库、Auth、REST、Storage 与 Edge Runtime 均部署在阿里云服务器的私有 Docker 网络内，只有反向代理后的 HTTPS API 对外开放。
+2. 数据库升级按文件名顺序执行 `supabase/migrations/`；发布脚本必须先在回滚事务中验证迁移，再执行正式事务。
 3. 在 Authentication 仅为下列管理邮箱创建密码账号。其他邮箱即使拥有 Auth 账号，也会被数据库和前端同时拒绝进入管理端：
 
    - `jll@grandchinamice.com`：季亮亮，超级管理员
@@ -71,39 +73,33 @@ select id from public.meetings where slug = 'hema-sem-2026';
 
 ### 2. 部署公开查询函数
 
-安装 Supabase CLI 并登录后执行：
-
-```bash
-supabase link --project-ref 你的项目编号
-supabase secrets set QUERY_RATE_SALT=一段足够长的随机字符串
-supabase functions deploy public-trip-query --no-verify-jwt
-```
+函数源码位于 `supabase/functions/public-trip-query/index.ts`，由阿里云发布包复制到服务器函数卷并重启 Edge Runtime。生产环境不使用 Supabase CLI 直连托管项目部署。
 
 公开函数只向手机号查询返回脱敏的本人会务信息；报名维护使用短期随机会话，并在服务端校验项目、填报人和参会记录归属。它不会把 service role 密钥暴露给浏览器。
 
-### 3. 填写前端配置
+### 3. 前端配置
 
-在 Supabase 的 Project Settings → API 中复制 Project URL 和 publishable/anon key，修改 `config.js`：
+生产构建使用阿里云自托管 API 地址：
 
 ```js
 window.APP_CONFIG = {
   mode: "production",
-  supabaseUrl: "https://你的项目编号.supabase.co",
-  supabaseAnonKey: "你的 publishable key",
+  supabaseUrl: "https://139.196.97.236/supabase",
+  supabaseAnonKey: "由阿里云服务器受控配置注入的 publishable key",
   eventSlug: "hema-sem-2026",
 };
 ```
 
-`anon key` 可以放在浏览器前端，真正的数据权限由 `schema.sql` 中的 RLS 策略控制。绝对不要把 `service_role` key 写入本项目或 GitHub。
+publishable key 可以进入浏览器构建产物，真正的数据权限由 RLS 与 Edge Function 服务端校验控制。绝对不要把 secret/service-role key 写入源码、发布包或代码仓库。
 
-### 4. 发布 GitHub Pages
+### 4. 阿里云发布
 
-将项目推送到 GitHub 仓库的 `main` 分支，然后在仓库 Settings → Pages 中将 Source 设为 **GitHub Actions**。仓库中的 `.github/workflows/deploy-pages.yml` 会自动部署；以后每次推送 `main` 都会更新公网版本。
+发布前执行回归测试并生成不可变发布包，上传至私有 OSS，再通过阿里云云助手在生产服务器完成：发布前加密备份、数据库迁移预检、正式迁移、Edge Function 更新、静态版本切换及公网回读校验。源码同时以 Git bundle 保存到阿里云服务器和私有 OSS；GitHub 仅保留为非生产只读历史副本。
 
 ## 上线前检查
 
 - 用超级管理员、已授权会务负责人、未授权邮箱分别验证全部权限、项目隔离和登录拦截。
-- 将演示数据留在演示模式即可；生产模式只读取 Supabase 数据，不会上传本地演示名单。
+- 将演示数据留在演示模式即可；生产模式只读取阿里云自托管数据服务，不会上传本地演示名单。
 - 用无痕窗口分别测试三个公开入口；关闭报名开关后，“我要报名”应禁用，而“更改已报名”和“参会信息查询”仍可使用。
 - 用两个不同员工编号交叉测试，确认填报人无法读取、修改或取消对方绑定的参会人员。
 - 若公开查询可能遭到批量撞库，建议在 Edge Function 前增加 Cloudflare Turnstile；这不需要短信验证码。
@@ -136,7 +132,7 @@ window.APP_CONFIG = {
 - 核验结果存入参会者 custom_fields，无需新增数据库列；静态核验文件 travel-verification.js、travel-verification-panel.js、travel-verification-storage.js 必须随 HTML、app.js、styles.css 一起发布。接口失败或返回不完整不会标记通过。高铁使用12306日期限定查询，航班使用飞常准公布计划日期；旧核验记录保留来源，但不再调用旧供应商。
 - 回归测试：本地启动 4173 端口后执行 node scripts/travel-verification-fields-smoke.mjs；测试使用独立浏览器及模拟接口，不写入真实会议数据。
 - `supabase/functions/public-trip-query/index.ts`：报名身份会话、本人报名维护和无短信验证码的参会信息查询接口
-- `.github/workflows/deploy-pages.yml`：GitHub Pages 自动发布
+- `docs/ALIYUN-SOURCE-OPERATIONS.md`：阿里云源码归档、发布和恢复说明
 
 ## 会议内行李管理（2026-08-31）
 

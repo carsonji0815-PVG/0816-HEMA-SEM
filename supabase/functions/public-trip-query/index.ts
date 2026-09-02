@@ -44,6 +44,11 @@ const projectView = (meeting: Record<string, unknown>, systemSettings:Record<str
   managementOpen:true, managerEditEnabled:!!meeting.manager_attendee_edit_enabled, activityType:meeting.activity_type||"external", meetingType:meeting.activity_type==="internal"?"INTERNAL":"EXTERNAL", transferCollectionEnabled:!!meeting.transfer_collection_enabled, transferCollectionRoles:Array.isArray(meeting.transfer_collection_roles)?meeting.transfer_collection_roles:[],
   stationDictionary:Array.isArray(systemSettings.stationDictionary)?systemSettings.stationDictionary:[],
 });
+const registrationRegions = (meeting:Record<string,unknown>) => {
+  const fieldConfig=(meeting.field_config||{}) as Record<string,unknown>;
+  const values=Array.isArray(fieldConfig.quotaRegions)?fieldConfig.quotaRegions:[];
+  return [...new Set(values.map(value=>clean(value,50)).filter(value=>value&&value!=="未填写大区"))];
+};
 
 export default {
 fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
@@ -74,11 +79,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   const systemSettings=(systemConfiguration?.settings||{}) as Record<string,unknown>;
   systemSettings.stationDictionary=[];
   const viewProject=(meeting:Record<string,unknown>)=>projectView(meeting,systemSettings);
-
-  const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const { count } = await db.from("public_query_logs").select("id", { count: "exact", head: true }).eq("ip_hash", ipHash).gte("created_at", since);
-  if ((count || 0) >= 20) return reply({ error: "查询过于频繁，请稍后再试" }, 429);
-  await db.from("public_query_logs").insert({ ip_hash: ipHash });
+  const enforceRateLimit=async(key:string,limit:number)=>{const scopedHash=await hash(`${forwarded}:${key}:${Deno.env.get("QUERY_RATE_SALT")||"journey-desk"}`);const since=new Date(Date.now()-10*60*1000).toISOString();const{count}=await db.from("public_query_logs").select("id",{count:"exact",head:true}).eq("ip_hash",scopedHash).gte("created_at",since);if((count||0)>=limit)return false;await db.from("public_query_logs").insert({ip_hash:scopedHash});return true;};
 
   const slug = clean(payload.meeting, 100);
   if (action === "list-projects") {
@@ -96,11 +97,14 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
 
   if (action === "registrant-login") {
     const name = clean(payload.name, 50);
-    const region = clean(payload.region, 50);
+    const regionInput = clean(payload.region, 50);
     const employeeNo = clean(payload.employeeNo, 50);
     const employeeNoNorm = normalized(employeeNo, 50);
     const mode = clean(payload.mode, 20) === "manage" ? "manage" : "register";
-    if (!name || !region || !employeeNoNorm) return reply({ error:"请填写大区、姓名和员工编号" }, 400);
+    if (!name || !regionInput || !employeeNoNorm) return reply({ error:"请填写大区、姓名和员工编号" }, 400);
+    const regions=registrationRegions(meeting);if(!regions.length)return reply({error:"当前会议尚未配置报名大区，请联系会务负责人"},503);
+    const region=regions.find(value=>normalized(value,50)===normalized(regionInput,50));if(!region)return reply({error:"请选择当前会议配置的大区"},400);
+    if(!await enforceRateLimit(`registrant-login:${meeting.id}:${employeeNoNorm}`,30))return reply({error:"身份进入尝试过于频繁，请10分钟后重试"},429);
     await db.from("operation_audit_logs").insert({ meeting_id:meeting.id, actor_label:`${name}（${employeeNo}）`, action:"registrant_login", target_type:"registrant", metadata:{ region, name, employeeNo, mode, ipHash } });
     let { data:registrant, error:registrantError } = await db.from("registrants").select("*").eq("meeting_id",meeting.id).eq("employee_no_norm",employeeNoNorm).maybeSingle();
     if (registrantError) return reply({ error:"身份校验暂不可用，请稍后重试" },500);
@@ -239,6 +243,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   const phone = clean(payload.phone).replace(/\D/g, "").slice(-11);
   if (["authenticate","complete-registration"].includes(action)) return reply({error:"旧版报名入口已停用，请刷新页面后使用员工编号进入"},410);
   if (!/^1\d{10}$/.test(phone)) return reply({ error: "请输入正确的手机号" }, 400);
+  if(!await enforceRateLimit(`attendee-lookup:${meeting.id}:${phone}`,20))return reply({error:"该手机号查询过于频繁，请10分钟后重试"},429);
 
   if (clean(payload.action) === "authenticate") {
     const name = clean(payload.name, 50);

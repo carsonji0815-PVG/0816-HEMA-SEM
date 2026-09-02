@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260831-verification-02" />
+    <link rel="stylesheet" href="styles.css?v=20260902-optional-services-01" />
     <script src="assets/vendor/qrcode.min.js" defer></script>
     <script src="assets/vendor/xlsx.full.min.js" defer></script>
     <script src="assets/vendor/jszip.min.js" defer></script>
@@ -34,7 +34,7 @@
     <script src="travel-verification.js?v=20260901-journey-fields-01" defer></script>
     <script src="travel-verification-storage.js?v=20260831-verification-02" defer></script>
     <script src="travel-verification-panel.js?v=20260831-verification-02" defer></script>
-    <script src="app.js?v=20260831-verification-02" defer></script>
+    <script src="app.js?v=20260902-optional-services-01" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -125,6 +125,10 @@
                   <label data-template-field="outNo">航班 / 车次号<input name="outNo" required /></label>
                   <label data-template-field="outDeparture">出发时间<input name="outDeparture" type="time" required /></label><label data-template-field="outArrival">到达时间<input name="outArrival" type="time" required /></label>
                 </div></section>
+                <section class="public-form-section optional-transfer-section is-hidden" id="publicTransferCollectionSection"><h3>往返接送信息 <small>选填，不影响报名提交</small></h3><div class="public-field-grid">
+                  <label>去程送站出发地点<input name="outboundTransferOrigin" placeholder="例如：住所 / 酒店 / 单位" /></label><label>预约送站时间<input name="outboundTransferTime" type="datetime-local" /></label><label class="span-2">去程送站备注<textarea name="outboundTransferNotes" rows="2"></textarea></label>
+                  <label>返程接站送达目的地<input name="returnTransferDestination" placeholder="例如：住所 / 酒店 / 单位" /></label><label>预估接站时间<input name="returnTransferTime" type="datetime-local" /></label><label class="span-2">返程接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
+                </div></section>
                 <section class="public-form-section"><h3>返程信息</h3><div class="public-field-grid">
                   <label data-journey-field="returnDepartDate">返程出发日期<input name="returnDepartDate" type="date" required /></label><label data-journey-field="returnDepartCity">返程出发城市<input name="returnDepartCity" required /></label>
                   <label data-journey-field="returnDepartTransportType">返程出发方式<select name="returnDepartTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label><label data-journey-field="returnDepartStation">返程出发场站<select data-station-select="returnDepart" hidden></select><input data-station-input="returnDepart" hidden /></label>
@@ -177,7 +181,7 @@
         </div>
         <nav class="side-nav" aria-label="主导航">
           <div class="nav-group"><p>工作台</p><a href="#dashboard" data-route="dashboard"><span>◫</span>工作台首页</a><a href="#attendees" data-route="attendees"><span>♟</span>参会名单管理 <b id="navAttendeeCount">0</b></a><a href="#verification" data-route="verification" id="verificationNav"><span>✓</span>行程核验</a><a href="#locks" data-route="locks"><span>▦</span>名单锁定</a><a href="#rooming" data-route="rooming"><span>▥</span>分房管理</a><a href="#registration" data-route="registration"><span>✎</span>报名管理</a><a href="#transport" data-route="transport"><span>⌁</span>接送机调度</a><a href="#luggage" data-route="luggage" id="luggageNav" class="is-hidden"><span>▣</span><span id="luggageNavLabel">行李管理</span></a></div>
-          <div class="nav-group"><p>会议项目</p><a href="#projects" data-route="projects"><span>▤</span>会议管理</a><a href="#documents" data-route="documents"><span>▧</span>项目建档文件</a></div>
+          <div class="nav-group"><p>会议项目</p><a href="#projects" data-route="projects"><span>▤</span>会议管理</a></div>
           <div class="nav-group"><p>审批中心</p><a href="#approvals" data-route="approvals"><span>⚑</span>行程与住宿审批 <b id="navApprovalCount" class="alert-count">0</b></a></div>
           <div class="nav-group"><p>消息提醒</p><a href="#notifications" data-route="notifications"><span>◌</span>变更提醒 <b id="navNoticeCount" class="alert-count">0</b></a></div>
           <div class="nav-group system-nav-group is-hidden" id="systemSettingsNav"><p>系统管理</p><a href="#system" data-route="system"><span>⚙</span>系统设置</a></div>
@@ -207,28 +211,6 @@
             <div class="project-grid" id="projectGrid"></div>
           </section>
 
-          <section class="page" data-page="documents">
-            <div class="page-heading heading-with-action"><div><span class="eyebrow">PROJECT RECORDS</span><h1>项目建档文件</h1><p>作为当前项目的建档步骤，统一收集报价、会务确认单、采购订单和供应商确认邮件。</p></div><button class="button button-secondary" id="refreshDocuments" type="button">刷新状态</button></div>
-            <div class="document-status-grid" id="documentStatusGrid"></div>
-            <div class="document-layout">
-              <article class="panel document-upload-panel">
-                <div class="panel-heading"><div><span class="kicker">UPLOAD</span><h2>上传项目文件</h2></div></div>
-                <form id="documentUploadForm" class="stack-form">
-                  <label id="documentScenarioField">项目场景<select name="scenario" id="documentScenario"><option value="">请选择场景</option><option value="po_email">场景一：PO＋供应商PO确认邮件</option><option value="signed_confirmation">场景二：PO＋已签署会务确认单</option></select></label>
-                  <label>文件类型<select name="type" id="documentType"></select></label>
-                  <label class="document-file-picker">选择文件<input name="file" id="documentFile" type="file" required /><small id="documentFileName">单个文件最大 50MB</small></label>
-                  <p class="form-hint" id="documentRoleHint"></p>
-                  <p class="login-error" id="documentError"></p>
-                  <button class="button button-primary button-block" type="submit">上传到当前项目</button>
-                </form>
-              </article>
-              <article class="panel document-list-panel">
-                <div class="panel-heading"><div><span class="kicker">PROJECT FILES</span><h2>已建档文件</h2></div><span id="documentProjectLabel" class="status"></span></div>
-                <div id="documentList" class="document-list"><div class="empty-state">正在读取项目文件…</div></div>
-              </article>
-            </div>
-          </section>
-
           <section class="page" data-page="dashboard">
             <div class="page-heading heading-with-action">
               <div><span class="eyebrow">MEETING OPERATIONS</span><h1><span id="greetingText">您好</span>，<span id="greetingName">林悦</span></h1><p>这里是 HEMA SEM 的最新报名与行程动态。</p></div>
@@ -237,10 +219,10 @@
             <div class="metric-grid" id="metricGrid"></div>
             <div class="dashboard-grid">
               <article class="panel span-12 quota-progress-panel">
-                <div class="panel-heading quota-panel-heading"><div><span class="kicker">REGISTRATION PROGRESS</span><h2>报名进度</h2><p>听众按名额核对完成情况，角色嘉宾按实际报名统计</p></div><div class="quota-panel-actions"><select id="quotaRoleFilter" aria-label="筛选角色"></select><button class="button button-secondary" id="configureQuotas" type="button">调整听众名额</button><a href="#attendees">查看名单 →</a></div></div>
+                <div class="panel-heading quota-panel-heading"><div><span class="kicker">REGISTRATION PROGRESS</span><h2>报名进度</h2><p id="quotaProgressDescription">听众按名额核对完成情况，角色嘉宾按实际报名统计</p></div><div class="quota-panel-actions"><select id="quotaRoleFilter" aria-label="筛选角色"></select><button class="button button-secondary" id="configureQuotas" type="button">调整听众名额</button><a href="#attendees">查看名单 →</a></div></div>
                 <div class="quota-summary" id="quotaSummary"></div>
                 <div class="quota-overview-grid"><section class="venue-progress-section"><div class="quota-section-title"><strong>会场报名进度</strong><small>实际报名 / 分配名额</small></div><div id="quotaVenueProgress" class="quota-venue-progress"></div></section><section class="quota-alert-section"><div class="quota-alert-block"><div class="quota-section-title"><strong>缺口预警 TOP</strong><small>优先跟进</small></div><div id="quotaShortageList" class="quota-alert-list"></div></div><div class="quota-alert-block"><div class="quota-section-title"><strong>超额提醒 TOP</strong><small>关注资源调整</small></div><div id="quotaOverList" class="quota-alert-list"></div></div></section></div>
-                <div class="quota-detail-head"><div><strong>报名统计</strong><small>Gap = 实际报名 − 分配名额</small></div><div id="quotaRoleTabs" class="quota-role-tabs"></div></div>
+                <div class="quota-detail-head"><div><strong>报名统计</strong><small id="quotaDetailDescription">Gap = 实际报名 − 分配名额</small></div><div id="quotaRoleTabs" class="quota-role-tabs"></div></div>
                 <div class="table-wrap quota-table-wrap"><table class="quota-table"><colgroup><col class="quota-col-venue"/><col class="quota-col-region"/><col class="quota-col-role"/><col class="quota-col-number"/><col class="quota-col-number"/><col class="quota-col-gap"/><col class="quota-col-number"/><col class="quota-col-rate"/><col class="quota-col-status"/></colgroup><thead><tr><th>会场</th><th>大区</th><th>会议角色</th><th>分配名额</th><th>实际报名</th><th>Gap</th><th>剩余名额</th><th>完成率</th><th>状态</th></tr></thead><tbody id="quotaProgressBody"></tbody></table></div>
               </article>
               <article class="panel span-4 qr-panel">
@@ -302,8 +284,14 @@
                     <label>出发时间<input name="outDeparture" type="time" required /></label><label>到达时间<input name="outArrival" type="time" required /></label>
                   </div>
                 </article>
+                <article class="panel form-section optional-transfer-section is-hidden" id="adminTransferCollectionSection">
+                  <div class="section-number">03</div><div class="section-title"><h2>往返接送信息</h2><p>选填，仅收集信息，不参与行程核验</p></div><div class="field-grid">
+                    <label>去程送站出发地点<input name="outboundTransferOrigin" /></label><label>预约送站时间<input name="outboundTransferTime" type="datetime-local" /></label><label class="span-2">去程送站备注<textarea name="outboundTransferNotes" rows="2"></textarea></label>
+                    <label>返程接站送达目的地<input name="returnTransferDestination" /></label><label>预估接站时间<input name="returnTransferTime" type="datetime-local" /></label><label class="span-2">返程接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
+                  </div>
+                </article>
                 <article class="panel form-section trip-section">
-                  <div class="section-number">03</div><div class="section-title"><h2>返程信息</h2><p>返程到达城市不同将进入审批</p></div>
+                  <div class="section-number">04</div><div class="section-title"><h2>返程信息</h2><p>返程到达城市不同将进入审批</p></div>
                   <div class="field-grid">
                     <label data-journey-field="returnDepartDate">返程出发日期<input name="returnDepartDate" type="date" required /></label><label data-journey-field="returnDepartCity">返程出发城市<input name="returnDepartCity" required /></label>
                     <label data-journey-field="returnDepartTransportType">返程出发方式<select name="returnDepartTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label><label data-journey-field="returnDepartStation">返程出发场站<select data-station-select="returnDepart" hidden></select><input data-station-input="returnDepart" hidden /></label>
@@ -373,10 +361,11 @@
           </section>
 
           <section class="page" data-page="settings">
-            <div class="page-heading"><span class="eyebrow">MEETING PROJECT DETAIL</span><h1>会议项目详情</h1><p>基础信息、报名、行程、住宿、现场服务和权限统一在此配置，仅作用于当前会议。</p><a class="text-button" href="#projects">← 返回会议项目列表</a></div>
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">MEETING PROJECT DETAIL</span><h1>会议项目详情</h1><p>基础信息、报名、行程、住宿、现场服务和权限统一在此配置，仅作用于当前会议。</p></div><div class="heading-actions"><a class="button button-secondary" href="#projects">← 返回会议列表</a><button class="button button-secondary" id="openProjectDocuments" type="button">项目建档文件</button></div></div>
             <form id="settingsForm" class="settings-grid">
               <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>会议总名额 <small>用于校验各分组名额合计</small><input name="capacity" type="number" min="1" /></label><label>会务联系电话<input name="servicePhone" /></label></div></article>
               <article class="panel luggage-control-panel"><div class="panel-heading"><div><span class="kicker">ON-SITE SERVICES</span><h2>行李管理</h2><p>大型内部会议、外部会议均可按需开启，小型会议可保持关闭。</p></div><span class="status" id="luggageFeatureStatus">未启用</span></div><label class="permission-switch"><span><strong>启用本场会议行李管理</strong><small id="luggageFeatureHint">关闭时不加载扫码、打印模块，不启动后台同步。</small></span><span class="switch"><input id="luggageSwitch" type="checkbox" role="switch" aria-label="启用本场会议行李管理" /><span></span></span></label><div class="luggage-feature-capabilities"><span>胸卡识别</span><span>一人多件</span><span>双联打印</span><span>取件核销</span><span>台账备份</span></div><p class="luggage-feature-note">开关立即保存，只作用于当前会议。有未领取或未同步行李时不能关闭；关闭前请让所有终端联网同步。</p><a id="luggageSettingsEntry" class="button button-secondary is-hidden" href="#luggage">进入行李管理 →</a></article>
+              <article class="panel transfer-collection-panel"><div class="panel-heading"><div><span class="kicker">OPTIONAL TRANSFER COLLECTION</span><h2>接送机 / 接送站信息收集设置</h2><p>内外部会议均可独立开启；所有接送字段均为选填，不参与行程核验。</p></div><span class="status" id="transferCollectionStatus">未启用</span></div><label class="permission-switch"><span><strong>开启报名端接送信息收集</strong><small>关闭后只隐藏表单，历史接送数据永久保留。</small></span><span class="switch"><input name="transferCollectionEnabled" id="transferCollectionSwitch" type="checkbox" role="switch" /><span></span></span></label><fieldset class="role-option-group"><legend>允许填写的参会角色（可多选）</legend><label><input type="checkbox" name="transferCollectionRole" value="角色嘉宾" /> 角色嘉宾</label><label><input type="checkbox" name="transferCollectionRole" value="听众" /> 普通听众</label><label><input type="checkbox" name="transferCollectionRole" value="赞助商" /> 赞助商</label></fieldset><p class="form-hint">角色嘉宾包含主席、主持、讲者、讨论嘉宾（组长）；配置保存后立即生效。</p></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL APPROVAL RULES</span><h2>行程审批规则</h2><p>仅命中合规规则时进入人工审批；API真实性核验不在此处。</p></div></div><div class="stack-form"><label class="check-row"><input name="approvalTimeRule" type="checkbox" /> 抵达或返程时间超出允许范围时触发审批</label><div class="field-grid"><label>最早允许抵达<input name="arrivalWindowStart" type="datetime-local" /></label><label>最晚允许抵达<input name="arrivalWindowEnd" type="datetime-local" /></label><label>最早允许返程<input name="returnWindowStart" type="datetime-local" /></label><label>最晚允许返程<input name="returnWindowEnd" type="datetime-local" /></label></div><label class="check-row"><input name="tourismCityRule" type="checkbox" /> 出发城市属于旅游城市清单时触发审批</label><label>旅游城市清单 <small>项目可自行增删，用顿号或逗号分隔</small><textarea name="tourismCities" rows="3"></textarea></label><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程到达城市不一致时触发审批</label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">TRANSPORT RULES</span><h2>接送机规则</h2></div></div><div class="stack-form"><div class="field-grid"><label>航班送机提前分钟<input name="flightLeadMinutes" type="number" min="0" step="10" /></label><label>高铁送站提前分钟<input name="trainLeadMinutes" type="number" min="0" step="10" /></label></div><label>自动接送分组间隔（分钟）<input name="transportGroupMinutes" type="number" min="10" max="180" step="10" /><small>同一站点、相邻时间内的人员归为一个建议批次</small></label></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">ROOMING RULES</span><h2>分房规则</h2><p>规则只作用于当前会议项目。</p></div></div><div class="stack-form"><label>建议单间的职称 <small>用顿号或逗号分隔，可自行增删</small><textarea name="singleRoomTitles" rows="3"></textarea></label><label>其他人员默认房型<select name="defaultRoomType"><option value="shared">标间拼住</option><option value="single">单间</option></select></label><label class="check-row"><input name="roomConflictApproval" type="checkbox" /> 申请房型与系统建议冲突时生成住宿审批待办</label></div></article>
@@ -385,7 +374,7 @@
 
               <article class="panel registration-control-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION CONTROL</span><h2>报名与会务权限</h2></div><span class="status" id="registrationOpenStatus">报名关闭</span></div><div class="control-switch-list"><label class="permission-switch"><span><strong>项目报名开放</strong><small id="registrationOpenHint">必须先导入报名表模板</small></span><span class="switch"><input id="registrationOpenSwitch" type="checkbox" /><span></span></span></label><label class="permission-switch"><span><strong>会务负责人编辑参会资料</strong><small>默认仅可查看；超级管理员始终拥有最高维护权限</small></span><span class="switch"><input id="managerEditSwitch" type="checkbox" /><span></span></span></label></div></article>
               <article class="panel system-staff-panel is-hidden" id="systemStaffPanel"><div class="panel-heading"><div><span class="kicker">SYSTEM ACCOUNTS</span><h2>会务负责人账号</h2><p>仅超级管理员可为当前项目开放或回收会务负责人权限。</p></div><span class="status status-normal">白名单制</span></div><div id="systemStaffList" class="system-staff-list"></div></article>
-              <article class="panel template-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION TEMPLATE</span><h2>当前项目报名模板</h2></div><div><button class="text-button" id="downloadProjectTemplate" type="button">下载当前模板</button><button class="text-button danger" id="resetProjectTemplate" type="button">删除模板</button></div></div><p class="template-help">上传 Excel / CSV 后，系统读取第一张表的表头。公开报名只显示模板包含的字段，未识别列会自动成为项目补充字段；下载模板自动补齐全部往返行程字段。</p><label class="template-upload"><input id="projectTemplateFile" type="file" accept=".xlsx,.xls,.csv" /><span>⇧</span><strong>选择名单模板</strong><small>模板只保存字段名称和顺序，不会导入名单数据</small></label><div id="templateStatus" class="template-status"></div><div id="templateColumns" class="template-columns"></div></article>
+              <article class="panel template-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION TEMPLATE</span><h2>当前项目报名模板</h2></div><button class="text-button" id="downloadProjectTemplate" type="button">下载当前模板</button></div><p class="template-help">上传 Excel / CSV 后，系统读取第一张表的表头。公开报名只显示模板包含的字段，未识别列会自动成为项目补充字段；下载模板自动补齐全部往返行程字段。</p><label class="template-upload"><input id="projectTemplateFile" type="file" accept=".xlsx,.xls,.csv" /><span>⇧</span><strong>选择名单模板</strong><small>保存字段定义和原始模板文件，删除前会检查报名数据引用</small></label><div id="templateStatus" class="template-status"></div><button class="text-button danger template-delete-action" id="resetProjectTemplate" type="button">删除</button><div id="templateColumns" class="template-columns"></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">PERMISSION LEVELS</span><h2>系统权限层级</h2></div></div><div class="role-list"><div><span class="role-dot admin"></span><p><strong>超级管理员 · 季亮亮</strong><small>始终拥有全部项目、全部名单、设置、锁定、审批、导入导出及账号分配权限</small></p></div><div><span class="role-dot ops"></span><p><strong>会务负责人</strong><small>仅可进入获授权项目；按项目设置执行名单、审批、接送与报名管理</small></p></div><div><span class="role-dot public"></span><p><strong>填报人 / 参会人员</strong><small>通过参会服务入口使用，不属于管理端邮箱账号</small></p></div></div></article>
               <div class="settings-actions"><button class="button button-primary" type="submit">保存会议设置</button><button class="button button-ghost" type="button" id="resetDemo">恢复演示数据</button></div>
             </form>
@@ -405,6 +394,7 @@
       </div>
     </div>
 
+    <dialog id="projectDocumentsDialog" class="detail-dialog project-documents-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="detail-head"><span class="kicker">OPTIONAL PROJECT ARCHIVE</span><h2>项目建档文件</h2><p>可选附件，仅供项目备查；未上传文件不会影响报名、名单、行程或导出。</p><button class="button button-secondary" id="refreshDocuments" type="button">刷新文件</button></div><div class="detail-body"><div class="document-layout"><article class="panel document-upload-panel"><div class="panel-heading"><div><span class="kicker">UPLOAD</span><h2>上传项目文件</h2></div></div><form id="documentUploadForm" class="stack-form"><label id="documentScenarioField">项目场景<select name="scenario" id="documentScenario"><option value="">请选择场景</option><option value="po_email">场景一：PO＋供应商PO确认邮件</option><option value="signed_confirmation">场景二：PO＋已签署会务确认单</option></select></label><label>文件类型<select name="type" id="documentType"></select></label><label class="document-file-picker">选择文件<input name="file" id="documentFile" type="file" multiple required /><small id="documentFileName">支持多选，单个文件最大 50MB</small></label><p class="form-hint" id="documentRoleHint"></p><p class="login-error" id="documentError"></p><button class="button button-primary button-block" type="submit">上传到当前项目</button></form></article><article class="panel document-list-panel"><div class="panel-heading"><div><span class="kicker">PROJECT FILES</span><h2>已上传文件</h2></div><span id="documentProjectLabel" class="status"></span></div><div id="documentList" class="document-list"><div class="empty-state">正在读取项目文件…</div></div></article></div></div></dialog>
     <dialog id="attendeeDialog" class="detail-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div id="attendeeDetail"></div></dialog>
     <dialog id="transferRegistrantDialog" class="login-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">⇄</span><div><strong>填报人移交</strong><small>移交后旧填报人立即失去操作权限</small></div></div><form id="transferRegistrantForm" class="stack-form"><label>原填报人<select name="fromRegistrant" required></select></label><label>新填报人<select name="toRegistrant" required></select></label><p class="form-hint">新填报人需要至少成功登录过当前项目一次。</p><p class="login-error" id="transferRegistrantError"></p><button class="button button-primary button-block" type="submit">确认移交全部绑定数据</button></form></dialog>
     <dialog id="transportBatchDialog" class="detail-dialog batch-dialog">

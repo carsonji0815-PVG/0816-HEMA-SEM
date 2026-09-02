@@ -32,6 +32,7 @@ const registrationView = (row: Record<string, unknown>) => ({
   returnArriveDate:row.return_arrive_date||row.return_date||"",returnArriveCity:row.return_arrive_city||row.return_to||"",returnArriveTransportType:row.return_arrive_transport_type||"",returnArriveStation:row.return_arrive_station||"",
   outDate: row.out_date || "", outFrom: row.out_from || "", outTo: row.out_to || "", outNo: row.out_no || "", outDeparture: String(row.out_departure || "").slice(0, 5), outArrival: String(row.out_arrival || "").slice(0, 5),
   returnDate: row.return_date || "", returnFrom: row.return_from || "", returnTo: row.return_to || "", returnNo: row.return_no || "", returnDeparture: String(row.return_departure || "").slice(0, 5), returnArrival: String(row.return_arrival || "").slice(0, 5),
+  outboundTransferOrigin:row.outbound_transfer_origin||"",outboundTransferTime:String(row.outbound_transfer_time||"").slice(0,16),outboundTransferNotes:row.outbound_transfer_notes||"",returnTransferDestination:row.return_transfer_destination||"",returnTransferTime:String(row.return_transfer_time||"").slice(0,16),returnTransferNotes:row.return_transfer_notes||"",
   region: row.region || "", contactName: row.contact_name || "", contactMobile: row.contact_mobile || "", mslContact: row.msl_contact || "", remarks: row.remarks === "公开报名认证，待填写完整信息" ? "" : row.remarks || "",
   customFields: row.custom_fields || {},
 });
@@ -40,7 +41,7 @@ const projectView = (meeting: Record<string, unknown>, systemSettings:Record<str
   startDate: meeting.start_date || "", endDate: meeting.end_date || "", deadline: meeting.deadline || "", masterLocked: !!meeting.master_locked, archiveReady: !!meeting.archive_ready,
   templateName: meeting.template_name || "", registrationTemplate: meeting.registration_template || {}, templateImported:!!meeting.template_imported_at,
   registrationOpen:!!meeting.registration_open, newRegistrationAllowed:!!meeting.registration_open,
-  managementOpen:!!meeting.registration_open || !!meeting.archive_ready, managerEditEnabled:!!meeting.manager_attendee_edit_enabled,
+  managementOpen:true, managerEditEnabled:!!meeting.manager_attendee_edit_enabled, activityType:meeting.activity_type||"external", meetingType:meeting.activity_type==="internal"?"INTERNAL":"EXTERNAL", transferCollectionEnabled:!!meeting.transfer_collection_enabled, transferCollectionRoles:Array.isArray(meeting.transfer_collection_roles)?meeting.transfer_collection_roles:[],
   stationDictionary:Array.isArray(systemSettings.stationDictionary)?systemSettings.stationDictionary:[],
 });
 
@@ -81,13 +82,13 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
 
   const slug = clean(payload.meeting, 100);
   if (action === "list-projects") {
-    const { data:meetings, error } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,registration_open,manager_attendee_edit_enabled").or("registration_open.eq.true,archive_ready.eq.true").order("start_date",{ascending:false}).limit(50);
+    const { data:meetings, error } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,registration_open,manager_attendee_edit_enabled,activity_type,transfer_collection_enabled,transfer_collection_roles").or("registration_open.eq.true,template_imported_at.not.is.null").order("start_date",{ascending:false}).limit(50);
     if (error) return reply({ error:"读取项目列表失败" }, 500);
     return reply({ projects:(meetings || []).map(viewProject) });
   }
   if (!slug) return reply({ error: "报名链接缺少项目编号，请使用项目专属二维码或链接" }, 400);
 
-  const { data: meeting } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,archive_ready,registration_open,manager_attendee_edit_enabled,allowed_departure_cities,check_city_mismatch,check_departure_city").eq("slug", slug).maybeSingle();
+  const { data: meeting } = await db.from("meetings").select("id,slug,name,client_name,start_date,end_date,venues,service_phone,brand_color,field_config,template_name,registration_template,template_imported_at,flight_lead_minutes,train_lead_minutes,deadline,master_locked,registration_open,manager_attendee_edit_enabled,allowed_departure_cities,check_city_mismatch,check_departure_city,activity_type,transfer_collection_enabled,transfer_collection_roles").eq("slug", slug).maybeSingle();
   if (!meeting) return reply({ error: "未找到会议" }, 404);
   if (action === "project-info") return reply({ project:viewProject(meeting) });
 
@@ -173,6 +174,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       if(rows.length&&!matched)return reply({error:`${item.label}与城市、出行方式不匹配，请重新选择`},400);
       if(matched)item.set(clean(matched.station_name,120));
     }
+    const requestedAttendeeType=clean(details.attendeeType,30)||"HCP";const transferRole=/赞助商|sponsor/i.test(requestedAttendeeType)?"赞助商":/主席|主持|讲者|讨论嘉宾|组长|嘉宾|chair|moderator|speaker|panelist/i.test(requestedAttendeeType)?"角色嘉宾":"听众";const transferAllowed=!!meeting.transfer_collection_enabled&&Array.isArray(meeting.transfer_collection_roles)&&(meeting.transfer_collection_roles as unknown[]).map(String).includes(transferRole);const transferValue=(key:string,value:unknown,max:number)=>transferAllowed?(clean(value,max)||null):(attendee?.[key]||null);
     const values: Record<string,unknown> = {
       attendee_type:clean(details.attendeeType,30) || "HCP", name:attendeeName, city:clean(details.city,50), hospital:clean(details.hospital,100), department:clean(details.department,100), title:clean(details.title,50), venue:clean(details.venue,50), sex:clean(details.sex,10), id_number:clean(details.idNumber,100), phone:attendeePhone, hcp_id:clean(details.hcpId,100), accommodation:yes(details.accommodation), is_flight:yes(details.flight), region:clean(registrant.region,50),
       depart_date:clean(details.departDate,10)||null,depart_city:clean(details.departCity,50),depart_transport_type:departType||null,depart_station:departStation,
@@ -182,6 +184,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       out_date:clean(details.departDate,10) || null, out_from:departStation||clean(details.departCity,50), out_to:arriveStation||clean(details.arriveCity,50), out_no:clean(details.outNo,30), out_departure:clean(details.outDeparture,5) || null, out_arrival:clean(details.outArrival,5) || null,
       return_date:clean(details.returnDepartDate,10) || null, return_from:returnDepartStation||clean(details.returnDepartCity,50), return_to:returnArriveStation||clean(details.returnArriveCity,50), return_no:clean(details.returnNo,30), return_departure:clean(details.returnDeparture,5) || null, return_arrival:clean(details.returnArrival,5) || null,
       contact_name:clean(registrant.display_name,50), contact_mobile:clean(details.contactMobile,20).replace(/\D/g,"").slice(-11), msl_contact:clean(details.mslContact,50), remarks:clean(details.remarks,500), custom_fields:customFields,
+      outbound_transfer_origin:transferValue("outbound_transfer_origin",details.outboundTransferOrigin,200),outbound_transfer_time:transferValue("outbound_transfer_time",details.outboundTransferTime,30),outbound_transfer_notes:transferValue("outbound_transfer_notes",details.outboundTransferNotes,500),return_transfer_destination:transferValue("return_transfer_destination",details.returnTransferDestination,200),return_transfer_time:transferValue("return_transfer_time",details.returnTransferTime,30),return_transfer_notes:transferValue("return_transfer_notes",details.returnTransferNotes,500),
     };
     const keyToDb:Record<string,string>={attendeeType:"attendee_type",name:"name",city:"city",hospital:"hospital",department:"department",title:"title",venue:"venue",sex:"sex",idNumber:"id_number",phone:"phone",hcpId:"hcp_id",accommodation:"accommodation",flight:"is_flight",region:"region",departDate:"depart_date",departCity:"depart_city",departTransportType:"depart_transport_type",departStation:"depart_station",arriveDate:"arrive_date",arriveCity:"arrive_city",arriveTransportType:"arrive_transport_type",arriveStation:"arrive_station",returnDepartDate:"return_depart_date",returnDepartCity:"return_depart_city",returnDepartTransportType:"return_depart_transport_type",returnDepartStation:"return_depart_station",returnArriveDate:"return_arrive_date",returnArriveCity:"return_arrive_city",returnArriveTransportType:"return_arrive_transport_type",returnArriveStation:"return_arrive_station",outDate:"out_date",outFrom:"out_from",outTo:"out_to",outNo:"out_no",outDeparture:"out_departure",outArrival:"out_arrival",returnDate:"return_date",returnFrom:"return_from",returnTo:"return_to",returnNo:"return_no",returnDeparture:"return_departure",returnArrival:"return_arrival",contactName:"contact_name",contactMobile:"contact_mobile",mslContact:"msl_contact",remarks:"remarks"};
     const configuredColumns=((meeting.registration_template as {columns?:Array<{key?:string,required?:boolean,custom?:boolean}>})?.columns || []);
@@ -214,7 +217,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       if (!owner) return reply({ error:"会务负责人尚未配置，请稍后再试" }, 503);
       ({ data:saved, error:saveError } = await db.from("attendees").insert({...updateValues,meeting_id:meeting.id,owner_id:owner.user_id,registrant_id:session.registrant_id,business_status:"active",privacy_letter_status:"pending",ticket_status:"pending"}).select("*").single());
     }
-    if (saveError || !saved) return reply({ error:String(saveError?.message || "").includes("duplicate") ? "该参会人员手机号已在本项目中报名" : "报名保存失败，请稍后重试" }, 500);
+    if (saveError || !saved) {const message=String(saveError?.message||"");if(message.includes("名额"))return reply({error:message},409);return reply({ error:message.includes("duplicate") ? "该参会人员手机号已在本项目中报名" : "报名保存失败，请稍后重试" }, 500);}
     return reply({ saved:true, attendee:{id:saved.id,rowLocked:!!saved.row_locked,approval:saved.approval||"normal",ticketStatus:saved.ticket_status||"pending",businessStatus:saved.business_status||"active",...registrationView(saved)}, needsApproval:aggregateApproval==="pending", project:viewProject(meeting) });
   }
 

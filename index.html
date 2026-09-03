@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260903-rooming-complete-01" />
+    <link rel="stylesheet" href="styles.css?v=20260903-rooming-stats-dates-01" />
     <script src="assets/vendor/qrcode.min.js" defer></script>
     <script src="assets/vendor/xlsx.full.min.js" defer></script>
     <script src="assets/vendor/jszip.min.js" defer></script>
@@ -28,8 +28,8 @@
     <script src="travel-verification.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-panel.js?v=20260903-verification-queue-01" defer></script>
-    <script src="rooming-engine.js?v=20260903-rooming-complete-01" defer></script>
-    <script src="app.js?v=20260903-rooming-complete-01" defer></script>
+    <script src="rooming-engine.js?v=20260903-rooming-stats-dates-01" defer></script>
+    <script src="app.js?v=20260903-rooming-stats-dates-01" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -327,7 +327,7 @@
           <section class="page" data-page="rooming">
             <div class="page-heading heading-with-action"><div><span class="eyebrow">ROOMING MANAGEMENT</span><h1>分房管理</h1><p>人员完全同步自参会名单；人工房型、拼房与实际间夜始终优先于自动规则。</p></div><div class="heading-actions"><button class="button button-secondary" id="applyRoomingSuggestions" type="button">重新执行自动分房</button><button class="button button-primary" id="exportRoomingList" type="button">导出 Rooming List</button></div></div>
             <div class="metric-grid rooming-metrics" id="roomingMetrics"></div>
-            <div class="panel rooming-panel"><div class="table-toolbar"><label class="search-box"><span>⌕</span><input id="roomingSearch" placeholder="搜索姓名、大区、城市、医院或房号" /></label><select id="roomingStatusFilter"><option value="all">全部住宿状态</option><option value="pending">待人工安排</option><option value="conflict">规则冲突</option><option value="approval">住宿待审批</option><option value="done">已安排</option></select></div><div class="rooming-priority-note"><strong>人工设置优先</strong><span>自动重跑不会覆盖已人工修改的房型、室友、实际间夜或房号；行程日期仅用于参考。</span></div><div class="table-wrap"><table class="rooming-table"><thead><tr><th>参会者</th><th>性别</th><th>大区 / 城市 / 省份</th><th>医院 / 职称</th><th>入住 / 撤离</th><th>实际允许间夜</th><th>申请房型</th><th>系统建议</th><th>实际房型</th><th>拼住室友 / 依据</th><th>房号</th><th>状态</th></tr></thead><tbody id="roomingTableBody"></tbody></table></div></div>
+            <div class="panel rooming-panel"><div class="table-toolbar"><label class="search-box"><span>⌕</span><input id="roomingSearch" placeholder="搜索姓名、大区、城市、医院或房号" /></label><select id="roomingStatusFilter"><option value="all">全部住宿状态</option><option value="pending">待人工安排</option><option value="conflict">规则冲突</option><option value="approval">住宿待审批</option><option value="done">已安排</option></select></div><div class="rooming-priority-note"><strong>人工设置优先</strong><span>行程抵达、撤离日期仅供参考；入住日期、退房日期和实际间夜人工修改后不会被行程更新覆盖。</span></div><div class="table-wrap"><table class="rooming-table"><thead><tr><th>参会者</th><th>性别</th><th>大区 / 城市 / 省份</th><th>医院 / 职称</th><th>行程抵达 / 撤离（参考）</th><th>入住 / 退房 / 实际间夜</th><th>申请房型</th><th>系统建议</th><th>实际房型</th><th>拼住室友 / 依据</th><th>房号</th><th>状态</th></tr></thead><tbody id="roomingTableBody"></tbody></table></div></div>
           </section>
 
           <section class="page" data-page="transport">

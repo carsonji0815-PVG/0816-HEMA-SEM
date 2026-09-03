@@ -11,12 +11,22 @@ try{
   await page.goto(`${base}#rooming`,{waitUntil:"domcontentloaded"});
   await page.waitForSelector("#roomingTableBody tr");
   assert.ok(await page.locator("#roomingTableBody tr").count()>0);
+  assert.equal(await page.locator("[data-rooming-stat]").count(),5,"five accommodation KPI cards missing");
+  for(const key of ["totalStay","noStay","single","shared","twinSingle"])assert.equal(await page.locator(`[data-rooming-stat="${key}"]`).count(),1,`missing KPI ${key}`);
   assert.ok(await page.locator('#roomingTableBody option[value="twin_single"]').count()>0,"third room type missing");
   const nights=page.locator('[data-room-field="actualNights"]:not(:disabled)').first();
   const attendeeId=await nights.getAttribute("data-attendee");
   await nights.fill("4");await nights.dispatchEvent("change");
+  const checkIn=page.locator(`[data-room-field="checkInDate"][data-attendee="${attendeeId}"]`),checkOut=page.locator(`[data-room-field="checkOutDate"][data-attendee="${attendeeId}"]`);
+  await checkIn.fill("2026-09-04");await checkIn.dispatchEvent("change");
+  await checkOut.fill("2026-09-07");await checkOut.dispatchEvent("change");
   await page.locator("#applyRoomingSuggestions").click();
   assert.equal(await page.locator(`[data-room-field="actualNights"][data-attendee="${attendeeId}"]`).inputValue(),"4","automatic rerun overwrote manual nights");
+  assert.equal(await page.locator(`[data-room-field="checkInDate"][data-attendee="${attendeeId}"]`).inputValue(),"2026-09-04","automatic rerun overwrote manual check-in date");
+  assert.equal(await page.locator(`[data-room-field="checkOutDate"][data-attendee="${attendeeId}"]`).inputValue(),"2026-09-07","automatic rerun overwrote manual check-out date");
+  await page.evaluate(()=>{window.__roomingWorkbook=null;window.XLSX.writeFile=workbook=>{window.__roomingWorkbook=workbook;};});
+  await page.locator("#exportRoomingList").click();
+  assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["住宿统计","Rooming List"]);
   await page.screenshot({path:".tmp/browser/rooming-complete.png",fullPage:true});
   await page.goto(`${base}#settings`,{waitUntil:"domcontentloaded"});
   await page.waitForSelector('[name="pairingPriority4"]');
@@ -26,5 +36,5 @@ try{
   await page.locator("#userSelect").selectOption("u-client");
   assert.equal(await page.locator('[name="pairingPriority1"]').isDisabled(),true,"client must not edit rooming rules");
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({roomingRows:"pass",thirdRoomType:"pass",manualNightsSurviveRerun:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
+  console.log(JSON.stringify({roomingRows:"pass",fiveRealtimeMetrics:"pass",thirdRoomType:"pass",manualDatesAndNightsSurviveRerun:"pass",statisticsAndRoomingExport:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
 }finally{await browser.close();}

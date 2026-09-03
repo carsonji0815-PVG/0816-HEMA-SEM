@@ -37,21 +37,31 @@
     };
   }
 
-  function stayDates(attendee){
-    const saved=record(attendee),custom=attendee?.customFields||{};
+  function referenceDates(attendee){
+    const custom=attendee?.customFields||{};
     return{
-      checkIn:saved.checkInDate||custom.checkInDate||custom.入住日期||customValue(custom,/入住日期|checkin/i)||attendee?.arriveDate||attendee?.outDate||"",
-      checkOut:saved.checkOutDate||custom.checkOutDate||custom.撤离日期||custom.离店日期||customValue(custom,/撤离日期|离店日期|checkout/i)||attendee?.returnDepartDate||attendee?.returnDate||""
+      arrival:attendee?.arriveDate||attendee?.outDate||custom.抵达日期||customValue(custom,/抵达日期|arrivaldate/i)||"",
+      departure:attendee?.returnDepartDate||attendee?.returnDate||custom.撤离日期||customValue(custom,/撤离日期|departuredate/i)||""
     };
   }
 
-  function referenceNights(attendee){
-    const {checkIn,checkOut}=stayDates(attendee);
+  function lodgingDates(attendee){
+    const saved=record(attendee),custom=attendee?.customFields||{},reference=referenceDates(attendee);
+    return{
+      checkIn:saved.checkInDate||custom.checkInDate||custom.入住日期||customValue(custom,/入住日期|checkin/i)||reference.arrival,
+      checkOut:saved.checkOutDate||custom.checkOutDate||custom.退房日期||custom.离店日期||customValue(custom,/退房日期|离店日期|checkout/i)||reference.departure
+    };
+  }
+
+  function nightsBetween(checkIn,checkOut){
     if(!checkIn||!checkOut)return 0;
     const start=new Date(`${checkIn}T00:00:00`),end=new Date(`${checkOut}T00:00:00`);
     if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime()))return 0;
     return Math.max(0,Math.round((end-start)/86400000));
   }
+  function referenceNights(attendee){const dates=lodgingDates(attendee);return nightsBetween(dates.checkIn,dates.checkOut);}
+  function travelReferenceNights(attendee){const dates=referenceDates(attendee);return nightsBetween(dates.arrival,dates.departure);}
+  function lodgingDateIssue(attendee){const {checkIn,checkOut}=lodgingDates(attendee);if(!checkIn||!checkOut)return"入住或退房日期待补充";return new Date(`${checkOut}T00:00:00`)<new Date(`${checkIn}T00:00:00`)?"退房日期不能早于入住日期":"";}
 
   function province(attendee){const custom=attendee?.customFields||{};return clean(attendee?.province||custom.province||custom.省份||customValue(custom,/省份|province/i));}
   function rulesWithDefaults(rules={}){
@@ -119,6 +129,6 @@
     return patches;
   }
 
-  const api={TYPES,DEFAULT_PRIORITIES,PRIORITY_LABELS,normalizeType,label,record,stayDates,referenceNights,province,rulesWithDefaults,recommendation,matchTier,autoAssign};
+  const api={TYPES,DEFAULT_PRIORITIES,PRIORITY_LABELS,normalizeType,label,record,referenceDates,lodgingDates,nightsBetween,referenceNights,travelReferenceNights,lodgingDateIssue,province,rulesWithDefaults,recommendation,matchTier,autoAssign};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.RoomingEngine=Object.freeze(api);
 })(typeof window!=="undefined"?window:globalThis);

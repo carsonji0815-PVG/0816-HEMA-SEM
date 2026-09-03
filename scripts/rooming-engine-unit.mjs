@@ -32,4 +32,17 @@ const manualPatch=R.autoAssign([manual],rules).get("manual");
 assert.equal(manualPatch.assignedType,"twin_single");assert.equal(manualPatch.actualNights,5);assert.equal(manualPatch.roommateId,"");
 assert.equal(R.referenceNights(manual),2);assert.equal(R.record(manual).actualNights,5);
 
-console.log("rooming engine: three room types, priority matching, manual precedence and independent actual nights passed");
+const lodgingDates=R.lodgingDates(manual);
+assert.deepEqual(lodgingDates,{checkIn:"2026-09-03",checkOut:"2026-09-05"},"lodging dates should initially inherit travel dates");
+const manuallyDated=attendee("dated","女","D院","上海","上海市","华东大区",{arriveDate:"2026-09-03",returnDepartDate:"2026-09-05",customFields:{province:"上海市",_rooming:{checkInDate:"2026-09-04",checkOutDate:"2026-09-07",actualNights:2,manualFields:["checkInDate","checkOutDate","actualNights"]}}});
+assert.deepEqual(R.referenceDates(manuallyDated),{arrival:"2026-09-03",departure:"2026-09-05"});
+assert.deepEqual(R.lodgingDates(manuallyDated),{checkIn:"2026-09-04",checkOut:"2026-09-07"});
+assert.equal(R.referenceNights(manuallyDated),3);
+assert.equal(R.travelReferenceNights(manuallyDated),2);
+manuallyDated.arriveDate="2026-09-01";manuallyDated.returnDepartDate="2026-09-10";
+assert.deepEqual(R.lodgingDates(manuallyDated),{checkIn:"2026-09-04",checkOut:"2026-09-07"},"travel changes must not overwrite manually maintained lodging dates");
+assert.equal(R.record(manuallyDated).actualNights,2,"travel changes must not overwrite actual allowed nights");
+const invalidDates=attendee("invalid","女","D院","上海","上海市","华东大区",{customFields:{province:"上海市",_rooming:{checkInDate:"2026-09-07",checkOutDate:"2026-09-04"}}});
+assert.equal(R.lodgingDateIssue(invalidDates),"退房日期不能早于入住日期");
+
+console.log("rooming engine: room types, pairing, independent lodging dates and actual nights passed");

@@ -64,27 +64,33 @@ test('provider never queries flights without explicit budget authorization',asyn
  const p=createTravelProviders(database,{env:{VARIFLIGHT_API_KEY:'synthetic',VARIFLIGHT_ENABLED:'true'},flightQuery:async()=>{calls++;return {candidates:[candidate]};}});
  const result=await p.verifyBatch([j]);assert.equal(calls,0);assert.equal(result.results[0].found,false);database.close();
 });
+test('global flight switch is enforced by the server',async()=>{
+ const database=db();let calls=0;
+ const p=createTravelProviders(database,{env:{VARIFLIGHT_API_KEY:'synthetic',VARIFLIGHT_ENABLED:'true'},flightQuery:async()=>{calls++;return {candidates:[candidate]};}});
+ const result=await p.verifyBatch([j],{allowPaid:true,flightGlobalEnabled:false});
+ assert.equal(calls,0);assert.match(result.results[0].warnings[0],/全局查询/);database.close();
+});
 test('provider deduplicates, shares cache, and transmits only date / number',async()=>{
  const database=db();let calls=0;
  const p=createTravelProviders(database,{env:{VARIFLIGHT_API_KEY:'synthetic',VARIFLIGHT_ENABLED:'true'},flightQuery:async trip=>{calls++;assert.deepEqual(Object.keys(trip).sort(),['code','date']);return {candidates:[candidate]};}});
- const result=await p.verifyBatch([j,{...j,attendeeId:'b'}],{allowPaid:true});assert.equal(calls,1);assert.equal(result.results.length,2);assert.equal(result.results[1].attendeeId,'b');
+ const result=await p.verifyBatch([j,{...j,attendeeId:'b'}],{allowPaid:true,flightGlobalEnabled:true});assert.equal(calls,1);assert.equal(result.results.length,2);assert.equal(result.results[1].attendeeId,'b');
  const again=await p.verifyBatch([j],{allowPaid:false});assert.equal(calls,1);assert.equal(again.results[0].cached,true);
  assert.ok(!database.prepare('SELECT request_json FROM travel_api_cache').get().request_json.includes('attendeeId'));database.close();
 });
 test('failed provider calls release the local quota reservation; successful calls retain it',async()=>{
  const database=db();let calls=0;const options={env:{VARIFLIGHT_API_KEY:'synthetic',VARIFLIGHT_ENABLED:'true',VARIFLIGHT_DAILY_LIMIT:'1'},flightQuery:async trip=>{calls++;if(calls===1)throw new Error('不可用');return {candidates:[{...candidate,code:trip.code}]};}};
- await createTravelProviders(database,options).verifyBatch([j],{allowPaid:true});
- const success=await createTravelProviders(database,options).verifyBatch([{...j,number:'MU5102'}],{allowPaid:true});
- const blocked=await createTravelProviders(database,options).verifyBatch([{...j,number:'MU5103'}],{allowPaid:true});
+ await createTravelProviders(database,options).verifyBatch([j],{allowPaid:true,flightGlobalEnabled:true});
+ const success=await createTravelProviders(database,options).verifyBatch([{...j,number:'MU5102'}],{allowPaid:true,flightGlobalEnabled:true});
+ const blocked=await createTravelProviders(database,options).verifyBatch([{...j,number:'MU5103'}],{allowPaid:true,flightGlobalEnabled:true});
  assert.equal(calls,2);assert.equal(success.results[0].found,true);assert.match(blocked.results[0].warnings[0],/上限/);database.close();
 });
 test('runtime quota policy supports a configured limit and unlimited mode',async()=>{
  const database=db();let calls=0;const p=createTravelProviders(database,{env:{VARIFLIGHT_API_KEY:'synthetic',VARIFLIGHT_ENABLED:'true',VARIFLIGHT_DAILY_LIMIT:'5'},flightQuery:async trip=>{calls++;return{candidates:[{...candidate,code:trip.code}]};}});
- await p.verifyBatch([{...j,number:'MU5201'}],{allowPaid:true,flightDailyLimit:1});
- const blocked=await p.verifyBatch([{...j,number:'MU5202'}],{allowPaid:true,flightDailyLimit:1});
+ await p.verifyBatch([{...j,number:'MU5201'}],{allowPaid:true,flightGlobalEnabled:true,flightDailyLimit:1});
+ const blocked=await p.verifyBatch([{...j,number:'MU5202'}],{allowPaid:true,flightGlobalEnabled:true,flightDailyLimit:1});
  assert.match(blocked.results[0].warnings[0],/上限/);
- const unlimited=await p.verifyBatch([{...j,number:'MU5203'}],{allowPaid:true,flightUnlimited:true});
- assert.equal(unlimited.results[0].found,true);assert.equal(calls,2);assert.equal(p.status({flightUnlimited:true}).flight.unlimited,true);database.close();
+ const unlimited=await p.verifyBatch([{...j,number:'MU5203'}],{allowPaid:true,flightGlobalEnabled:true,flightUnlimited:true});
+ assert.equal(unlimited.results[0].found,true);assert.equal(calls,2);assert.equal(p.status({flightGlobalEnabled:true,flightUnlimited:true}).flight.unlimited,true);assert.equal(p.status({flightGlobalEnabled:true}).flight.globalEnabled,true);database.close();
 });
 test('historical and distant rail dates never hit live provider',async()=>{
  const database=db();let calls=0;const p=createTravelProviders(database,{env:{},trainQuery:async()=>{calls++;return {candidates:[]};}});

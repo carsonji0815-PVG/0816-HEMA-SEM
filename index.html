@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260902-sidebar-quota-01" />
+    <link rel="stylesheet" href="styles.css?v=20260903-verification-queue-01" />
     <script src="assets/vendor/qrcode.min.js" defer></script>
     <script src="assets/vendor/xlsx.full.min.js" defer></script>
     <script src="assets/vendor/jszip.min.js" defer></script>
@@ -27,8 +27,8 @@
     <script src="travel-fields.js?v=20260902-explicit-transport-01" defer></script>
     <script src="travel-verification.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
-    <script src="travel-verification-panel.js?v=20260902-multi-journey-01" defer></script>
-    <script src="app.js?v=20260902-multi-journey-01" defer></script>
+    <script src="travel-verification-panel.js?v=20260903-verification-queue-01" defer></script>
+    <script src="app.js?v=20260903-verification-queue-01" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -311,8 +311,8 @@
           </section>
 
           <section class="page" data-page="verification">
-            <div class="page-heading heading-with-action"><div><span class="eyebrow">TRAVEL VERIFICATION</span><h1>行程核验</h1><p>直接读取本项目参会名单的去程与返程。只核验已勾选行程，未勾选人员不会调用数据源。</p></div><button class="button button-primary" id="verifyRosterButton" disabled>核验已选行程 (0)</button></div>
-            <div class="panel verify-help"><strong>同一份名单，无需重复导入</strong><p>红色：与计划数据有差异；黄色：需补全或人工确认；灰色：未查询、接口不可用或日期尚不可查。查不到不等于填写错误。核验不代表已出票。</p><label><input type="checkbox" id="verificationAllowPaid"> 本次允许飞常准查询（可能消耗账户额度；每次最多 1 个新的航班查询）</label><p id="verificationProviderStatus">密钥仅由服务器保存。未勾选时航班只做本地检查，不发起收费查询；高铁按已接入数据源查询。</p></div>
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">TRAVEL VERIFICATION</span><h1>行程核验</h1><p>直接读取本项目参会名单。可勾选多名参会人员批量加入核验队列，系统按顺序调用数据源，避免接口限流。</p></div><button class="button button-primary" id="verifyRosterButton" disabled>批量核验已选行程 (0)</button></div>
+            <div class="panel verify-help"><div><strong>同一份名单，无需重复导入</strong><p>红色：与计划数据有差异；黄色：需补全或人工确认；灰色：未查询、接口不可用或日期尚不可查。查不到不等于填写错误。核验不代表已出票。</p></div><label class="permission-switch verification-global-switch"><span><strong>全局允许飞常准查询</strong><small>开启后，批量核验默认查询所有已选航班；仍可在单行关闭。仅超级管理员可以修改。</small></span><span class="switch"><input id="verificationGlobalFlightEnabled" type="checkbox" role="switch" /><span></span></span></label><p id="verificationProviderStatus">密钥仅由服务器保存。全局开关关闭时航班只做本地检查；高铁仍按已接入数据源查询。</p></div>
             <div id="verificationPageSummary" class="verification-summary verify-summary-grid" aria-live="polite"></div>
             <div class="verify-toolbar"><label>核验状态 <select id="verificationFilter"><option value="all">全部有效行程</option><option value="difference">计划有差异</option><option value="review">需人工确认</option><option value="pending">待核验 / 待重查</option><option value="verified">核验通过</option><option value="blank">未提供行程</option></select></label><label>搜索 <input id="verificationSearch" type="search" placeholder="姓名、班次、日期或场站"></label><label class="verify-select-visible"><input type="checkbox" id="verificationSelectVisible"> 勾选当前列表</label><strong id="verificationSelectionCount">已选 0 段行程</strong></div>
             <p id="verificationProgress" role="status"></p><div id="verificationPageResults" class="verification-result-list"></div>
@@ -379,7 +379,7 @@
             <div class="page-heading"><span class="eyebrow">SYSTEM ADMINISTRATION</span><h1>系统设置</h1><p>仅超级管理员可见；用于全局数据维护、人员权限、外观和业务字典。</p></div>
             <div class="settings-grid system-settings-grid">
               <article class="panel"><div class="panel-heading"><div><span class="kicker">DATA MAINTENANCE</span><h2>数据备份与恢复</h2></div><span class="status status-alert">高权限</span></div><div class="stack-form"><label>自动备份周期<select id="backupInterval"><option value="0">关闭自动备份</option><option value="1">每天</option><option value="7">每7天</option><option value="30">每30天</option></select></label><div id="backupStatus" class="system-setting-note"></div><button class="button button-secondary" id="downloadBackup" type="button">立即下载完整数据快照</button><label class="template-upload compact"><input id="restoreBackupFile" type="file" accept=".json" /><span>↺</span><strong>选择备份文件恢复</strong><small>恢复前将进行二次风险确认</small></label></div></article>
-              <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL DATA SOURCE</span><h2>行程核验接口</h2><p>设置飞常准全平台每日收费查询保护额度。</p></div><span class="status status-pending" id="variflightQuotaStatus">每日 5 次</span></div><div class="stack-form"><label>每日航班查询上限<input id="variflightDailyLimit" type="number" min="1" max="10000" step="1" value="5" /></label><label class="permission-switch"><span><strong>不限制每日查询次数</strong><small>开启后，未命中缓存的核验可能持续消耗飞常准额度并产生费用。</small></span><span class="switch"><input id="variflightUnlimited" type="checkbox" role="switch" /><span></span></span></label><p class="system-setting-note">只有勾选“本次允许查询飞常准”并实际发起新查询时才计数；缓存命中不重复计数。</p></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">TRAVEL DATA SOURCE</span><h2>行程待核验</h2><p>设置飞常准全平台查询权限和每日收费查询保护额度。</p></div><span class="status status-pending" id="variflightQuotaStatus">每日 5 次</span></div><div class="stack-form"><label>每日航班查询上限<input id="variflightDailyLimit" type="number" min="1" max="10000" step="1" value="5" /></label><label class="permission-switch"><span><strong>不限每天查询次数</strong><small>勾选后立即解除默认每日 5 次上限；未命中缓存的查询可能持续消耗额度并产生费用。仅超级管理员可设置。</small></span><span class="switch"><input id="variflightUnlimited" type="checkbox" role="switch" /><span></span></span></label><label class="permission-switch"><span><strong>全局允许飞常准查询</strong><small>开启后，行程核验页批量任务默认可调用飞常准；每条航班仍可单独关闭。</small></span><span class="switch"><input id="variflightGlobalEnabled" type="checkbox" role="switch" /><span></span></span></label><p class="system-setting-note">实际发起未命中缓存的新航班查询时才计数；缓存命中不重复计数。关闭全局查询不会影响高铁核验。</p></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">GLOBAL AUDIT</span><h2>全局操作日志</h2></div></div><label class="search-box system-log-search"><span>⌕</span><input id="globalLogSearch" placeholder="搜索账号、参会人、字段或操作" /></label><div id="globalLogList" class="global-log-list"></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">ACCESS CONTROL</span><h2>人员权限管理</h2><p>会务负责人账号和各项目授权总览。</p></div></div><div id="systemPermissionOverview" class="system-permission-overview"></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">APPEARANCE</span><h2>系统外观设置</h2></div></div><div class="stack-form"><label>主题<select id="systemTheme"><option value="light">浅色默认主题</option><option value="dark">深色主题</option></select></label><label>品牌主色<input id="systemBrandColor" type="color" value="#d52b1e" /></label><label>表格版式<select id="tableDensity"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></label></div></article>

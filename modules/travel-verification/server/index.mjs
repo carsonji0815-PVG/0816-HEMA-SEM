@@ -42,8 +42,8 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
   const refundQuota=db.prepare('UPDATE travel_verification_usage SET queries=CASE WHEN queries>0 THEN queries-1 ELSE 0 END WHERE day=?');
   const getUsage=db.prepare('SELECT queries FROM travel_verification_usage WHERE day=?');
   let queue=Promise.resolve();
-  const quotaPolicy=options=>({unlimited:options?.flightUnlimited===true,dailyLimit:Math.max(1,Math.min(10000,Math.trunc(Number(options?.flightDailyLimit)||fallbackCap)))});
-  const status=(options={})=>{const policy=quotaPolicy(options),usedToday=Number(getUsage.get(today())?.queries||0);return{version:2,train:{configured:railEnabled,provider:'12306 公共查询',providerId:'rail_12306'},flight:{configured:!!flightKey&&flightEnabled,provider:'飞常准',providerId:'variflight',dailyLimit:policy.unlimited?null:policy.dailyLimit,unlimited:policy.unlimited,usedToday,remaining:policy.unlimited?null:Math.max(0,policy.dailyLimit-usedToday)},manualReviewOnly:true};};
+  const quotaPolicy=options=>({globalEnabled:options?.flightGlobalEnabled===true,unlimited:options?.flightUnlimited===true,dailyLimit:Math.max(1,Math.min(10000,Math.trunc(Number(options?.flightDailyLimit)||fallbackCap)))});
+  const status=(options={})=>{const policy=quotaPolicy(options),usedToday=Number(getUsage.get(today())?.queries||0);return{version:2,train:{configured:railEnabled,provider:'12306 公共查询',providerId:'rail_12306'},flight:{configured:!!flightKey&&flightEnabled,provider:'飞常准',providerId:'variflight',globalEnabled:policy.globalEnabled,dailyLimit:policy.unlimited?null:policy.dailyLimit,unlimited:policy.unlimited,usedToday,remaining:policy.unlimited?null:Math.max(0,policy.dailyLimit-usedToday)},manualReviewOnly:true,queued:true,maxBatchSize:200};};
   async function verifyOne(j,allowPaid,options){
     const provider=j.mode==='flight'?'variflight':'rail_12306',query={mode:j.mode,date:text(j.date),number:normCode(j.number),from:text(j.from),to:text(j.to)};
     const base={mode:j.mode,provider,requested:query,found:false,match:null,cached:false};
@@ -61,6 +61,7 @@ export function createTravelProviders(db,{env=process.env,flightQuery=variflight
     if(cached){try{return {...JSON.parse(cached.response_json),cached:true};}catch{/* Corrupt cache is never evidence. */}}
     let quotaReserved=false;
     if(j.mode==='flight'){
+      if(!options?.flightGlobalEnabled)return unavailable('管理员尚未开启飞常准全局查询');
       if(!allowPaid)return unavailable('本次未授权消耗飞常准额度');
       const policy=quotaPolicy(options);
       if(policy.unlimited)recordQuota.run(today());

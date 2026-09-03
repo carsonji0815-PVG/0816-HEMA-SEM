@@ -114,6 +114,7 @@
   let cancelledRosterView = false;
   const selectedAttendeeIds = new Set();
   const selectedVerificationSegments = new Set();
+  const disabledVerificationFlightSegments = new Set();
   let backend = null;
   let backendMeetingId = null;
   let syncTimer = null;
@@ -745,7 +746,7 @@
     $("#downloadBackup").addEventListener("click",downloadSystemBackup);
     $("#restoreBackupFile").addEventListener("change",event=>restoreSystemBackup(event.target.files[0]));
     $("#saveSystemDictionary").addEventListener("click",saveSystemPreferences);
-    ["systemTheme","systemBrandColor","tableDensity","backupInterval","variflightDailyLimit","variflightUnlimited"].forEach(id=>$("#"+id).addEventListener("change",saveSystemPreferences));
+    ["systemTheme","systemBrandColor","tableDensity","backupInterval","variflightDailyLimit","variflightUnlimited","variflightGlobalEnabled"].forEach(id=>$("#"+id).addEventListener("change",saveSystemPreferences));
     $("#globalLogSearch").addEventListener("input",renderSystemSettings);
   }
 
@@ -1214,21 +1215,22 @@
     localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
   }
   const verificationSelectionKey=(attendeeId,segment)=>`${attendeeId}:${segment}`;
-  async function verifyTravelAttendees(attendees,{allowPaid=false,selection=null}={}) {
+  async function verifyTravelAttendees(attendees,{allowPaid=false,selection=null,disabledPaid=disabledVerificationFlightSegments}={}) {
     const meetingId=backendMeetingId;
     const isSelected=(attendee,segment)=>!selection||selection.has(verificationSelectionKey(attendee.id,segment));
     const journeys=attendees.flatMap(attendee=>verificationSegments(attendee).filter(segment=>isSelected(attendee,segment)&&TravelVerification.hasJourney(attendee,segment)).map(segment=>{
       const data=TravelVerification.snapshot(attendee,segment);
-      return {attendeeId:attendee.id,segment,...data,mode:TravelVerification.transportMode(data)};
+      const mode=TravelVerification.transportMode(data),selectionKey=verificationSelectionKey(attendee.id,segment);
+      return {attendeeId:attendee.id,segment,...data,mode,allowPaid:mode==='flight'&&allowPaid&&!disabledPaid.has(selectionKey)};
     }));
-    const results=[],groups=new Map();let failure="",cacheHits=0,paidUsed=false;
+    const results=[],groups=new Map();let failure="",cacheHits=0;
     for(const journey of journeys){
       const attendee=attendees.find(a=>a.id===journey.attendeeId),prior=attendee?.customFields?._travelVerification?.[journey.segment];
       const age=Date.now()-Date.parse(prior?.source?.checkedAt||prior?.checkedAt||'');
       if(prior?.match&&prior.fingerprint===TravelVerification.fingerprint(attendee,journey.segment)&&age>=0&&age<15*60000){results.push({...journey,found:true,match:prior.match,source:prior.source,provider:prior.provider,warnings:prior.notices||[]});continue;}
       let warning='';
       if(journey.mode==='local')continue;
-      if(journey.mode==='flight'&&!allowPaid){results.push({...journey,found:false,skippedNoAuthorization:true,warnings:['本次未授权查询飞常准收费接口；未取得有效计划数据，暂不能确认核验通过']});continue;}
+      if(journey.mode==='flight'&&!journey.allowPaid){results.push({...journey,found:false,skippedNoAuthorization:true,warnings:[allowPaid?'本行已关闭飞常准查询；未取得有效计划数据，暂不能确认核验通过':'管理员尚未开启飞常准全局查询；未取得有效计划数据，暂不能确认核验通过']});continue;}
       if(!journey.number||!journey.date||!journey.from||!journey.to)warning='请补全日期、班次和具体场站';
       else if(journey.mode==='unknown')warning='航班或车次号有歧义，请人工确认交通类型和编号';
       if(warning){results.push({...journey,found:false,warnings:[warning]});continue;}
@@ -1242,24 +1244,25 @@
         if(status.version!==2)throw new Error('服务器尚未发布新版核验模块，已停止查询以避免调用旧收费接口');
         ready=true;
         const flightQuota=status.flight.unlimited?'不限每日次数':`每日 ${status.flight.dailyLimit} 次，今日已用 ${status.flight.usedToday||0} 次`;
-        $("#verificationProviderStatus").textContent=`高铁：${status.train.configured?'已启用':'待配置'}；飞常准：${status.flight.configured?'已启用':'服务器待启用'}（${flightQuota}）。查询不代表已出票。`;
+        $("#verificationProviderStatus").textContent=`高铁：${status.train.configured?'已启用':'待配置'}；飞常准：${status.flight.configured?'已启用':'服务器待启用'}，全局查询${status.flight.globalEnabled?'已开启':'已关闭'}（${flightQuota}）。查询不代表已出票。`;
       }catch(error){failure=error.message||'无法确认服务器核验版本';}
     }
     let completed=0;
-    for(const group of groups.values()){
+    const queuedGroups=[...groups.values()];
+    if(queuedGroups.length)$("#verificationProgress").textContent=`已加入请求队列：0 / ${queuedGroups.length} 个不重复行程；系统将顺序核验，避免接口限流。`;
+    for(const group of queuedGroups){
       if(meetingId!==backendMeetingId){failure='会议已切换，停止后续查询';break;}
-      if(group[0].mode==='flight'&&allowPaid&&paidUsed){group.forEach(j=>results.push({...j,found:false,warnings:['已达到本次 1 个航班查询上限；其余行程未查询']}));continue;}
-      if(group[0].mode==='flight'&&allowPaid)paidUsed=true;
       try{
         if(!backend||!meetingId)throw new Error('请正式登录后使用在线核验；演示页面不会调用数据源');
         if(!ready)throw new Error(failure||'核验服务尚未就绪');
         // One unique itinerary per request bounds latency; repeated attendees share the result.
-        const batch=await documentApi(`/api/integrated/projects/${meetingId}/travel/verify`,{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(60000),body:JSON.stringify({journeys:[group[0]],allowPaid})});
+        const batch=await documentApi(`/api/integrated/projects/${meetingId}/travel/verify`,{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(90000),body:JSON.stringify({journeys:[group[0]],allowPaid:group[0].allowPaid===true})});
         const result=batch.results?.find(item=>item.attendeeId===group[0].attendeeId&&item.segment===group[0].segment);
         group.forEach(j=>results.push({...result,attendeeId:j.attendeeId,segment:j.segment,found:result?.found===true,warnings:result?.warnings||['接口未返回本段核验结果']}));
         cacheHits+=batch.usage?.cacheHits||0;
       }catch(error){failure=error.message||'接口暂时不可用';group.forEach(j=>results.push({...j,found:false,warnings:[failure]}));}
-      $("#verificationProgress").textContent=`已处理 ${++completed} / ${groups.size} 个不重复行程；不会自动覆盖名单。`;
+      $("#verificationProgress").textContent=`请求队列处理中：${++completed} / ${queuedGroups.length} 个不重复行程；不会自动覆盖名单。`;
+      if(completed<queuedGroups.length)await new Promise(resolve=>setTimeout(resolve,250));
     }
     attendees.forEach(attendee=>{
       const checks={...(attendee.customFields?._travelVerification||{})};
@@ -1274,15 +1277,19 @@
     return {failure,cacheHits};
   }
   function renderVerificationPage() {
-    const result=TravelVerificationPanel.render(activeVisibleAttendees(),TravelVerification,{filter:$("#verificationFilter").value,query:$("#verificationSearch").value.trim(),canEdit:canManage()&&canEditAttendeeData(),isLocked,selected:selectedVerificationSegments});
+    const preferences=loadSystemPreferences(),globalFlightEnabled=preferences.variflightGlobalEnabled===true;
+    const result=TravelVerificationPanel.render(activeVisibleAttendees(),TravelVerification,{filter:$("#verificationFilter").value,query:$("#verificationSearch").value.trim(),canEdit:canManage()&&canEditAttendeeData(),isLocked,selected:selectedVerificationSegments,globalFlightEnabled,disabledPaid:disabledVerificationFlightSegments});
     const selectable=new Set(result.selectableKeys);for(const key of [...selectedVerificationSegments])if(!selectable.has(key))selectedVerificationSegments.delete(key);
+    for(const key of [...disabledVerificationFlightSegments])if(!selectable.has(key))disabledVerificationFlightSegments.delete(key);
     $("#verificationPageSummary").innerHTML=result.summary;
     $("#verificationPageResults").innerHTML=result.html;
     $("#verificationNav").classList.toggle("is-hidden",!canManage());
-    $("#verificationAllowPaid").disabled=verificationRunning||!canManage();
+    const globalSwitch=$("#verificationGlobalFlightEnabled");globalSwitch.checked=globalFlightEnabled;globalSwitch.disabled=verificationRunning||!isSystemAdmin();globalSwitch.onchange=()=>saveVerificationGlobalSetting(globalSwitch.checked);
     const visible=new Set(result.visibleSelectableKeys),selectVisible=$("#verificationSelectVisible");
     const syncVisibleSelection=()=>{const selectedVisible=[...visible].filter(key=>selectedVerificationSegments.has(key)).length;selectVisible.checked=visible.size>0&&selectedVisible===visible.size;selectVisible.indeterminate=selectedVisible>0&&selectedVisible<visible.size;};
     $$('[data-select-verification]',$('#verificationPageResults')).forEach(input=>input.onchange=()=>{const key=verificationSelectionKey(input.dataset.selectVerification,input.dataset.selectSegment);input.checked?selectedVerificationSegments.add(key):selectedVerificationSegments.delete(key);input.closest('.verify-card')?.classList.toggle('verify-card-selected',input.checked);syncVisibleSelection();updateVerificationSelectionControls();});
+    $$('[data-disable-flight-query]',$('#verificationPageResults')).forEach(input=>input.onchange=()=>{const key=verificationSelectionKey(input.dataset.disableFlightQuery,input.dataset.disableSegment);input.checked?disabledVerificationFlightSegments.delete(key):disabledVerificationFlightSegments.add(key);input.closest('.verify-card')?.classList.toggle('verify-flight-disabled',!input.checked);});
+    $$('[data-toggle-verification-detail]',$('#verificationPageResults')).forEach(button=>button.onclick=()=>{const key=button.dataset.toggleVerificationDetail,detail=$(`[data-verification-detail="${CSS.escape(key)}"]`,$('#verificationPageResults'));if(!detail)return;const expanded=detail.hidden;detail.hidden=!expanded;button.setAttribute('aria-expanded',String(expanded));button.textContent=expanded?'收起详情':'展开详情';});
     syncVisibleSelection();selectVisible.disabled=verificationRunning||!canManage()||!visible.size;selectVisible.onchange=()=>{visible.forEach(key=>selectVisible.checked?selectedVerificationSegments.add(key):selectedVerificationSegments.delete(key));renderVerificationPage();};
     updateVerificationSelectionControls();
     $$('[data-review-travel]',$("#verificationPageResults")).forEach(button=>button.onclick=()=>{
@@ -1292,7 +1299,7 @@
     });
     $$('[data-reset-travel]',$("#verificationPageResults")).forEach(button=>button.onclick=()=>resetTravelVerification(button.dataset.resetTravel,button.dataset.resetSegment));
   }
-  function updateVerificationSelectionControls(){const count=selectedVerificationSegments.size;$("#verificationSelectionCount").textContent=`已选 ${count} 段行程`;const button=$("#verifyRosterButton");button.textContent=verificationRunning?"⌛ 正在核验已选行程":`核验已选行程 (${count})`;button.disabled=verificationRunning||!canManage()||!count;}
+  function updateVerificationSelectionControls(){const count=selectedVerificationSegments.size;$("#verificationSelectionCount").textContent=`已选 ${count} 段行程`;const button=$("#verifyRosterButton");button.textContent=verificationRunning?"⌛ 批量核验队列处理中":`批量核验已选行程 (${count})`;button.disabled=verificationRunning||!canManage()||!count;}
   async function resetTravelVerification(attendeeId,segment){
     const attendee=activeVisibleAttendees().find(item=>item.id===attendeeId);if(!attendee||!canManage()||isLocked(attendee))return deny();
     if(!confirm(`确认重置${segment==="return"?"返程":"去程"}核验状态及持久高亮？`))return;
@@ -1311,7 +1318,7 @@
     try {
       const attendees=activeVisibleAttendees().filter(attendee=>[...selection].some(key=>key.startsWith(`${attendee.id}:`))).map(attendee=>({...attendee,customFields:{...(attendee.customFields||{}),_journeySegments:normalizedExtraJourneys(attendee.customFields?._journeySegments||[]),_travelVerification:{...(attendee.customFields?._travelVerification||{})}}}));
       const meetingId=backendMeetingId;
-      const {failure}=await verifyTravelAttendees(attendees,{allowPaid:$("#verificationAllowPaid").checked,selection});
+      const {failure}=await verifyTravelAttendees(attendees,{allowPaid:loadSystemPreferences().variflightGlobalEnabled===true,selection,disabledPaid:disabledVerificationFlightSegments});
       if(meetingId!==backendMeetingId||attendees.some(attendee=>{
         const current=state.attendees.find(item=>item.id===attendee.id);
         return !current||current.businessStatus==="cancelled"||verificationSegments(attendee).filter(segment=>selection.has(verificationSelectionKey(attendee.id,segment))).some(segment=>TravelVerification.fingerprint(current,segment)!==TravelVerification.fingerprint(attendee,segment));
@@ -1324,7 +1331,7 @@
       selectedVerificationSegments.clear();renderAll();renderTravelVerificationResults();
       if(failure)toast(failure,"error");
     } catch(error) {toast(`核验结果尚未保存：${error.message}`,"error");}
-    finally {verificationRunning=false;$("#verificationAllowPaid").checked=false;$("#verificationAllowPaid").disabled=!canManage();updateVerificationSelectionControls();}
+    finally {verificationRunning=false;renderVerificationPage();updateVerificationSelectionControls();}
   }
 
   function timeBucket(value,minutes) {
@@ -1515,8 +1522,8 @@
       else control=`<input name="${key}" type="${["date","arriveDate"].includes(kind)?"date":["departure","arrival"].includes(kind)?"time":"text"}" value="${escapeHtml(value)}" ${issue}>`;
       return `<label class="${problems.length?"travel-problem-field":""}">${escapeHtml(FIELD_LABELS[key]||key)}${control}${problems.length?`<small id="issue-${key}" class="travel-field-issue">⚠ ${escapeHtml(hint)}</small>`:""}</label>`;
     })).join("");
-    const paidRecheck=verification?`<label class="verify-recheck-paid"><input type="checkbox" name="allowPaidRecheck"><span><strong>本次允许查询飞常准</strong><small>仅在存在新航班查询时消耗额度；单次最多查询 1 个不同航班。</small></span></label>`:"";
-    $("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">EDIT TRAVEL</span><h2>修改 ${escapeHtml(a.name)} 的行程</h2><p>仅本次检出的异常字段标色；其他字段也可编辑。场站显示简称，保存及对外导出保留完整名称。</p></div><form class="detail-body" id="tripEditForm"><div class="risk-preview warning" role="status">${issues.length?"请检查下方标色字段。":"本次没有定位到具体异常字段。"}${escapeHtml([...new Set(notices)].join("；"))}</div><div class="trip-save-error lookup-error" role="alert"></div><div class="field-grid">${fields}</div>${paidRecheck}<div class="detail-actions"><button class="button button-primary" type="submit">${verification?"保存并重新核验":"保存人工修改"}</button><button class="button button-secondary" type="button" id="cancelEdit">取消</button></div></form>`;
+    const recheckNotice=verification?`<div class="verify-recheck-policy"><strong>重新核验遵循全局查询设置</strong><span>${loadSystemPreferences().variflightGlobalEnabled===true?"飞常准全局查询已开启；若本行已单独关闭，则不会调用飞常准。":"飞常准全局查询已关闭，本次仅做本地字段检查。"}</span></div>`:"";
+    $("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">EDIT TRAVEL</span><h2>修改 ${escapeHtml(a.name)} 的行程</h2><p>仅本次检出的异常字段标色；其他字段也可编辑。场站显示简称，保存及对外导出保留完整名称。</p></div><form class="detail-body" id="tripEditForm"><div class="risk-preview warning" role="status">${issues.length?"请检查下方标色字段。":"本次没有定位到具体异常字段。"}${escapeHtml([...new Set(notices)].join("；"))}</div><div class="trip-save-error lookup-error" role="alert"></div><div class="field-grid">${fields}</div>${recheckNotice}<div class="detail-actions"><button class="button button-primary" type="submit">${verification?"保存并重新核验":"保存人工修改"}</button><button class="button button-secondary" type="button" id="cancelEdit">取消</button></div></form>`;
     const form=$("#tripEditForm"),dialog=$("#attendeeDialog");
     bindJourneyForm(form,a);
     targetSegments.filter(segment=>segment.includes(":")).forEach(segment=>{const keys=TravelVerification.keys(segment),mode=form.elements[keys.departTransportType],from=form.elements[keys.from],to=form.elements[keys.to];if(!mode)return;const sync=clear=>{if(clear){from.value="";to.value="";}const local=mode.value==="LOCAL_ATTEND";from.disabled=to.disabled=local;if(local)from.value=to.value="";};mode.addEventListener("change",()=>sync(true));sync(false);});
@@ -1534,7 +1541,7 @@
       const preventClose=event=>event.preventDefault();dialog.addEventListener("cancel",preventClose);
       $(".trip-save-error",form).textContent="";
       try {
-        const fd=new FormData(form),allowPaidRecheck=verification&&fd.get("allowPaidRecheck")==="on",draft={...a,customFields:{...(a.customFields||{}),_journeySegments:normalizedExtraJourneys(a.customFields?._journeySegments||[])}},changes=[],changedSegments=new Set();
+        const fd=new FormData(form),allowPaidRecheck=verification&&loadSystemPreferences().variflightGlobalEnabled===true,draft={...a,customFields:{...(a.customFields||{}),_journeySegments:normalizedExtraJourneys(a.customFields?._journeySegments||[])}},changes=[],changedSegments=new Set();
         for(const segment of targetSegments){
           for(const [kind,key] of Object.entries(TravelVerification.keys(segment))){
             if(locked(key))continue;
@@ -1555,7 +1562,7 @@
         if(changedSegments.size)refreshTravelApprovals(draft,changedSegments);
         await persistVerifiedAttendees([draft],{baseline,edit:true,operator:currentUser().name});
         Object.assign(a,draft);
-        if(verification){await verifyTravelAttendees([draft],{allowPaid:allowPaidRecheck,selection:new Set(targetSegments.map(segment=>verificationSelectionKey(draft.id,segment)))});await persistVerifiedAttendees([draft]);}
+        if(verification){await verifyTravelAttendees([draft],{allowPaid:allowPaidRecheck,selection:new Set(targetSegments.map(segment=>verificationSelectionKey(draft.id,segment))),disabledPaid:disabledVerificationFlightSegments});await persistVerifiedAttendees([draft]);}
         Object.assign(a,draft);
         if(changes.length)addNotification("change",`${currentUser().name}修改了${a.name}的行程，共${changes.length}个字段`,{attendeeName:a.name,changes});
         localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
@@ -2075,10 +2082,20 @@
   }
 
   const SYSTEM_PREFS_KEY="lilly-meeting-system-preferences-v1";
-  function loadSystemPreferences(){try{return{theme:"light",brandColor:"#d52b1e",density:"comfortable",backupInterval:7,variflightDailyLimit:5,variflightUnlimited:false,tourismCities:DEFAULT_TOURISM_CITIES,titles:["主任医师","副主任医师","主治医师","住院医师","主任药师","副主任药师"],stationDictionary:TravelFields.DEFAULT_DICTIONARY,cityAliases:[],...(JSON.parse(localStorage.getItem(SYSTEM_PREFS_KEY))||{})};}catch{return{theme:"light",brandColor:"#d52b1e",density:"comfortable",backupInterval:7,variflightDailyLimit:5,variflightUnlimited:false,tourismCities:DEFAULT_TOURISM_CITIES,titles:[],stationDictionary:TravelFields.DEFAULT_DICTIONARY,cityAliases:[]};}}
-  function applySystemAppearance(preferences=loadSystemPreferences()){document.documentElement.dataset.theme=preferences.theme||"light";document.documentElement.dataset.density=preferences.density||"comfortable";document.documentElement.style.setProperty("--system-brand",preferences.brandColor||"#d52b1e");if($("#dictionaryStations"))$("#dictionaryStations").value=TravelFields.stringifyDictionary(preferences.stationDictionary||[]);if($("#dictionaryCityAliases"))$("#dictionaryCityAliases").value=(preferences.cityAliases||[]).map(item=>`${item.alias}|${item.city}`).join("\n");}
+  function loadSystemPreferences(){try{return{theme:"light",brandColor:"#d52b1e",density:"comfortable",backupInterval:7,variflightDailyLimit:5,variflightUnlimited:false,variflightGlobalEnabled:false,tourismCities:DEFAULT_TOURISM_CITIES,titles:["主任医师","副主任医师","主治医师","住院医师","主任药师","副主任药师"],stationDictionary:TravelFields.DEFAULT_DICTIONARY,cityAliases:[],...(JSON.parse(localStorage.getItem(SYSTEM_PREFS_KEY))||{})};}catch{return{theme:"light",brandColor:"#d52b1e",density:"comfortable",backupInterval:7,variflightDailyLimit:5,variflightUnlimited:false,variflightGlobalEnabled:false,tourismCities:DEFAULT_TOURISM_CITIES,titles:[],stationDictionary:TravelFields.DEFAULT_DICTIONARY,cityAliases:[]};}}
+  function applySystemAppearance(preferences=loadSystemPreferences()){document.documentElement.dataset.theme=preferences.theme||"light";document.documentElement.dataset.density=preferences.density||"comfortable";document.documentElement.style.setProperty("--system-brand",preferences.brandColor||"#d52b1e");if($("#variflightGlobalEnabled"))$("#variflightGlobalEnabled").checked=preferences.variflightGlobalEnabled===true;if($("#dictionaryStations"))$("#dictionaryStations").value=TravelFields.stringifyDictionary(preferences.stationDictionary||[]);if($("#dictionaryCityAliases"))$("#dictionaryCityAliases").value=(preferences.cityAliases||[]).map(item=>`${item.alias}|${item.city}`).join("\n");}
   function maybeAutoBackup(){const preferences=loadSystemPreferences();if(!preferences.backupInterval)return;const last=localStorage.getItem("lilly-meeting-last-auto-backup");if(last&&Date.now()-new Date(last).getTime()<preferences.backupInterval*86400000)return;const snapshot={version:1,createdAt:new Date().toISOString(),state,systemPreferences:preferences};localStorage.setItem("lilly-meeting-auto-backup",JSON.stringify(snapshot));localStorage.setItem("lilly-meeting-last-auto-backup",snapshot.createdAt);}
-  async function saveSystemPreferences(){if(!isSystemAdmin())return deny();const split=value=>[...new Set(String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean))];let stationDictionary,cityAliases;try{stationDictionary=TravelFields.parseDictionary($("#dictionaryStations").value);cityAliases=String($("#dictionaryCityAliases")?.value||"").split(/\r?\n/).filter(line=>line.trim()).map((line,index)=>{const[alias,city]=line.split("|").map(TravelFields.clean);if(!alias||!city)throw new Error(`城市别名第 ${index+1} 行格式错误`);return{alias,city:TravelFields.normalizeCity(city)};});}catch(error){return toast(error.message,"error");}const variflightDailyLimit=Math.max(1,Math.min(10000,Math.trunc(Number($("#variflightDailyLimit").value)||5)));const preferences={theme:$("#systemTheme").value,brandColor:$("#systemBrandColor").value,density:$("#tableDensity").value,backupInterval:Number($("#backupInterval").value)||0,variflightDailyLimit,variflightUnlimited:$("#variflightUnlimited").checked,tourismCities:split($("#dictionaryTourismCities").value),titles:split($("#dictionaryTitles").value),stationDictionary,cityAliases,savedAt:new Date().toISOString()};if(backend){const{error}=await backend.from("system_configuration").upsert({singleton:true,settings:preferences,updated_by:state.currentUserId,updated_at:new Date().toISOString()});if(error)return toast(`系统设置云端保存失败：${error.message}`,"error");const dictionaryRows=TravelFields.dictionary(stationDictionary).map(item=>({city:item.city,type:item.type,name:item.name,short_name:item.shortName||TravelFields.displayStation(item.name,item.type)}));const dictionarySave=await backend.rpc("replace_station_dictionary",{p_items:dictionaryRows});if(dictionarySave.error)return toast("场站字典云端保存失败："+dictionarySave.error.message,"error");const aliasSave=await backend.rpc("replace_city_aliases",{p_items:cityAliases});if(aliasSave.error)return toast("城市别名云端保存失败："+aliasSave.error.message,"error");}localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(preferences));applySystemAppearance(preferences);bindJourneyForm($("#registrationForm"));addNotification("change",`${currentUser().name}更新了系统设置与业务字典`,{read:true,auditOnly:true});localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();toast("系统设置已保存");}
+  async function saveVerificationGlobalSetting(enabled){
+    if(!isSystemAdmin()){renderVerificationPage();return deny();}
+    const preferences={...loadSystemPreferences(),variflightGlobalEnabled:enabled===true,savedAt:new Date().toISOString()};
+    try{
+      if(backend){const{error}=await backend.from("system_configuration").upsert({singleton:true,settings:preferences,updated_by:state.currentUserId,updated_at:new Date().toISOString()});if(error)throw error;}
+      localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(preferences));
+      addNotification("change",`${currentUser().name}${enabled?"开启":"关闭"}了飞常准全局查询`,{read:true,auditOnly:true});
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();renderVerificationPage();toast(`飞常准全局查询已${enabled?"开启":"关闭"}`);
+    }catch(error){renderVerificationPage();toast(`全局查询设置保存失败：${error.message}`,"error");}
+  }
+  async function saveSystemPreferences(){if(!isSystemAdmin())return deny();const split=value=>[...new Set(String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean))];let stationDictionary,cityAliases;try{stationDictionary=TravelFields.parseDictionary($("#dictionaryStations").value);cityAliases=String($("#dictionaryCityAliases")?.value||"").split(/\r?\n/).filter(line=>line.trim()).map((line,index)=>{const[alias,city]=line.split("|").map(TravelFields.clean);if(!alias||!city)throw new Error(`城市别名第 ${index+1} 行格式错误`);return{alias,city:TravelFields.normalizeCity(city)};});}catch(error){return toast(error.message,"error");}const variflightDailyLimit=Math.max(1,Math.min(10000,Math.trunc(Number($("#variflightDailyLimit").value)||5)));const preferences={theme:$("#systemTheme").value,brandColor:$("#systemBrandColor").value,density:$("#tableDensity").value,backupInterval:Number($("#backupInterval").value)||0,variflightDailyLimit,variflightUnlimited:$("#variflightUnlimited").checked,variflightGlobalEnabled:$("#variflightGlobalEnabled").checked,tourismCities:split($("#dictionaryTourismCities").value),titles:split($("#dictionaryTitles").value),stationDictionary,cityAliases,savedAt:new Date().toISOString()};if(backend){const{error}=await backend.from("system_configuration").upsert({singleton:true,settings:preferences,updated_by:state.currentUserId,updated_at:new Date().toISOString()});if(error)return toast(`系统设置云端保存失败：${error.message}`,"error");const dictionaryRows=TravelFields.dictionary(stationDictionary).map(item=>({city:item.city,type:item.type,name:item.name,short_name:item.shortName||TravelFields.displayStation(item.name,item.type)}));const dictionarySave=await backend.rpc("replace_station_dictionary",{p_items:dictionaryRows});if(dictionarySave.error)return toast("场站字典云端保存失败："+dictionarySave.error.message,"error");const aliasSave=await backend.rpc("replace_city_aliases",{p_items:cityAliases});if(aliasSave.error)return toast("城市别名云端保存失败："+aliasSave.error.message,"error");}localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(preferences));applySystemAppearance(preferences);bindJourneyForm($("#registrationForm"));addNotification("change",`${currentUser().name}更新了系统设置与业务字典`,{read:true,auditOnly:true});localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();renderVerificationPage();toast("系统设置已保存");}
   function renderSystemSettings(){if(!$("#globalLogList"))return;const preferences=loadSystemPreferences();applySystemAppearance(preferences);if(!isSystemAdmin())return;$("#systemTheme").value=preferences.theme;$("#systemBrandColor").value=preferences.brandColor;$("#tableDensity").value=preferences.density;$("#backupInterval").value=String(preferences.backupInterval);$("#variflightDailyLimit").value=String(preferences.variflightDailyLimit||5);$("#variflightUnlimited").checked=preferences.variflightUnlimited===true;$("#variflightDailyLimit").disabled=preferences.variflightUnlimited===true;$("#variflightQuotaStatus").textContent=preferences.variflightUnlimited===true?"无限制（可能收费）":`每日 ${preferences.variflightDailyLimit||5} 次`;$("#variflightQuotaStatus").className=`status ${preferences.variflightUnlimited===true?"status-alert":"status-pending"}`;$("#dictionaryTourismCities").value=(preferences.tourismCities||DEFAULT_TOURISM_CITIES).join("、");$("#dictionaryTitles").value=(preferences.titles||[]).join("、");const lastBackup=localStorage.getItem("lilly-meeting-last-backup");$("#backupStatus").textContent=`自动备份：${preferences.backupInterval?`每${preferences.backupInterval}天一次（浏览器本地快照）`:"已关闭"}；最近备份：${lastBackup?new Date(lastBackup).toLocaleString("zh-CN",{hour12:false}):"暂无"}`;const query=$("#globalLogSearch").value.trim().toLowerCase();const logs=(state.notifications||[]).filter(item=>!query||[item.text,item.actorName,item.attendeeName,...(item.changes||[]).flatMap(change=>[change.label,change.before,change.after])].join(" ").toLowerCase().includes(query));$("#globalLogList").innerHTML=logs.slice(0,100).map(item=>`<button type="button" data-notification-detail="${item.id}" class="global-log-row"><span>${escapeHtml(item.actorName||"系统")}</span><strong>${escapeHtml(item.text)}</strong><small>${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</small></button>`).join("")||`<div class="empty-state">没有匹配的操作日志</div>`;$$('[data-notification-detail]',$("#globalLogList")).forEach(button=>button.onclick=()=>openNotificationDetail(button.dataset.notificationDetail));const people=staffDirectory.length?staffDirectory:state.users;$("#systemPermissionOverview").innerHTML=people.map(person=>`<div class="permission-row"><span class="avatar tiny">${escapeHtml((person.display_name||person.name||"管").slice(0,1))}</span><div><strong>${escapeHtml(person.display_name||person.name||"未命名账号")}</strong><small>${escapeHtml(person.email||person.label||person.system_role||person.role||"会务负责人")}</small></div><b>${person.system_role==="super_admin"||person.id===state.currentUserId&&isSystemAdmin()?"超级管理员":"会务负责人"}</b></div>`).join("");}
   function downloadSystemBackup(){if(!isSystemAdmin())return deny();const snapshot={version:1,createdAt:new Date().toISOString(),state,systemPreferences:loadSystemPreferences()};const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot,null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download=`lilly-meeting-backup-${new Date().toISOString().slice(0,10)}.json`;link.click();URL.revokeObjectURL(url);localStorage.setItem("lilly-meeting-last-backup",snapshot.createdAt);addNotification("backup",`${currentUser().name}下载了系统完整数据快照`,{read:true,auditOnly:true});localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();toast("数据快照已下载");}
   async function restoreSystemBackup(file){if(!isSystemAdmin()||!file)return deny();try{const snapshot=JSON.parse(await file.text());if(!snapshot?.state?.attendees||!snapshot?.state?.projects)throw new Error("备份文件结构不正确");if(!confirm("高风险操作：恢复将覆盖当前浏览器中的会议、名单和设置。是否继续？"))return;const phrase=prompt("二次确认：请输入“确认恢复”后执行");if(phrase!=="确认恢复")return toast("已取消数据恢复","error");state=snapshot.state;localStorage.setItem(STORAGE_KEY,JSON.stringify(state));if(snapshot.systemPreferences)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(snapshot.systemPreferences));populateUsers();populateProjects();renderAll();toast("备份已恢复；云端项目数据未被覆盖");}catch(error){toast(`恢复失败：${error.message}`,"error");}finally{$("#restoreBackupFile").value="";}}

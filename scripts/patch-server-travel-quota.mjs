@@ -16,7 +16,7 @@ async function getTravelQuotaPolicy(authHeaders) {
     const response = await fetch(configUrl, { headers: { ...authHeaders, Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
     if (!response.ok) return {};
     const settings = (await response.json())?.[0]?.settings || {};
-    return { flightUnlimited: settings.variflightUnlimited === true, flightDailyLimit: Math.max(1, Math.min(10000, Math.trunc(Number(settings.variflightDailyLimit) || 5))) };
+    return { flightGlobalEnabled: settings.variflightGlobalEnabled === true, flightUnlimited: settings.variflightUnlimited === true, flightDailyLimit: Math.max(1, Math.min(10000, Math.trunc(Number(settings.variflightDailyLimit) || 5))) };
   } catch { return {}; }
 }`;
 const replacements=[

@@ -49,6 +49,7 @@ try{
  await page.waitForSelector("#attendeeTableBody [data-open-attendee]",{state:"attached"});
  await page.evaluate(a=>window.testVerification.setup(a),attendee);
  await page.evaluate(()=>window.testVerification.seed());
+ await page.locator("[data-toggle-verification-detail]").first().click();
  await page.locator("[data-review-travel]").first().click();
  const problems=()=>page.locator('#tripEditForm [aria-invalid="true"]').evaluateAll(inputs=>inputs.map(i=>i.name).sort());
  assert.deepEqual(await problems(),["outDeparture"]);
@@ -64,13 +65,16 @@ try{
  assert.equal(!!saved.customFields._travelVerification.return,true);
  await page.evaluate(()=>window.testVerification.export());
  assert.ok((await page.evaluate(()=>window.testExport.flat())).includes(attendee.departStation));
+ await page.locator("[data-toggle-verification-detail]").first().click();
  await page.locator("[data-review-travel]").first().click();
  await page.evaluate(()=>window.failWrite=true);
  await page.locator('#tripEditForm [type="submit"]').click();
  await page.waitForFunction(()=>document.querySelector(".trip-save-error")?.textContent.includes("模拟保存失败"));
  assert.equal(calls,0);
  await page.evaluate(()=>{window.failWrite=false;window.testVerification.lock();});
- await page.locator("#cancelEdit").click();await page.locator("[data-review-travel]").first().click();
+ await page.locator("#cancelEdit").click();
+ await page.locator("[data-toggle-verification-detail]").first().click();
+ await page.locator("[data-review-travel]").first().click();
  assert.equal(await page.locator('#tripEditForm [name^="depart"]:disabled, #tripEditForm [name^="arrive"]:disabled, #tripEditForm [name^="out"]:disabled').count(),8);
  assert.equal(await page.locator('#tripEditForm [name^="return"]:disabled').count(),0);
  assert.deepEqual(errors,[]);

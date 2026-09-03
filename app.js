@@ -144,7 +144,10 @@
   let projectArchiveStates = {};
   let staffAccess = { allowed:false, email:"", displayName:"", systemRole:"" };
   let staffDirectory = [];
+  let adminAccessGrant = null;
   let adminIdleTimer = null;
+  const ADMIN_DEVICE_KEY="lilly-admin-device-id-v1";
+  const adminDeviceId=()=>{let value=localStorage.getItem(ADMIN_DEVICE_KEY);if(!value){value=crypto.randomUUID();localStorage.setItem(ADMIN_DEVICE_KEY,value);}return value;};
   function armAdminIdleTimeout(){
     if(!backend||!staffAccess.allowed)return;
     clearTimeout(adminIdleTimer);
@@ -163,7 +166,7 @@
   function normalizePrivacyStatus(value) { return value === "paper" ? "paper" : ["electronic","sent","complete"].includes(value) ? "electronic" : "pending"; }
   const currentUser = () => state.users.find(user => user.id === state.currentUserId) || state.users[0];
   const userName = id => state.users.find(user => user.id === id)?.name || "未分配";
-  const visibleAttendees = () => currentUser().role === "sales" ? state.attendees.filter(item => item.ownerId === currentUser().id) : state.attendees;
+  const visibleAttendees = () => currentUser().role === "sales" && staffAccess.systemRole !== "readonly" ? state.attendees.filter(item => item.ownerId === currentUser().id) : state.attendees;
   const activeVisibleAttendees = () => visibleAttendees().filter(item=>item.businessStatus!=="cancelled");
   const canManage = () => isSystemAdmin() || currentUser()?.role === "ops";
   const canEditAttendeeData = () => isSystemAdmin() || currentUser().role === "sales" || (canManage() && !!state.settings.managerEditEnabled);
@@ -172,6 +175,7 @@
   // so relying on the local label alone incorrectly hid the administrator
   // scenario and final-document options.
   const isSystemAdmin = () => staffAccess.systemRole === "super_admin";
+  const isReadOnlyStaff = () => staffAccess.systemRole === "readonly";
   const isDocumentAdmin = () => documentState.user?.role === "admin" || isSystemAdmin();
   const archiveSummary = files => {
     const list=files||[]; const quotation=list.some(file=>file.type==="quotation"); const pendingConfirmation=list.some(file=>file.type==="confirmation"&&file.documentStatus==="pending");
@@ -388,6 +392,27 @@
     return staffAccess;
   }
 
+  async function registerStaffSession(){
+    const {data,error}=await backend.rpc("register_staff_session",{p_device_id:adminDeviceId(),p_user_agent:navigator.userAgent});
+    if(error)throw new Error(error.message||"登录会话登记失败");
+    const row=Array.isArray(data)?data[0]:data;
+    if(!row?.allowed)throw new Error("当前登录会话未通过安全校验");
+    if(Number(row.revoked_sessions)>0)toast(`已超出 ${row.max_devices} 台在线设备，最早的登录会话已失效`);
+    return row;
+  }
+
+  async function validateAdminAccessLink(){
+    const token=new URL(location.href).searchParams.get("admin_access");
+    if(!token)return;
+    const status=$("#adminAccessLinkStatus");
+    const {data,error}=await backend.rpc("validate_admin_access_link",{p_token:token});
+    const row=Array.isArray(data)?data[0]:data;
+    status.classList.remove("is-hidden");
+    if(error||!row?.valid){status.textContent="临时登录链接已过期或无效，请联系超级管理员重新生成。";status.classList.add("login-error");return;}
+    adminAccessGrant=row;status.textContent=`临时登录链接有效至 ${new Date(row.expires_at).toLocaleString("zh-CN",{hour12:false})}`;
+    if(row.target_email){$("#loginForm").elements.email.value=row.target_email;$("#loginForm").elements.email.readOnly=true;}
+  }
+
   async function loadStaffDirectory() {
     staffDirectory = [];
     if (!backend || !backendMeetingId || !isSystemAdmin()) return;
@@ -405,17 +430,21 @@
     if (!visible) { list.innerHTML = ""; return; }
     list.innerHTML = staffDirectory.map(staff => {
       const isAdmin = staff.system_role === "super_admin";
+      const isReadonly = staff.system_role === "readonly";
       const enabled = isAdmin || !!staff.project_enabled;
       const accountState = staff.account_created ? "登录账号已创建" : "尚未创建登录账号";
       return `<div class="system-staff-row">
         <span class="system-staff-avatar ${isAdmin ? "admin" : ""}">${escapeHtml((staff.display_name || "人").slice(0,1))}</span>
         <div class="system-staff-main"><strong>${escapeHtml(staff.display_name)}</strong><small>${escapeHtml(staff.email)}</small></div>
-        <div class="system-staff-badges"><span class="status ${staff.account_created ? "status-normal" : "status-locked"}">${accountState}</span>${isAdmin ? `<span class="status status-ok">全部项目 · 最高权限</span>` : ""}</div>
+        <div class="system-staff-badges"><span class="status ${staff.account_created ? "status-normal" : "status-locked"}">${accountState}</span>${isAdmin ? `<span class="status status-ok">全部项目 · 最高权限</span>` : `<label>系统角色<select data-system-staff-role="${escapeHtml(staff.email)}"><option value="ops" ${isReadonly?"":"selected"}>会务负责人</option><option value="readonly" ${isReadonly?"selected":""}>只读查看</option></select></label>`}</div>
         ${isAdmin ? `<span class="system-staff-fixed">不可回收</span>` : `<label class="permission-switch system-staff-switch"><span><strong>${enabled ? "已授权当前项目" : "未授权当前项目"}</strong><small>${staff.account_created ? "可随时开放或回收" : "请先在 Supabase 创建账号"}</small></span><span class="switch"><input type="checkbox" data-system-staff-email="${escapeHtml(staff.email)}" ${enabled ? "checked" : ""} ${staff.account_created ? "" : "disabled"}/><span></span></span></label>`}
       </div>`;
     }).join("") || `<div class="empty-state">暂无可分配的会务负责人账号</div>`;
     $$('[data-system-staff-email]', list).forEach(input => input.addEventListener("change", () => toggleProjectStaff(input.dataset.systemStaffEmail, input.checked, input)));
+    $$('[data-system-staff-role]', list).forEach(select=>select.addEventListener("change",()=>setSystemStaffRole(select.dataset.systemStaffRole,select.value,select)));
   }
+
+  async function setSystemStaffRole(email,role,select){if(!backend||!isSystemAdmin())return deny();select.disabled=true;try{const{error}=await backend.rpc("set_system_staff_role",{p_email:email,p_role:role});if(error)throw error;await loadStaffDirectory();renderSystemStaffDirectory();renderSystemSettings();toast("系统角色已更新");}catch(error){toast(`角色更新失败：${error.message}`,"error");await loadStaffDirectory();renderSystemStaffDirectory();}}
 
   async function toggleProjectStaff(email, enabled, input) {
     if (!backend || !backendMeetingId || !isSystemAdmin()) return deny();
@@ -464,15 +493,17 @@
     if (config.mode === "production" && config.supabaseUrl && config.supabaseAnonKey && window.supabase) {
       backend = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
       backend.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") { luggageIntegration?.clearAccess(); staffAccess.allowed=false; luggageIntegration?.unmount(); } });
+      await validateAdminAccessLink().catch(()=>{});
       const { data } = offlineLuggageSession ? {data:{session:null}} : await backend.auth.getSession();
       if (data.session) {
-        try{await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();}
+        try{await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();}
         catch(error){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=error.message;$("#loginDialog").showModal();}
       }
       else if (!offlineLuggageSession && !["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
     }
     populateUsers(); populateProjects(); bindNavigation(); bindForms(); bindControls(); route(); renderAll(); maybeAutoBackup();
     window.setInterval(renderGreeting,60000);
+    window.setInterval(async()=>{if(backend&&staffAccess.allowed){try{await registerStaffSession();}catch{await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent="登录会话已在其他设备失效，请重新登录";$("#loginDialog").showModal();}}},5*60*1000);
     window.addEventListener("hashchange", route);
     window.addEventListener("scroll", () => $(".topbar")?.classList.toggle("scrolled", scrollY > 4));
     setTimeout(renderQr, 400);
@@ -561,7 +592,7 @@
       const email=String(form.elements.email.value||"").trim().toLowerCase();
       const { error } = await backend.auth.signInWithPassword({ email, password: form.elements.password.value });
       if (error) { $("#loginError").textContent = "邮箱或密码不正确"; button.disabled=false; return; }
-      try{$("#loginError").textContent="";await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();toast(state.activeProjectId?`登录成功 · ${isSystemAdmin()?"超级管理员":"会务负责人"}`:"登录成功，请先新建项目");}
+      try{$("#loginError").textContent="";await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();toast(state.activeProjectId?`登录成功 · ${isSystemAdmin()?"超级管理员":isReadOnlyStaff()?"只读查看":"会务负责人"}`:"登录成功，请先新建项目");}
       catch(accessError){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=accessError.message||"当前邮箱未开放管理系统权限";}
       finally{button.disabled=false;}
     });
@@ -572,10 +603,10 @@
     if (!authData.user) throw new Error("登录已过期");
     const [profileRes,projectsRes]=await Promise.all([backend.from("profiles").select("display_name,phone,role").eq("user_id",authData.user.id).maybeSingle(),backend.from("meetings").select("*").is("archived_at",null).order("created_at",{ascending:false})]);
     if(profileRes.error||!profileRes.data)throw new Error("当前账号尚未建立人员资料"); if(projectsRes.error)throw new Error("请先运行项目权限数据库升级脚本");
-    const manageableProjects=projectsRes.data||[]; projectMemberships=manageableProjects.map(meeting=>({meeting_id:meeting.id,role:"ops",display_name:profileRes.data.display_name,phone:profileRes.data.phone,meetings:meeting}));
+    const manageableProjects=projectsRes.data||[]; const accountRole=isReadOnlyStaff()?"sales":profileRes.data.role;projectMemberships=manageableProjects.map(meeting=>({meeting_id:meeting.id,role:accountRole,display_name:profileRes.data.display_name,phone:profileRes.data.phone,meetings:meeting}));
     if (!manageableProjects.length) {
       const blank = initialState(); backendMeetingId = null;
-      state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:"ops",label:isSystemAdmin()?"超级管理员":"会务负责人",phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
+      state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:accountRole,label:isSystemAdmin()?"超级管理员":isReadOnlyStaff()?"只读查看":"会务负责人",phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
       localStorage.removeItem("journey-desk-active-project"); return;
     }
     const savedProjectId = localStorage.getItem("journey-desk-active-project");
@@ -596,8 +627,8 @@
     state = {
       currentUserId: authData.user.id,
       activeProjectId: backendMeetingId,
-      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, luggageEnabled:!!m.luggage_enabled, luggageUsed:!!m.luggage_used, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:"ops", ownerUserId:m.owner_user_id||null, archiveReady:!!m.archive_ready, registrationOpen:!!m.registration_open, templateImported:!!m.template_imported_at, managerEditEnabled:!!m.manager_attendee_edit_enabled, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
-      users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
+      projects: projectMemberships.map(item => { const m = item.meetings || {}; return { id:item.meeting_id, slug:m.slug, name:m.name, luggageEnabled:!!m.luggage_enabled, luggageUsed:!!m.luggage_used, activityType:m.activity_type||"external", identifier:m.project_identifier||m.slug, activityOwner:m.activity_owner||"", activityDate:m.activity_date||m.start_date||"", clientName:m.client_name||"", role:item.role, ownerUserId:m.owner_user_id||null, archiveReady:!!m.archive_ready, registrationOpen:!!m.registration_open, templateImported:!!m.template_imported_at, managerEditEnabled:!!m.manager_attendee_edit_enabled, startDate:m.start_date||"", endDate:m.end_date||"", brandColor:m.brand_color||"#5267d9" }; }),
+      users: membersRes.data.map(p => ({ id:p.user_id, name:p.display_name, role:p.role, label:p.user_id===authData.user.id&&isReadOnlyStaff()?"只读查看":({ops:"会务负责人",client:"会议负责人（客户）",sales:"销售负责人"})[p.role], phone:p.phone||"" })),
       settings: { luggageEnabled:!!meeting.luggage_enabled, luggageUsed:!!meeting.luggage_used, luggageConfigured:Object.hasOwn(meeting,"luggage_enabled"), eventName:meeting.name, slug:meeting.slug, activityType:meeting.activity_type||"external", identifier:meeting.project_identifier||meeting.slug, activityOwner:meeting.activity_owner||"", activityDate:meeting.activity_date||meeting.start_date||"", clientName:meeting.client_name||"", startDate:meeting.start_date||"", endDate:meeting.end_date||"", venues:[...new Set((meeting.venues||[]).map(normalizeVenueLabel).filter(Boolean))], servicePhone:meeting.service_phone||"", brandColor:meeting.brand_color||"#5267d9", deadline:meeting.deadline?.slice(0,16)||"", capacity:meeting.capacity, allowedCities:meeting.allowed_departure_cities||[], mismatchRule:meeting.check_city_mismatch, departureRule:meeting.check_departure_city, flightLeadMinutes:meeting.flight_lead_minutes??120, trainLeadMinutes:meeting.train_lead_minutes??90, transportGroupMinutes:meeting.transport_group_minutes??30, transportStationRules:Array.isArray(meeting.field_config?.transportStationRules)?meeting.field_config.transportStationRules:[], transferCollectionEnabled:!!meeting.transfer_collection_enabled, transferCollectionRoles:Array.isArray(meeting.transfer_collection_roles)?meeting.transfer_collection_roles:[], fieldConfig:{title:true,hcpId:true,accommodation:true,flight:true,mslContact:true,remarks:true,clothingSize:false,internalRoomingMode:"manual",...(meeting.field_config||{})}, registrationQuotas:Array.isArray(meeting.field_config?.registrationQuotas)?meeting.field_config.registrationQuotas:[], quotaRegions:Array.isArray(meeting.field_config?.quotaRegions)?meeting.field_config.quotaRegions:[], templateName:meeting.template_name||"", templateStoragePath:meeting.template_storage_path||"", templateIsSystemDefault:!!meeting.template_is_system_default, registrationTemplate:meeting.registration_template?.columns?.length ? meeting.registration_template : {version:1,columns:[]}, templateImported:!!meeting.template_imported_at, registrationOpen:!!meeting.registration_open, managerEditEnabled:!!meeting.manager_attendee_edit_enabled },
       locks: { master: meeting.master_locked, columns: locksRes.data.filter(l => l.locked).map(l => l.field_group), rows: attendeesRes.data.filter(a => a.row_locked).map(a => a.id) },
       attendees: attendeesRes.data.map(fromDbAttendee),
@@ -788,7 +819,8 @@
     $("#downloadBackup").addEventListener("click",downloadSystemBackup);
     $("#restoreBackupFile").addEventListener("change",event=>restoreSystemBackup(event.target.files[0]));
     $("#saveSystemDictionary").addEventListener("click",saveSystemPreferences);
-    ["systemTheme","systemBrandColor","tableDensity","backupInterval","variflightDailyLimit","variflightUnlimited","variflightGlobalEnabled"].forEach(id=>$("#"+id).addEventListener("change",saveSystemPreferences));
+    ["systemTheme","systemBrandColor","tableDensity","backupInterval","variflightDailyLimit","variflightUnlimited","variflightGlobalEnabled","maxConcurrentDevices"].forEach(id=>$("#"+id).addEventListener("change",saveSystemPreferences));
+    $("#createAdminAccessLink").addEventListener("click",createAdminAccessLink);
     $("#globalLogSearch").addEventListener("input",renderSystemSettings);
   }
 
@@ -1224,7 +1256,7 @@
     $("#roomingOccupancySummary").innerHTML=data.rows.length?`<span><strong>${escapeHtml(data.from)} 至 ${escapeHtml(data.to)}</strong> · 共 ${data.rows.length} 个住宿自然日</span><span>当前筛选合计 <strong>${totalRoomNights}</strong> 间夜 · 标间包含单住与已完成拼住的房间</span>`:`<span><strong>暂无可统计数据</strong> · 请完整确认实际房型和最终入住、退房日期</span><span>无需住宿、待分配及未完成拼房人员不计入</span>`;
     $("#roomingOccupancyBody").innerHTML=data.rows.length?data.rows.map(row=>{const twin=row.twinSingle+row.shared;return`<tr><td>${escapeHtml(roomingOccupancyDateLabel(row.date))}</td><td>${row.single}</td><td>${twin}</td><td class="rooming-day-total">${row.single+twin}</td></tr>`;}).join(""):`<tr><td class="rooming-occupancy-empty" colspan="4">当前日期范围内暂无已完成的住宿安排</td></tr>`;
   }
-  function exportRoomingOccupancy(){if(!window.XLSX)return toast("Excel 组件尚未加载，请刷新后重试","error");const data=roomingOccupancyData();if(!data.rows.length)return toast("当前日期范围内没有可导出的分房数据","error");const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,roomingOccupancySheet(data),"分房统计");XLSX.writeFile(wb,`${state.settings.slug||"项目"}-分房统计-${data.from}-${data.to}.xlsx`);toast("分房统计已导出");}
+  function exportRoomingOccupancy(){if(isReadOnlyStaff())return toast("只读账号没有数据导出权限","error");if(!window.XLSX)return toast("Excel 组件尚未加载，请刷新后重试","error");const data=roomingOccupancyData();if(!data.rows.length)return toast("当前日期范围内没有可导出的分房数据","error");const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,roomingOccupancySheet(data),"分房统计");XLSX.writeFile(wb,`${state.settings.slug||"项目"}-分房统计-${data.from}-${data.to}.xlsx`);toast("分房统计已导出");}
 
   function renderApprovals() {
     const list = activeVisibleAttendees().filter(a => ["outbound","return"].some(segment=>["pending","rejected"].includes(segmentApproval(a,segment))));
@@ -1282,6 +1314,7 @@
   }
   function decideRoomingApproval(id,decision){if(!canEditAttendeeData())return deny();const attendee=state.attendees.find(item=>item.id===id);if(!attendee)return;const note=decision==="rejected"?prompt("请输入驳回备注"):"批准单间例外申请";if(decision==="rejected"&&!note)return;const patch=decision==="approved"?{approvalStatus:"approved",approvalNote:note,assignedType:"single",assignmentSource:"approval"}:{approvalStatus:"rejected",approvalNote:note,assignedType:"shared",roommateId:"",pendingManual:true,assignmentSource:"approval_rejected"};saveRooming(attendee,patch,`${decision==="approved"?"住宿例外已批准":"住宿申请已驳回并恢复标间拼住"}（${note}）`);toast(decision==="approved"?"住宿例外已批准":"住宿申请已驳回");}
   function exportRoomingList(){
+    if(isReadOnlyStaff())return toast("只读账号没有数据导出权限","error");
     const attendees=activeVisibleAttendees(),stats=roomingStatistics(attendees),occupancy=roomingOccupancyData(),headers=["序号","姓名","性别","大区","省份","城市","医院","职称","会场","入住日期","退房日期","住宿日期推算间夜（参考）","实际允许住宿间夜数","申请房型","系统建议","实际房型","拼住室友","匹配依据","房号","安排状态","住宿审批"];
     const rows=attendees.filter(a=>a.accommodation==="Y"||roomingRecord(a).requestedType||roomingRecord(a).assignedType).map((a,index)=>{const room=roomingRecord(a),dates=roomingDates(a);return[index+1,a.name,a.sex,a.region,RoomingEngine.province(a),a.city,a.hospital,a.title,a.venue,dates.checkIn,dates.checkOut,roomingNights(a),room.actualNights,roomTypeLabel(room.requestedType),roomTypeLabel(suggestedRoomType(a)),roomTypeLabel(room.assignedType),state.attendees.find(item=>item.id===room.roommateId)?.name||"",room.pairingReason||"",room.roomNumber,room.assignedType==="shared"&&!room.roommateId?"待人工安排":"已安排",roomingApprovalStatus(a)==="approved"?"已批准":roomingApprovalStatus(a)==="pending"?"待审批":roomingApprovalStatus(a)==="rejected"?"已退回":"无需审批"]});
     if(!window.XLSX)return toast("Excel 组件尚未加载，请刷新后重试","error");
@@ -2250,7 +2283,7 @@
   }
 
   const SYSTEM_PREFS_KEY="lilly-meeting-system-preferences-v1";
-  function loadSystemPreferences(){try{return{theme:"light",brandColor:"#d52b1e",density:"comfortable",backupInterval:7,variflightDailyLimit:5,variflightUnlimited:false,variflightGlobalEnabled:false,tourismCities:DEFAULT_TOURISM_CITIES,titles:["主任医师","副主任医师","主治医师","住院医师","主任药师","副主任药师"],stationDictionary:TravelFields.DEFAULT_DICTIONARY,cityAliases:[],...(JSON.parse(localStorage.getItem(SYSTEM_PREFS_KEY))||{})};}catch{return{theme:"light",brandColor:"#d52b1e",density:"comfortable",backupInterval:7,variflightDailyLimit:5,variflightUnlimited:false,variflightGlobalEnabled:false,tourismCities:DEFAULT_TOURISM_CITIES,titles:[],stationDictionary:TravelFields.DEFAULT_DICTIONARY,cityAliases:[]};}}
+  function loadSystemPreferences(){try{return{theme:"light",brandColor:"#d52b1e",density:"comfortable",backupInterval:7,variflightDailyLimit:5,variflightUnlimited:false,variflightGlobalEnabled:false,maxConcurrentDevices:2,mailDeliveryConfigured:false,tourismCities:DEFAULT_TOURISM_CITIES,titles:["主任医师","副主任医师","主治医师","住院医师","主任药师","副主任药师"],stationDictionary:TravelFields.DEFAULT_DICTIONARY,cityAliases:[],...(JSON.parse(localStorage.getItem(SYSTEM_PREFS_KEY))||{})};}catch{return{theme:"light",brandColor:"#d52b1e",density:"comfortable",backupInterval:7,variflightDailyLimit:5,variflightUnlimited:false,variflightGlobalEnabled:false,maxConcurrentDevices:2,mailDeliveryConfigured:false,tourismCities:DEFAULT_TOURISM_CITIES,titles:[],stationDictionary:TravelFields.DEFAULT_DICTIONARY,cityAliases:[]};}}
   function applySystemAppearance(preferences=loadSystemPreferences()){document.documentElement.dataset.theme=preferences.theme||"light";document.documentElement.dataset.density=preferences.density||"comfortable";document.documentElement.style.setProperty("--system-brand",preferences.brandColor||"#d52b1e");if($("#variflightGlobalEnabled"))$("#variflightGlobalEnabled").checked=preferences.variflightGlobalEnabled===true;if($("#dictionaryStations"))$("#dictionaryStations").value=TravelFields.stringifyDictionary(preferences.stationDictionary||[]);if($("#dictionaryCityAliases"))$("#dictionaryCityAliases").value=(preferences.cityAliases||[]).map(item=>`${item.alias}|${item.city}`).join("\n");}
   function maybeAutoBackup(){const preferences=loadSystemPreferences();if(!preferences.backupInterval)return;const last=localStorage.getItem("lilly-meeting-last-auto-backup");if(last&&Date.now()-new Date(last).getTime()<preferences.backupInterval*86400000)return;const snapshot={version:1,createdAt:new Date().toISOString(),state,systemPreferences:preferences};localStorage.setItem("lilly-meeting-auto-backup",JSON.stringify(snapshot));localStorage.setItem("lilly-meeting-last-auto-backup",snapshot.createdAt);}
   async function saveVerificationGlobalSetting(enabled){
@@ -2263,13 +2296,15 @@
       localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();renderVerificationPage();toast(`飞常准全局查询已${enabled?"开启":"关闭"}`);
     }catch(error){renderVerificationPage();toast(`全局查询设置保存失败：${error.message}`,"error");}
   }
-  async function saveSystemPreferences(){if(!isSystemAdmin())return deny();const split=value=>[...new Set(String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean))];let stationDictionary,cityAliases;try{stationDictionary=TravelFields.parseDictionary($("#dictionaryStations").value);cityAliases=String($("#dictionaryCityAliases")?.value||"").split(/\r?\n/).filter(line=>line.trim()).map((line,index)=>{const[alias,city]=line.split("|").map(TravelFields.clean);if(!alias||!city)throw new Error(`城市别名第 ${index+1} 行格式错误`);return{alias,city:TravelFields.normalizeCity(city)};});}catch(error){return toast(error.message,"error");}const variflightDailyLimit=Math.max(1,Math.min(10000,Math.trunc(Number($("#variflightDailyLimit").value)||5)));const preferences={theme:$("#systemTheme").value,brandColor:$("#systemBrandColor").value,density:$("#tableDensity").value,backupInterval:Number($("#backupInterval").value)||0,variflightDailyLimit,variflightUnlimited:$("#variflightUnlimited").checked,variflightGlobalEnabled:$("#variflightGlobalEnabled").checked,tourismCities:split($("#dictionaryTourismCities").value),titles:split($("#dictionaryTitles").value),stationDictionary,cityAliases,savedAt:new Date().toISOString()};if(backend){const{error}=await backend.from("system_configuration").upsert({singleton:true,settings:preferences,updated_by:state.currentUserId,updated_at:new Date().toISOString()});if(error)return toast(`系统设置云端保存失败：${error.message}`,"error");const dictionaryRows=TravelFields.dictionary(stationDictionary).map(item=>({city:item.city,type:item.type,name:item.name,short_name:item.shortName||TravelFields.displayStation(item.name,item.type)}));const dictionarySave=await backend.rpc("replace_station_dictionary",{p_items:dictionaryRows});if(dictionarySave.error)return toast("场站字典云端保存失败："+dictionarySave.error.message,"error");const aliasSave=await backend.rpc("replace_city_aliases",{p_items:cityAliases});if(aliasSave.error)return toast("城市别名云端保存失败："+aliasSave.error.message,"error");}localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(preferences));applySystemAppearance(preferences);bindJourneyForm($("#registrationForm"));addNotification("change",`${currentUser().name}更新了系统设置与业务字典`,{read:true,auditOnly:true});localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();renderVerificationPage();toast("系统设置已保存");}
-  function renderSystemSettings(){if(!$("#globalLogList"))return;const preferences=loadSystemPreferences();applySystemAppearance(preferences);if(!isSystemAdmin())return;$("#systemTheme").value=preferences.theme;$("#systemBrandColor").value=preferences.brandColor;$("#tableDensity").value=preferences.density;$("#backupInterval").value=String(preferences.backupInterval);$("#variflightDailyLimit").value=String(preferences.variflightDailyLimit||5);$("#variflightUnlimited").checked=preferences.variflightUnlimited===true;$("#variflightDailyLimit").disabled=preferences.variflightUnlimited===true;$("#variflightQuotaStatus").textContent=preferences.variflightUnlimited===true?"无限制（可能收费）":`每日 ${preferences.variflightDailyLimit||5} 次`;$("#variflightQuotaStatus").className=`status ${preferences.variflightUnlimited===true?"status-alert":"status-pending"}`;$("#dictionaryTourismCities").value=(preferences.tourismCities||DEFAULT_TOURISM_CITIES).join("、");$("#dictionaryTitles").value=(preferences.titles||[]).join("、");const lastBackup=localStorage.getItem("lilly-meeting-last-backup");$("#backupStatus").textContent=`自动备份：${preferences.backupInterval?`每${preferences.backupInterval}天一次（浏览器本地快照）`:"已关闭"}；最近备份：${lastBackup?new Date(lastBackup).toLocaleString("zh-CN",{hour12:false}):"暂无"}`;const query=$("#globalLogSearch").value.trim().toLowerCase();const logs=(state.notifications||[]).filter(item=>!query||[item.text,item.actorName,item.attendeeName,...(item.changes||[]).flatMap(change=>[change.label,change.before,change.after])].join(" ").toLowerCase().includes(query));$("#globalLogList").innerHTML=logs.slice(0,100).map(item=>`<button type="button" data-notification-detail="${item.id}" class="global-log-row"><span>${escapeHtml(item.actorName||"系统")}</span><strong>${escapeHtml(item.text)}</strong><small>${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</small></button>`).join("")||`<div class="empty-state">没有匹配的操作日志</div>`;$$('[data-notification-detail]',$("#globalLogList")).forEach(button=>button.onclick=()=>openNotificationDetail(button.dataset.notificationDetail));const people=staffDirectory.length?staffDirectory:state.users;$("#systemPermissionOverview").innerHTML=people.map(person=>`<div class="permission-row"><span class="avatar tiny">${escapeHtml((person.display_name||person.name||"管").slice(0,1))}</span><div><strong>${escapeHtml(person.display_name||person.name||"未命名账号")}</strong><small>${escapeHtml(person.email||person.label||person.system_role||person.role||"会务负责人")}</small></div><b>${person.system_role==="super_admin"||person.id===state.currentUserId&&isSystemAdmin()?"超级管理员":"会务负责人"}</b></div>`).join("");}
+  async function saveSystemPreferences(){if(!isSystemAdmin())return deny();const split=value=>[...new Set(String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean))];let stationDictionary,cityAliases;try{stationDictionary=TravelFields.parseDictionary($("#dictionaryStations").value);cityAliases=String($("#dictionaryCityAliases")?.value||"").split(/\r?\n/).filter(line=>line.trim()).map((line,index)=>{const[alias,city]=line.split("|").map(TravelFields.clean);if(!alias||!city)throw new Error(`城市别名第 ${index+1} 行格式错误`);return{alias,city:TravelFields.normalizeCity(city)};});}catch(error){return toast(error.message,"error");}const variflightDailyLimit=Math.max(1,Math.min(10000,Math.trunc(Number($("#variflightDailyLimit").value)||5)));const preferences={...loadSystemPreferences(),theme:$("#systemTheme").value,brandColor:$("#systemBrandColor").value,density:$("#tableDensity").value,backupInterval:Number($("#backupInterval").value)||0,variflightDailyLimit,variflightUnlimited:$("#variflightUnlimited").checked,variflightGlobalEnabled:$("#variflightGlobalEnabled").checked,maxConcurrentDevices:Math.max(1,Math.min(20,Math.trunc(Number($("#maxConcurrentDevices").value)||2))),tourismCities:split($("#dictionaryTourismCities").value),titles:split($("#dictionaryTitles").value),stationDictionary,cityAliases,savedAt:new Date().toISOString()};if(backend){const{error}=await backend.from("system_configuration").upsert({singleton:true,settings:preferences,updated_by:state.currentUserId,updated_at:new Date().toISOString()});if(error)return toast(`系统设置云端保存失败：${error.message}`,"error");const dictionaryRows=TravelFields.dictionary(stationDictionary).map(item=>({city:item.city,type:item.type,name:item.name,short_name:item.shortName||TravelFields.displayStation(item.name,item.type)}));const dictionarySave=await backend.rpc("replace_station_dictionary",{p_items:dictionaryRows});if(dictionarySave.error)return toast("场站字典云端保存失败："+dictionarySave.error.message,"error");const aliasSave=await backend.rpc("replace_city_aliases",{p_items:cityAliases});if(aliasSave.error)return toast("城市别名云端保存失败："+aliasSave.error.message,"error");}localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(preferences));applySystemAppearance(preferences);bindJourneyForm($("#registrationForm"));addNotification("change",`${currentUser().name}更新了系统设置与业务字典`,{read:true,auditOnly:true});localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();renderVerificationPage();toast("系统设置已保存");}
+  function renderSystemSettings(){if(!$("#globalLogList"))return;const preferences=loadSystemPreferences();applySystemAppearance(preferences);if(!isSystemAdmin())return;$("#systemTheme").value=preferences.theme;$("#systemBrandColor").value=preferences.brandColor;$("#tableDensity").value=preferences.density;$("#backupInterval").value=String(preferences.backupInterval);$("#variflightDailyLimit").value=String(preferences.variflightDailyLimit||5);$("#variflightUnlimited").checked=preferences.variflightUnlimited===true;$("#variflightDailyLimit").disabled=preferences.variflightUnlimited===true;$("#variflightQuotaStatus").textContent=preferences.variflightUnlimited===true?"无限制（可能收费）":`每日 ${preferences.variflightDailyLimit||5} 次`;$("#variflightQuotaStatus").className=`status ${preferences.variflightUnlimited===true?"status-alert":"status-pending"}`;$("#maxConcurrentDevices").value=String(preferences.maxConcurrentDevices||2);$("#mailDeliveryStatus").textContent=preferences.mailDeliveryConfigured?"邮件发送已启用":"待配置 SMTP";$("#mailDeliveryStatus").className=`status ${preferences.mailDeliveryConfigured?"status-normal":"status-pending"}`;$("#dictionaryTourismCities").value=(preferences.tourismCities||DEFAULT_TOURISM_CITIES).join("、");$("#dictionaryTitles").value=(preferences.titles||[]).join("、");const lastBackup=localStorage.getItem("lilly-meeting-last-backup");$("#backupStatus").textContent=`自动备份：${preferences.backupInterval?`每${preferences.backupInterval}天一次（浏览器本地快照）`:"已关闭"}；最近备份：${lastBackup?new Date(lastBackup).toLocaleString("zh-CN",{hour12:false}):"暂无"}`;const query=$("#globalLogSearch").value.trim().toLowerCase();const logs=(state.notifications||[]).filter(item=>!query||[item.text,item.actorName,item.attendeeName,...(item.changes||[]).flatMap(change=>[change.label,change.before,change.after])].join(" ").toLowerCase().includes(query));$("#globalLogList").innerHTML=logs.slice(0,100).map(item=>`<button type="button" data-notification-detail="${item.id}" class="global-log-row"><span>${escapeHtml(item.actorName||"系统")}</span><strong>${escapeHtml(item.text)}</strong><small>${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</small></button>`).join("")||`<div class="empty-state">没有匹配的操作日志</div>`;$$('[data-notification-detail]',$("#globalLogList")).forEach(button=>button.onclick=()=>openNotificationDetail(button.dataset.notificationDetail));const people=staffDirectory.length?staffDirectory:state.users;$("#systemPermissionOverview").innerHTML=people.map(person=>`<div class="permission-row"><span class="avatar tiny">${escapeHtml((person.display_name||person.name||"管").slice(0,1))}</span><div><strong>${escapeHtml(person.display_name||person.name||"未命名账号")}</strong><small>${escapeHtml(person.email||person.label||person.system_role||person.role||"会务负责人")}</small></div><b>${person.system_role==="super_admin"||person.id===state.currentUserId&&isSystemAdmin()?"超级管理员":person.system_role==="readonly"?"只读查看":"会务负责人"}</b></div>`).join("");}
+
+  async function createAdminAccessLink(){if(!backend||!isSystemAdmin())return deny();const button=$("#createAdminAccessLink");button.disabled=true;try{const minutes=Math.max(5,Math.min(1440,Math.trunc(Number($("#adminAccessLinkMinutes").value)||60)));const email=$("#adminAccessLinkEmail").value.trim().toLowerCase()||null;const{data,error}=await backend.rpc("create_admin_access_link",{p_minutes:minutes,p_target_email:email});if(error)throw error;const row=Array.isArray(data)?data[0]:data;const url=new URL(location.origin+location.pathname);url.searchParams.set("admin_access",row.token);url.hash="dashboard";await navigator.clipboard.writeText(url.toString());$("#adminAccessLinkResult").textContent=`临时链接已复制，有效至 ${new Date(row.expires_at).toLocaleString("zh-CN",{hour12:false})}。`;toast("临时登录链接已复制");}catch(error){$("#adminAccessLinkResult").textContent=`生成失败：${error.message}`;toast("临时链接生成失败","error");}finally{button.disabled=false;}}
   function downloadSystemBackup(){if(!isSystemAdmin())return deny();const snapshot={version:1,createdAt:new Date().toISOString(),state,systemPreferences:loadSystemPreferences()};const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot,null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download=`lilly-meeting-backup-${new Date().toISOString().slice(0,10)}.json`;link.click();URL.revokeObjectURL(url);localStorage.setItem("lilly-meeting-last-backup",snapshot.createdAt);addNotification("backup",`${currentUser().name}下载了系统完整数据快照`,{read:true,auditOnly:true});localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();toast("数据快照已下载");}
   async function restoreSystemBackup(file){if(!isSystemAdmin()||!file)return deny();try{const snapshot=JSON.parse(await file.text());if(!snapshot?.state?.attendees||!snapshot?.state?.projects)throw new Error("备份文件结构不正确");if(!confirm("高风险操作：恢复将覆盖当前浏览器中的会议、名单和设置。是否继续？"))return;const phrase=prompt("二次确认：请输入“确认恢复”后执行");if(phrase!=="确认恢复")return toast("已取消数据恢复","error");state=snapshot.state;localStorage.setItem(STORAGE_KEY,JSON.stringify(state));if(snapshot.systemPreferences)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(snapshot.systemPreferences));populateUsers();populateProjects();renderAll();toast("备份已恢复；云端项目数据未被覆盖");}catch(error){toast(`恢复失败：${error.message}`,"error");}finally{$("#restoreBackupFile").value="";}}
 
   function exportExcel() {
-    if(!isSystemAdmin()&&!['ops','client','sales'].includes(currentUser().role))return toast("当前账号没有导出权限","error");
+    if(isReadOnlyStaff()||!isSystemAdmin()&&!['ops','client','sales'].includes(currentUser().role))return toast("只读账号没有敏感数据导出权限","error");
     const columns=meetingTemplateColumns();
     const existingKeys=new Set(columns.map(column=>column.key));const journeyColumns=JOURNEY_FORM_COLUMNS.filter(column=>!existingKeys.has(column.key));const exportColumns=[...columns,...journeyColumns];
     const headers=[...exportColumns.map(column=>column.header),"新增多段行程明细","新增多段行程核验","去程送站出发地点","预约送站时间","去程送站备注","返程接站送达目的地","预估接站时间","返程接站备注","报名状态","隐私沟通函状态","去程审批状态","返程审批状态","出票状态","去程计划时刻核验","返程计划时刻核验"];

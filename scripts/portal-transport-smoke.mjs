@@ -37,14 +37,14 @@ await page.locator("#loginDialog").evaluate(dialog => { if (dialog.open) dialog.
 await page.waitForSelector('[data-page="transport"].active');
 await page.locator('[data-edit-transport][data-type="dropoff"]').first().click();
 const ruleText = await page.locator("#transportEditForm .risk-preview").innerText();
-if (!ruleText.includes("起飞前 120 分钟") || !ruleText.includes("2026-09-06 16:40")) throw new Error("Flight dropoff recommendation failed");
+if (!ruleText.includes("大连周水子机场提前 120 分钟") || !ruleText.includes("2026-09-06 16:40")) throw new Error("Station-level flight dropoff recommendation failed");
 await page.selectOption("#transportMode", "staff");
 if (!await page.locator("#driverFields").evaluate(node => node.classList.contains("is-hidden"))) throw new Error("Staff mode did not hide driver fields");
 await page.click('#transportEditForm button[type="submit"]');
-if (!await page.locator("#transportGrid").innerText().then(value => value.includes("工作人员接待"))) throw new Error("Staff transport save failed");
+if (!await page.locator("#transportGrid").innerText().then(value => value.includes("工作人员安排"))) throw new Error("Staff transport save failed");
 await page.locator('[data-edit-transport][data-type="dropoff"]').nth(2).click();
 const trainRuleText = await page.locator("#transportEditForm .risk-preview").innerText();
-if (!trainRuleText.includes("出发前 90 分钟") || !trainRuleText.includes("2026-09-12 16:52")) throw new Error("Train dropoff recommendation failed");
+if (!trainRuleText.includes("福州站提前 90 分钟") || !trainRuleText.includes("2026-09-12 16:52")) throw new Error("Station-level train dropoff recommendation failed");
 await page.locator("#cancelTransport").click();
 console.log(JSON.stringify({ portal:"pass", staffPickup:"pass", calendarEvents:2, reminder:"30 minutes", flightDropoff:"-2h", trainDropoff:"-1.5h", staffMode:"pass", errors }, null, 2));
 await browser.close();

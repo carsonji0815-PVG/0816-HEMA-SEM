@@ -24,9 +24,19 @@ try{
   assert.equal(await page.locator(`[data-room-field="actualNights"][data-attendee="${attendeeId}"]`).inputValue(),"4","automatic rerun overwrote manual nights");
   assert.equal(await page.locator(`[data-room-field="checkInDate"][data-attendee="${attendeeId}"]`).inputValue(),"2026-09-04","automatic rerun overwrote manual check-in date");
   assert.equal(await page.locator(`[data-room-field="checkOutDate"][data-attendee="${attendeeId}"]`).inputValue(),"2026-09-07","automatic rerun overwrote manual check-out date");
+  await page.waitForSelector("#roomingOccupancyBody tr");
+  assert.ok(await page.locator("#roomingOccupancyBody tr").count()>0,"daily occupancy rows missing");
+  assert.deepEqual(await page.locator(".rooming-occupancy-table thead").evaluate(node=>{const style=getComputedStyle(node.querySelector("th"));return{position:style.position,background:style.backgroundColor,color:style.color};}),{position:"sticky",background:"rgb(23, 57, 94)",color:"rgb(255, 255, 255)"},"daily occupancy header must stay fixed and visibly match quota table");
+  const occupancyDates=await page.locator("#roomingOccupancyBody tr td:first-child").allTextContents();
+  if(occupancyDates.length>1){const date=occupancyDates[1].slice(0,10);await page.locator("#roomingOccupancyFrom").fill(date);await page.locator("#roomingOccupancyFrom").dispatchEvent("change");await page.locator("#roomingOccupancyTo").fill(date);await page.locator("#roomingOccupancyTo").dispatchEvent("change");assert.equal(await page.locator("#roomingOccupancyBody tr").count(),1,"inclusive date filter must show the selected day only");}
   await page.evaluate(()=>{window.__roomingWorkbook=null;window.XLSX.writeFile=workbook=>{window.__roomingWorkbook=workbook;};});
   await page.locator("#exportRoomingList").click();
-  assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["住宿统计","Rooming List"]);
+  assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["住宿统计","按天房型占用","Rooming List"]);
+  await page.locator("#exportRoomingOccupancy").click();
+  assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["按天房型占用"]);
+  const displayedOccupancy=await page.locator("#roomingOccupancyBody tr").evaluateAll(rows=>rows.map(row=>[...row.cells].map(cell=>cell.textContent.trim())));
+  const exportedOccupancy=await page.evaluate(()=>XLSX.utils.sheet_to_json(window.__roomingWorkbook.Sheets["按天房型占用"],{header:1}).slice(1).map(row=>row.map(String)));
+  assert.deepEqual(exportedOccupancy,displayedOccupancy,"daily occupancy export must exactly match the filtered table");
   await page.screenshot({path:".tmp/browser/rooming-complete.png",fullPage:true});
   await page.goto(`${base}#settings`,{waitUntil:"domcontentloaded"});
   await page.waitForSelector('[name="pairingPriority4"]');
@@ -36,5 +46,5 @@ try{
   await page.locator("#userSelect").selectOption("u-client");
   assert.equal(await page.locator('[name="pairingPriority1"]').isDisabled(),true,"client must not edit rooming rules");
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({roomingRows:"pass",fiveRealtimeMetrics:"pass",thirdRoomType:"pass",manualDatesAndNightsSurviveRerun:"pass",statisticsAndRoomingExport:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
+  console.log(JSON.stringify({roomingRows:"pass",fiveRealtimeMetrics:"pass",dailyOccupancy:"pass",stickyOccupancyHeader:"pass",thirdRoomType:"pass",manualDatesAndNightsSurviveRerun:"pass",statisticsAndRoomingExport:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
 }finally{await browser.close();}

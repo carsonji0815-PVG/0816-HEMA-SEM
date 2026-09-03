@@ -63,6 +63,36 @@
   function travelReferenceNights(attendee){const dates=referenceDates(attendee);return nightsBetween(dates.arrival,dates.departure);}
   function lodgingDateIssue(attendee){const {checkIn,checkOut}=lodgingDates(attendee);if(!checkIn||!checkOut)return"入住或退房日期待补充";return new Date(`${checkOut}T00:00:00`)<new Date(`${checkIn}T00:00:00`)?"退房日期不能早于入住日期":"";}
 
+  const validIsoDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(clean(value))&&!Number.isNaN(new Date(`${clean(value)}T00:00:00Z`).getTime());
+  const addDays=(date,days)=>{const value=new Date(`${date}T00:00:00Z`);value.setUTCDate(value.getUTCDate()+days);return value.toISOString().slice(0,10);};
+  function dailyOccupancy(attendees,range={}){
+    const list=(attendees||[]).filter(attendee=>attendee&&attendee.businessStatus!=="cancelled"),byId=new Map(list.map(attendee=>[String(attendee.id),attendee]));
+    const completed=[];
+    for(const attendee of list){
+      const room=record(attendee),type=room.assignedType,checkIn=clean(room.checkInDate),checkOut=clean(room.checkOutDate),actualNights=Number(room.actualNights);
+      if(!["single","shared","twin_single"].includes(type)||!validIsoDate(checkIn)||!validIsoDate(checkOut)||!Number.isFinite(actualNights)||actualNights<=0)continue;
+      const dateNights=nightsBetween(checkIn,checkOut);if(dateNights<=0)continue;
+      let roomKey=`${type}:${attendee.id}`;
+      if(type==="shared"){
+        const mate=byId.get(String(room.roommateId)),mateRoom=mate&&record(mate);
+        if(!mate||mateRoom.assignedType!=="shared"||String(mateRoom.roommateId)!==String(attendee.id))continue;
+        roomKey=`shared:${[String(attendee.id),String(mate.id)].sort().join("+")}`;
+      }
+      completed.push({type,roomKey,checkIn,checkOut,occupiedNights:Math.min(dateNights,Math.trunc(actualNights))});
+    }
+    if(!completed.length)return{rows:[],from:"",to:"",sourceCount:0};
+    const sourceFrom=completed.reduce((value,item)=>!value||item.checkIn<value?item.checkIn:value,""),sourceCheckout=completed.reduce((value,item)=>!value||item.checkOut>value?item.checkOut:value,""),sourceTo=addDays(sourceCheckout,-1);
+    const from=validIsoDate(range.from)&&range.from>sourceFrom?range.from:sourceFrom,to=validIsoDate(range.to)&&range.to<sourceTo?range.to:sourceTo;
+    if(from>to)return{rows:[],from,to,sourceFrom,sourceTo,sourceCheckout,sourceCount:completed.length};
+    const rows=[];
+    for(let date=from;date<=to;date=addDays(date,1)){
+      const rooms={single:new Set(),shared:new Set(),twin_single:new Set()};
+      completed.forEach(item=>{if(date>=item.checkIn&&date<item.checkOut&&date<addDays(item.checkIn,item.occupiedNights))rooms[item.type].add(item.roomKey);});
+      rows.push({date,single:rooms.single.size,shared:rooms.shared.size,twinSingle:rooms.twin_single.size});
+    }
+    return{rows,from,to,sourceFrom,sourceTo,sourceCheckout,sourceCount:completed.length};
+  }
+
   function province(attendee){const custom=attendee?.customFields||{};return clean(attendee?.province||custom.province||custom.省份||customValue(custom,/省份|province/i));}
   function rulesWithDefaults(rules={}){
     const priorities=(Array.isArray(rules.pairingPriorities)?rules.pairingPriorities:DEFAULT_PRIORITIES).filter(key=>PRIORITY_LABELS[key]);
@@ -129,6 +159,6 @@
     return patches;
   }
 
-  const api={TYPES,DEFAULT_PRIORITIES,PRIORITY_LABELS,normalizeType,label,record,referenceDates,lodgingDates,nightsBetween,referenceNights,travelReferenceNights,lodgingDateIssue,province,rulesWithDefaults,recommendation,matchTier,autoAssign};
+  const api={TYPES,DEFAULT_PRIORITIES,PRIORITY_LABELS,normalizeType,label,record,referenceDates,lodgingDates,nightsBetween,referenceNights,travelReferenceNights,lodgingDateIssue,dailyOccupancy,province,rulesWithDefaults,recommendation,matchTier,autoAssign};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.RoomingEngine=Object.freeze(api);
 })(typeof window!=="undefined"?window:globalThis);

@@ -45,4 +45,20 @@ assert.equal(R.record(manuallyDated).actualNights,2,"travel changes must not ove
 const invalidDates=attendee("invalid","女","D院","上海","上海市","华东大区",{customFields:{province:"上海市",_rooming:{checkInDate:"2026-09-07",checkOutDate:"2026-09-04"}}});
 assert.equal(R.lodgingDateIssue(invalidDates),"退房日期不能早于入住日期");
 
-console.log("rooming engine: room types, pairing, independent lodging dates and actual nights passed");
+const finalRoom=(id,type,checkInDate,checkOutDate,actualNights,roommateId="")=>attendee(id,"女",`${id}院`,"上海","上海市","华东大区",{customFields:{province:"上海市",_rooming:{assignedType:type,checkInDate,checkOutDate,actualNights,roommateId,manualFields:["assignedType","checkInDate","checkOutDate","actualNights","roommateId"]}}});
+const occupancy=R.dailyOccupancy([
+  finalRoom("single","single","2026-09-03","2026-09-06",2),
+  finalRoom("twin","twin_single","2026-09-04","2026-09-06",2),
+  finalRoom("pair-a","shared","2026-09-03","2026-09-05",2,"pair-b"),
+  finalRoom("pair-b","shared","2026-09-03","2026-09-05",2,"pair-a"),
+  finalRoom("unpaired","shared","2026-09-03","2026-09-05",2),
+  finalRoom("none","none","2026-09-03","2026-09-05",2)
+]);
+assert.deepEqual(occupancy.rows,[
+  {date:"2026-09-03",single:1,shared:1,twinSingle:0},
+  {date:"2026-09-04",single:1,shared:1,twinSingle:1},
+  {date:"2026-09-05",single:0,shared:0,twinSingle:1}
+],"daily occupancy must count rooms, cap by actual nights, exclude checkout day and de-duplicate shared pairs");
+assert.deepEqual(R.dailyOccupancy([finalRoom("single","single","2026-09-03","2026-09-06",3)],{from:"2026-09-04",to:"2026-09-05"}).rows.map(row=>row.date),["2026-09-04","2026-09-05"],"date range must be inclusive");
+
+console.log("rooming engine: room types, pairing, independent dates and daily room occupancy passed");

@@ -1144,6 +1144,23 @@
     const count=type=>staying.filter(item=>effectiveType(item)===type).length;
     return{totalStay:staying.length,noStay:noStay.length,single:count("single"),shared:count("shared"),twinSingle:count("twin_single"),unassigned:staying.filter(item=>!effectiveType(item)).length,actualNights:staying.reduce((sum,item)=>sum+(Number(item.room.actualNights)||0),0),staying:staying.map(item=>item.attendee)};
   }
+  function materializeRoomingFinalDates(attendees=activeVisibleAttendees()){
+    let changed=0;
+    attendees.forEach(attendee=>{
+      const room=roomingRecord(attendee);
+      if(attendee.accommodation==="N"||room.assignedType==="none"||!["single","shared","twin_single"].includes(room.assignedType))return;
+      const displayed=roomingDates(attendee),patch={};
+      // The UI has always prefilled lodging dates from travel. Persist those initial
+      // defaults into the final rooming record so the table never shows values that
+      // the occupancy engine cannot read. Later travel edits do not overwrite them.
+      if(!room.checkInDate&&displayed.checkIn)patch.checkInDate=displayed.checkIn;
+      if(!room.checkOutDate&&displayed.checkOut)patch.checkOutDate=displayed.checkOut;
+      if(!Object.keys(patch).length)return;
+      attendee.customFields={...(attendee.customFields||{}),_rooming:{...room,...patch,dateDefaultsInitializedAt:room.dateDefaultsInitializedAt||new Date().toISOString()}};
+      changed+=1;
+    });
+    return changed;
+  }
   function roomingOccupancyData(){return RoomingEngine.dailyOccupancy(activeVisibleAttendees(),{from:$("#roomingOccupancyFrom")?.value||"",to:$("#roomingOccupancyTo")?.value||""});}
   function roomingOccupancyDateLabel(date){return`${date} ${new Intl.DateTimeFormat("zh-CN",{weekday:"short"}).format(new Date(`${date}T00:00:00`))}`;}
   function roomingOccupancyRows(data=roomingOccupancyData()){return[["住宿日期","单间","标间拼住","标间单住"],...data.rows.map(row=>[roomingOccupancyDateLabel(row.date),row.single,row.shared,row.twinSingle])];}
@@ -1153,7 +1170,7 @@
   function renderRoomingOccupancy(){
     const data=roomingOccupancyData(),totalRoomNights=data.rows.reduce((sum,row)=>sum+row.single+row.shared+row.twinSingle,0),from=$("#roomingOccupancyFrom"),to=$("#roomingOccupancyTo");
     if(data.sourceFrom){from.min=data.sourceFrom;to.min=data.sourceFrom;from.max=data.sourceTo;to.max=data.sourceTo;}else{from.removeAttribute("min");from.removeAttribute("max");to.removeAttribute("min");to.removeAttribute("max");}
-    $("#roomingOccupancySummary").innerHTML=data.rows.length?`<span><strong>${escapeHtml(data.from)} 至 ${escapeHtml(data.to)}</strong> · 共 ${data.rows.length} 个住宿自然日</span><span>当前筛选合计 <strong>${totalRoomNights}</strong> 间夜 · ${data.sourceCount} 条最终住宿记录参与统计</span>`:`<span><strong>暂无可统计数据</strong> · 请完整确认实际房型、入住/退房日期和实际允许间夜</span><span>无需住宿、待分配及未完成拼房人员不计入</span>`;
+    $("#roomingOccupancySummary").innerHTML=data.rows.length?`<span><strong>${escapeHtml(data.from)} 至 ${escapeHtml(data.to)}</strong> · 共 ${data.rows.length} 个住宿自然日</span><span>当前筛选合计 <strong>${totalRoomNights}</strong> 间夜 · ${data.sourceCount} 条最终住宿记录参与统计</span>`:`<span><strong>暂无可统计数据</strong> · 请完整确认实际房型和最终入住、退房日期</span><span>无需住宿、待分配及未完成拼房人员不计入</span>`;
     $("#roomingOccupancyBody").innerHTML=data.rows.length?data.rows.map(row=>`<tr><td>${escapeHtml(roomingOccupancyDateLabel(row.date))}</td><td>${row.single}</td><td>${row.shared}</td><td>${row.twinSingle}</td></tr>`).join(""):`<tr><td class="rooming-occupancy-empty" colspan="4">当前日期范围内暂无已完成的住宿占用数据</td></tr>`;
   }
   function exportRoomingOccupancy(){if(!window.XLSX)return toast("Excel 组件尚未加载，请刷新后重试","error");const data=roomingOccupancyData();if(!data.rows.length)return toast("当前日期范围内没有可导出的占用数据","error");const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,roomingOccupancySheet(data),"按天房型占用");XLSX.writeFile(wb,`${state.settings.slug||"项目"}-按天房型占用-${data.from}-${data.to}.xlsx`);toast("按天房型占用统计已导出");}
@@ -1193,6 +1210,7 @@
   function renderRooming() {
     $("#applyRoomingSuggestions").disabled=!canManage();$("#applyRoomingSuggestions").title=canManage()?"按当前项目规则重跑，保留全部人工设置":"仅管理员和会务负责人可以执行自动分房";
     const query=$("#roomingSearch")?.value.trim().toLowerCase()||"";const filter=$("#roomingStatusFilter")?.value||"all";const all=activeVisibleAttendees();
+    const initializedDates=materializeRoomingFinalDates(all);if(initializedDates&&canManage())saveState();
     renderRoomingOccupancy();
     const stats=roomingStatistics(all),staying=all.filter(a=>a.accommodation==="Y"||roomingRecord(a).requestedType||roomingRecord(a).assignedType);const conflicts=staying.filter(roomingConflict);const pendingApproval=staying.filter(a=>roomingApprovalStatus(a)==="pending");const pendingManual=staying.filter(a=>{const room=roomingRecord(a);return room.assignedType==="shared"&&!room.roommateId;});
     $("#roomingMetrics").innerHTML=[["totalStay","总住宿人数",stats.totalStay,stats.unassigned?`${stats.unassigned} 人房型待安排`:"已确认需要住宿","⌂"],["noStay","无需住宿人数",stats.noStay,"不计入任何房型统计","—"],["single","单间数量",stats.single,"按入住人员计数","◆"],["shared","标间拼住数量",stats.shared,`${Math.ceil(stats.shared/2)} 间预计用房 · 按人员计数`,"⇄"],["twinSingle","标间单住数量",stats.twinSingle,"一人独占标间，不参与拼住","◇"]].map(([key,label,value,note,icon])=>`<article class="metric-card rooming-stat-card" data-rooming-stat="${key}"><span class="metric-icon">${icon}</span><small>${label}</small><strong>${value}</strong><p>${note}</p></article>`).join("");

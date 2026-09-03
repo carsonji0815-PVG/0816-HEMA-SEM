@@ -7,9 +7,14 @@ try{
   page.on("pageerror",error=>errors.push(error.message));
   await page.route("https://fonts.**",route=>route.abort());
   await page.route(base,async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text()).replace('mode: "production"','mode: "demo"')});});
-  await page.addInitScript(()=>localStorage.removeItem("journey-desk-state-v1"));
+  await page.addInitScript(()=>{if(!sessionStorage.getItem("rooming-test-preserve"))localStorage.removeItem("journey-desk-state-v1");});
   await page.goto(`${base}#rooming`,{waitUntil:"domcontentloaded"});
   await page.waitForSelector("#roomingTableBody tr");
+  const seedNights=page.locator('[data-room-field="actualNights"]:not(:disabled)').first(),seedId=await seedNights.getAttribute("data-attendee");await seedNights.fill("0");await seedNights.dispatchEvent("change");
+  await page.evaluate(id=>{const key="journey-desk-state-v1",saved=JSON.parse(localStorage.getItem(key)),attendee=saved.attendees.find(item=>item.id===id);attendee.accommodation="Y";attendee.arriveDate="2026-09-03";attendee.returnDepartDate="2026-09-06";attendee.customFields={...(attendee.customFields||{}),_rooming:{assignedType:"single",actualNights:0,manualFields:["assignedType","actualNights"]}};localStorage.setItem(key,JSON.stringify(saved));sessionStorage.setItem("rooming-test-preserve","1");},seedId);
+  await page.reload({waitUntil:"domcontentloaded"});await page.waitForSelector("#roomingTableBody tr");
+  assert.ok(await page.locator("#roomingOccupancyBody tr").count()>=3,"prefilled travel dates were not materialized into final lodging dates");
+  assert.deepEqual(await page.evaluate(id=>{const attendee=JSON.parse(localStorage.getItem("journey-desk-state-v1")).attendees.find(item=>item.id===id);return{checkInDate:attendee.customFields._rooming.checkInDate,checkOutDate:attendee.customFields._rooming.checkOutDate};},seedId),{checkInDate:"2026-09-03",checkOutDate:"2026-09-06"},"visible default lodging dates must be persisted as final rooming data");
   assert.ok(await page.locator("#roomingTableBody tr").count()>0);
   assert.equal(await page.locator("[data-rooming-stat]").count(),5,"five accommodation KPI cards missing");
   for(const key of ["totalStay","noStay","single","shared","twinSingle"])assert.equal(await page.locator(`[data-rooming-stat="${key}"]`).count(),1,`missing KPI ${key}`);
@@ -46,5 +51,5 @@ try{
   await page.locator("#userSelect").selectOption("u-client");
   assert.equal(await page.locator('[name="pairingPriority1"]').isDisabled(),true,"client must not edit rooming rules");
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({roomingRows:"pass",fiveRealtimeMetrics:"pass",dailyOccupancy:"pass",stickyOccupancyHeader:"pass",thirdRoomType:"pass",manualDatesAndNightsSurviveRerun:"pass",statisticsAndRoomingExport:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
+  console.log(JSON.stringify({roomingRows:"pass",fiveRealtimeMetrics:"pass",defaultDatesMaterialized:"pass",dailyOccupancy:"pass",stickyOccupancyHeader:"pass",thirdRoomType:"pass",manualDatesAndNightsSurviveRerun:"pass",statisticsAndRoomingExport:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
 }finally{await browser.close();}

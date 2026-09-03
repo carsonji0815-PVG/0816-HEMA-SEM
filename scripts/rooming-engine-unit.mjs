@@ -47,7 +47,7 @@ assert.equal(R.lodgingDateIssue(invalidDates),"退房日期不能早于入住日
 
 const finalRoom=(id,type,checkInDate,checkOutDate,actualNights,roommateId="")=>attendee(id,"女",`${id}院`,"上海","上海市","华东大区",{customFields:{province:"上海市",_rooming:{assignedType:type,checkInDate,checkOutDate,actualNights,roommateId,manualFields:["assignedType","checkInDate","checkOutDate","actualNights","roommateId"]}}});
 const occupancy=R.dailyOccupancy([
-  finalRoom("single","single","2026-09-03","2026-09-06",2),
+  finalRoom("single","single","2026-09-03","2026-09-06",1),
   finalRoom("twin","twin_single","2026-09-04","2026-09-06",2),
   finalRoom("pair-a","shared","2026-09-03","2026-09-05",2,"pair-b"),
   finalRoom("pair-b","shared","2026-09-03","2026-09-05",2,"pair-a"),
@@ -57,8 +57,12 @@ const occupancy=R.dailyOccupancy([
 assert.deepEqual(occupancy.rows,[
   {date:"2026-09-03",single:1,shared:1,twinSingle:0},
   {date:"2026-09-04",single:1,shared:1,twinSingle:1},
-  {date:"2026-09-05",single:0,shared:0,twinSingle:1}
-],"daily occupancy must count rooms, cap by actual nights, exclude checkout day and de-duplicate shared pairs");
+  {date:"2026-09-05",single:1,shared:0,twinSingle:1}
+],"daily occupancy must count final lodging dates, ignore actual-night truncation, exclude checkout day and de-duplicate shared pairs");
+assert.equal(R.dailyOccupancy([finalRoom("blank-nights","single","2026-09-03","2026-09-05","")]).rows.length,2,"actual nights must not gate final date occupancy");
+const noStay=finalRoom("no-stay","single","2026-09-03","2026-09-05",2);noStay.accommodation="N";
+assert.equal(R.dailyOccupancy([noStay]).rows.length,0,"no-stay attendees must be excluded even when an old room assignment remains");
+assert.deepEqual(R.dailyOccupancy([finalRoom("incomplete","single","2026-09-03","",2)]),{rows:[],from:"",to:"",sourceCount:0},"incomplete final lodging dates must yield an empty table without errors");
 assert.deepEqual(R.dailyOccupancy([finalRoom("single","single","2026-09-03","2026-09-06",3)],{from:"2026-09-04",to:"2026-09-05"}).rows.map(row=>row.date),["2026-09-04","2026-09-05"],"date range must be inclusive");
 
 console.log("rooming engine: room types, pairing, independent dates and daily room occupancy passed");

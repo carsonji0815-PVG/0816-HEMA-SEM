@@ -69,8 +69,11 @@
     const list=(attendees||[]).filter(attendee=>attendee&&attendee.businessStatus!=="cancelled"),byId=new Map(list.map(attendee=>[String(attendee.id),attendee]));
     const completed=[];
     for(const attendee of list){
-      const room=record(attendee),type=room.assignedType,checkIn=clean(room.checkInDate),checkOut=clean(room.checkOutDate),actualNights=Number(room.actualNights);
-      if(!["single","shared","twin_single"].includes(type)||!validIsoDate(checkIn)||!validIsoDate(checkOut)||!Number.isFinite(actualNights)||actualNights<=0)continue;
+      const room=record(attendee),type=room.assignedType,checkIn=clean(room.checkInDate),checkOut=clean(room.checkOutDate);
+      // Occupancy is driven only by the final room assignment and final lodging dates.
+      // actualNights is a separately maintained finance/control value and must never
+      // suppress or truncate the date-based hotel occupancy table.
+      if(attendee.accommodation==="N"||type==="none"||!["single","shared","twin_single"].includes(type)||!validIsoDate(checkIn)||!validIsoDate(checkOut))continue;
       const dateNights=nightsBetween(checkIn,checkOut);if(dateNights<=0)continue;
       let roomKey=`${type}:${attendee.id}`;
       if(type==="shared"){
@@ -78,7 +81,7 @@
         if(!mate||mateRoom.assignedType!=="shared"||String(mateRoom.roommateId)!==String(attendee.id))continue;
         roomKey=`shared:${[String(attendee.id),String(mate.id)].sort().join("+")}`;
       }
-      completed.push({type,roomKey,checkIn,checkOut,occupiedNights:Math.min(dateNights,Math.trunc(actualNights))});
+      completed.push({type,roomKey,checkIn,checkOut});
     }
     if(!completed.length)return{rows:[],from:"",to:"",sourceCount:0};
     const sourceFrom=completed.reduce((value,item)=>!value||item.checkIn<value?item.checkIn:value,""),sourceCheckout=completed.reduce((value,item)=>!value||item.checkOut>value?item.checkOut:value,""),sourceTo=addDays(sourceCheckout,-1);
@@ -87,7 +90,7 @@
     const rows=[];
     for(let date=from;date<=to;date=addDays(date,1)){
       const rooms={single:new Set(),shared:new Set(),twin_single:new Set()};
-      completed.forEach(item=>{if(date>=item.checkIn&&date<item.checkOut&&date<addDays(item.checkIn,item.occupiedNights))rooms[item.type].add(item.roomKey);});
+      completed.forEach(item=>{if(date>=item.checkIn&&date<item.checkOut)rooms[item.type].add(item.roomKey);});
       rows.push({date,single:rooms.single.size,shared:rooms.shared.size,twinSingle:rooms.twin_single.size});
     }
     return{rows,from,to,sourceFrom,sourceTo,sourceCheckout,sourceCount:completed.length};

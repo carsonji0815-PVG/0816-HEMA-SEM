@@ -1732,7 +1732,7 @@
       label.classList.toggle("is-hidden",!visible);
       $$('input,select,textarea',label).forEach(input=>{ input.required=visible && (CORE_AUTH_FIELDS.has(label.dataset.templateField)||!!column?.required); if(!visible&&!input.readOnly) input.value=""; });
     });
-    $$('.public-form-section',form).forEach(section=>{ if(section.id!=="publicCustomFieldsSection") section.classList.toggle("is-hidden",!section.querySelector('[data-template-field]:not(.is-hidden)')); });
+    $$('.public-form-section',form).forEach(section=>{ if(section.id!=="publicCustomFieldsSection") section.classList.toggle("is-hidden",!section.querySelector('[data-template-field]:not(.is-hidden),[data-journey-field]:not(.is-hidden)')); });
     const custom=columns.filter(column=>column.custom);
     $("#publicCustomFieldsSection").classList.toggle("is-hidden",!custom.length);
     $("#publicCustomFields").innerHTML=custom.map(column=>`<label>${escapeHtml(column.header)}${column.required?" *":""}<input name="custom__${escapeHtml(column.key)}" value="${escapeHtml(customValues[column.key]||"")}" ${column.required?"required":""} /></label>`).join("");

@@ -10,6 +10,8 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const expectedRef = 'bupsipicxwyeuxunkvii';
 const linkedRef = readFileSync(path.join(root, 'supabase/.temp/project-ref'), 'utf8').trim();
 if (linkedRef !== expectedRef) throw new Error('Unexpected linked project; export stopped.');
+const pooler = new URL(readFileSync(path.join(root, 'supabase/.temp/pooler-url'), 'utf8').trim());
+if (!pooler.hostname.endsWith('.pooler.supabase.com')) throw new Error('Unexpected linked pooler; export stopped.');
 const defaultClientBins=['/opt/homebrew/opt/postgresql@17/bin','/opt/homebrew/opt/libpq@17/bin'];
 const clientBin = process.env.MIGRATION_PG_BIN || defaultClientBins.find(candidate=>existsSync(path.join(candidate,'pg_dump'))) || defaultClientBins[0];
 const version = spawnSync(path.join(clientBin, 'pg_dump'), ['--version'], { encoding: 'utf8' });
@@ -35,12 +37,16 @@ for (const [filename, flags] of [['roles.sql', ['--role-only']], ['schema.sql', 
   if (cli.status !== 0 || !cli.stdout.startsWith('#!/usr/bin/env bash') || !cli.stdout.includes('pg_dump')) {
     throw new Error(`Cannot prepare ${filename}; no credentials or raw CLI output displayed.`);
   }
+  const dumpScript=cli.stdout
+    .replace(/^export PGHOST=.*$/m,`export PGHOST='${pooler.hostname}'`)
+    .replace(/^export PGPORT=.*$/m,"export PGPORT='5432'")
+    .replace(/^export PGUSER=.*$/m,`export PGUSER='cli_login_postgres.${expectedRef}'`);
   const target = path.join(destination, filename);
   const output = openSync(target, 'wx', 0o600);
   const errorLog = openSync(`${target}.errors`, 'wx', 0o600);
   let result;
   try {
-    result = spawnSync('/bin/bash', ['-s'], { input: cli.stdout, cwd: root,
+    result = spawnSync('/bin/bash', ['-s'], { input: dumpScript, cwd: root,
       env: { ...process.env, PATH: `${clientBin}:${process.env.PATH}`, PGCONNECT_TIMEOUT: '20', PGSSLMODE: 'require', PGOPTIONS: '-c default_transaction_read_only=on' },
       stdio: ['pipe', output, errorLog], timeout: 180000 });
   } finally { closeSync(output); closeSync(errorLog); }

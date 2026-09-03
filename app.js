@@ -57,7 +57,7 @@
       transportGroupMinutes: 30,
       transferCollectionEnabled: false,
       transferCollectionRoles: ["角色嘉宾"],
-      travelApprovalRules: { timeEnabled:true, arrivalStart:"2026-09-04T06:00", arrivalEnd:"2026-09-04T18:00", returnStart:"2026-09-06T12:00", returnEnd:"2026-09-06T23:30", tourismEnabled:false, tourismCities:DEFAULT_TOURISM_CITIES, mismatchEnabled:true },
+      travelApprovalRules: { timeEnabled:true, earliestArrival:"2026-09-03T00:00", latestDeparture:"2026-09-13T00:00", tourismEnabled:false, tourismCities:DEFAULT_TOURISM_CITIES, mismatchEnabled:true },
       roomingRules: { singleTitles:["主任医师","副主任医师"], twinSingleKeywords:["标间单住","标间独住"], defaultType:"shared", pairingPriorities:["hospital","city","province","region"], conflictApproval:true },
       fieldConfig: { title:true, hcpId:true, accommodation:true, flight:true, mslContact:true, remarks:true, clothingSize:false, internalRoomingMode:"manual" },
       templateName: "标准32列报名模板",
@@ -144,11 +144,19 @@
   let projectArchiveStates = {};
   let staffAccess = { allowed:false, email:"", displayName:"", systemRole:"" };
   let staffDirectory = [];
+  let adminIdleTimer = null;
+  function armAdminIdleTimeout(){
+    if(!backend||!staffAccess.allowed)return;
+    clearTimeout(adminIdleTimer);
+    adminIdleTimer=setTimeout(async()=>{await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};luggageIntegration?.unmount();$("#loginError").textContent="管理员会话已连续 30 分钟无操作，请重新登录";$("#loginDialog").showModal();},30*60*1000);
+  }
+  ["pointerdown","keydown","scroll","touchstart"].forEach(eventName=>window.addEventListener(eventName,()=>armAdminIdleTimeout(),{passive:true}));
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const escapeHtml = (value = "") => String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const normalizePhone = value => String(value || "").replace(/\D/g, "").slice(-11);
+  const maskPhone = value => {const phone=normalizePhone(value);return phone.length===11?`${phone.slice(0,3)}****${phone.slice(-4)}`:String(value||"");};
   const normalizeVenueLabel = value => String(value || "").trim().replace(/会场$/u, "").trim();
   const dbDate = value => /^20\d{2}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(String(value||"")) ? value : null;
   const dbTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||"")) ? value : null;
@@ -289,7 +297,7 @@
     $("#toastRegion").append(node); setTimeout(() => node.remove(), 3200);
   }
   function addNotification(type, text,meta={}) {
-    state.notifications.unshift({ id:`n-${Date.now()}-${Math.random().toString(16).slice(2,6)}`,type,text,time:new Date().toISOString(),read:!!meta.read,auditOnly:!!meta.auditOnly,attendeeName:meta.attendeeName||"",actorName:meta.actorName||currentUser()?.name||"系统",changes:meta.changes||[] });
+    state.notifications.unshift({ id:`n-${Date.now()}-${Math.random().toString(16).slice(2,6)}`,type,text,time:new Date().toISOString(),read:!!meta.read,auditOnly:meta.publicSource?false:meta.auditOnly!==false,publicSource:!!meta.publicSource,attendeeName:meta.attendeeName||"",actorName:meta.actorName||currentUser()?.name||"系统",changes:meta.changes||[] });
   }
   function fmtDate(date) {
     if (!date) return "—";
@@ -340,14 +348,15 @@
   const locationCity = value => state.settings.allowedCities.find(city=>String(value||"").includes(city)) || String(value||"").replace(/(国际)?机场.*|[A-Z]?\d航站楼.*|站$/g,"").trim();
 
   function evaluateSegmentRisks(data) {
+    if(isInternalMeeting())return {outbound:[],return:[]};
     const rules=state.settings.travelApprovalRules||{};
     const result={outbound:[],return:[]};
     const timestamp=(date,time)=>date&&time?new Date(`${date}T${time}`).getTime():NaN;
     const outside=(value,start,end)=>Number.isFinite(value)&&((start&&value<new Date(start).getTime())||(end&&value>new Date(end).getTime()));
     if(rules.timeEnabled){
       const arrival=timestamp(data.outDate,data.outArrival);const departure=timestamp(data.returnDate,data.returnDeparture);
-      if(outside(arrival,rules.arrivalStart,rules.arrivalEnd))result.outbound.push(`抵达时间 ${data.outDate} ${data.outArrival} 超出会议允许范围`);
-      if(outside(departure,rules.returnStart,rules.returnEnd))result.return.push(`返程时间 ${data.returnDate} ${data.returnDeparture} 超出会议允许范围`);
+      if(outside(arrival,rules.earliestArrival||rules.arrivalStart,""))result.outbound.push(`抵达时间 ${data.outDate} ${data.outArrival} 早于会议允许最早抵达时间`);
+      if(outside(departure,"",rules.latestDeparture||rules.returnEnd))result.return.push(`返程时间 ${data.returnDate} ${data.returnDeparture} 晚于会议允许最晚撤离时间`);
     }
     if(rules.tourismEnabled&&data.outFrom&&(rules.tourismCities||[]).some(city=>String(data.outFrom).includes(city)))result.outbound.push(`出发城市“${locationCity(data.outFrom)}”属于项目旅游城市审批清单`);
     if((rules.mismatchEnabled??state.settings.mismatchRule)&&data.outFrom&&data.returnTo&&locationCity(data.outFrom)!==locationCity(data.returnTo))result.return.push("去程出发城市与返程到达城市不一致");
@@ -457,7 +466,7 @@
       backend.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") { luggageIntegration?.clearAccess(); staffAccess.allowed=false; luggageIntegration?.unmount(); } });
       const { data } = offlineLuggageSession ? {data:{session:null}} : await backend.auth.getSession();
       if (data.session) {
-        try{await loadStaffAccess();await loadBackendState();}
+        try{await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();}
         catch(error){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=error.message;$("#loginDialog").showModal();}
       }
       else if (!offlineLuggageSession && !["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
@@ -552,7 +561,7 @@
       const email=String(form.elements.email.value||"").trim().toLowerCase();
       const { error } = await backend.auth.signInWithPassword({ email, password: form.elements.password.value });
       if (error) { $("#loginError").textContent = "邮箱或密码不正确"; button.disabled=false; return; }
-      try{$("#loginError").textContent="";await loadStaffAccess();await loadBackendState();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();toast(state.activeProjectId?`登录成功 · ${isSystemAdmin()?"超级管理员":"会务负责人"}`:"登录成功，请先新建项目");}
+      try{$("#loginError").textContent="";await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();toast(state.activeProjectId?`登录成功 · ${isSystemAdmin()?"超级管理员":"会务负责人"}`:"登录成功，请先新建项目");}
       catch(accessError){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=accessError.message||"当前邮箱未开放管理系统权限";}
       finally{button.disabled=false;}
     });
@@ -561,7 +570,7 @@
   async function loadBackendState(preferredMeetingId = null) {
     const { data: authData } = await backend.auth.getUser();
     if (!authData.user) throw new Error("登录已过期");
-    const [profileRes,projectsRes]=await Promise.all([backend.from("profiles").select("display_name,phone,role").eq("user_id",authData.user.id).maybeSingle(),backend.from("meetings").select("*").order("created_at",{ascending:false})]);
+    const [profileRes,projectsRes]=await Promise.all([backend.from("profiles").select("display_name,phone,role").eq("user_id",authData.user.id).maybeSingle(),backend.from("meetings").select("*").is("archived_at",null).order("created_at",{ascending:false})]);
     if(profileRes.error||!profileRes.data)throw new Error("当前账号尚未建立人员资料"); if(projectsRes.error)throw new Error("请先运行项目权限数据库升级脚本");
     const manageableProjects=projectsRes.data||[]; projectMemberships=manageableProjects.map(meeting=>({meeting_id:meeting.id,role:"ops",display_name:profileRes.data.display_name,phone:profileRes.data.phone,meetings:meeting}));
     if (!manageableProjects.length) {
@@ -594,6 +603,12 @@
       attendees: attendeesRes.data.map(fromDbAttendee),
       notifications: (()=>{const attendeeNames=new Map(attendeesRes.data.map(a=>[a.id,a.name]));const labelMap={name:"姓名",city:"城市",hospital:"医院/连锁",department:"科室/门店",title:"职称",venue:"会场",id_number:"证件号码",phone:"手机号",hcp_id:"客户编号",accommodation:"住宿",depart_date:"出发日期",depart_city:"出发城市",depart_transport_type:"出发出行方式",depart_station:"出发场站",arrive_date:"抵达日期",arrive_city:"抵达城市",arrive_transport_type:"抵达出行方式",arrive_station:"抵达场站",return_depart_date:"返程出发日期",return_depart_city:"返程出发城市",return_depart_transport_type:"返程出发方式",return_depart_station:"返程出发场站",return_arrive_date:"返程抵达日期",return_arrive_city:"返程抵达城市",return_arrive_transport_type:"返程抵达方式",return_arrive_station:"返程抵达场站",out_date:"去程日期",out_from:"去程出发城市",out_to:"去程到达城市",out_no:"去程航班/车次",out_departure:"去程出发时间",out_arrival:"去程到达时间",return_date:"返程日期",return_from:"返程出发城市",return_to:"返程到达城市",return_no:"返程航班/车次",return_departure:"返程出发时间",return_arrival:"返程到达时间",region:"大区",remarks:"备注",custom_fields:"分房/扩展信息",business_status:"报名状态"};const logs=(logsRes.data||[]).map(log=>{const before=log.before_data||{},after=log.after_data||{};const raw=[...new Set([...Object.keys(before),...Object.keys(after)])].filter(field=>!["updated_at","created_at","risks","approval"].includes(field)&&JSON.stringify(before[field])!==JSON.stringify(after[field])).map(field=>({field,label:labelMap[field]||field,before:typeof before[field]==="object"?JSON.stringify(before[field]):before[field],after:typeof after[field]==="object"?JSON.stringify(after[field]):after[field]}));const cancelled=/cancel/.test(log.action)||raw.some(change=>change.field==="business_status"&&change.after==="cancelled");const attendeeName=after.name||before.name||attendeeNames.get(log.attendee_id)||"";return{id:`audit-${log.id}`,type:/create/.test(log.action)?"create":"change",text:`${log.actor_label||"系统"} · ${log.action}${attendeeName?` · ${attendeeName}`:""}${raw.length?`（${raw.length}项）`:""}`,time:log.created_at,read:cancelled,auditOnly:cancelled,attendeeName,actorName:log.actor_label||"系统",changes:raw};});const notices=(noticesRes.data||[]).map(n=>({id:n.id,type:n.type,text:n.message,time:n.created_at,read:!!n.read_at}));return[...logs,...notices].sort((a,b)=>new Date(b.time)-new Date(a.time));})(),
     };
+    const noticeMetadata=new Map((noticesRes.data||[]).map(item=>[String(item.id),item]));
+    state.notifications.forEach(item=>{
+      const meta=noticeMetadata.get(String(item.id));
+      if(meta){item.publicSource=meta.source==="public_registration";item.auditOnly=!item.publicSource;item.attendeeName=attendeesRes.data.find(a=>a.id===meta.attendee_id)?.name||"";item.actorName=meta.actor_label||"报名端参会人员";item.changes=Array.isArray(meta.change_details)?meta.change_details:[];}
+      else if(String(item.id).startsWith("audit-")){item.auditOnly=true;item.read=true;}
+    });
     state.settings.travelApprovalRules={...initialState().settings.travelApprovalRules,...(meeting.field_config?.travelApprovalRules||{})};
     state.settings.roomingRules={...initialState().settings.roomingRules,...(meeting.field_config?.roomingRules||{})};
     if (!state.users.some(user => user.id === authData.user.id)) {
@@ -886,7 +901,7 @@
 
   async function deleteProject(projectId){
     const project=state.projects.find(item=>item.id===projectId); if(!project||!confirm(`确认删除项目“${project.name}”？项目资料、报名名单、行程和归档文件都将删除，无法恢复。`))return;
-    try{await documentApi(`/api/integrated/projects/${projectId}`,{method:"DELETE"});const{error}=await backend.rpc("delete_meeting_project",{p_id:projectId});if(error)throw error;delete projectArchiveStates[projectId];const next=state.projects.find(item=>item.id!==projectId)?.id||null;await loadBackendState(next);populateUsers();populateProjects();renderAll();location.hash="projects";toast("项目已删除");}catch(error){toast(`删除失败：${error.message}`,"error");}
+    try{const{error}=await backend.rpc("delete_meeting_project",{p_id:projectId});if(error)throw error;delete projectArchiveStates[projectId];const next=state.projects.find(item=>item.id!==projectId)?.id||null;await loadBackendState(next);populateUsers();populateProjects();renderAll();location.hash="projects";toast("项目已归档；参会数据和附件均保留，可由超级管理员恢复");}catch(error){toast(`归档失败：${error.message}`,"error");}
   }
 
   async function syncDocumentProject() {
@@ -944,6 +959,7 @@
 
   async function uploadProjectDocumentFile(file,{type,status="",scenario=""}) {
     if(file.size>50*1024*1024)throw new Error(`${file.name} 超过 50MB`);
+    if(!/\.(pdf|docx?|xlsx?|csv|jpe?g|png|webp|pptx?)$/i.test(file.name))throw new Error("仅支持 PDF、Office、CSV 和常用图片文件；禁止上传可执行文件");
     const query=new URLSearchParams({type,filename:file.name});if(status)query.set("status",status);if(scenario)query.set("scenario",scenario);
     return documentApi(`/api/integrated/projects/${backendMeetingId}/documents?${query}`,{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:file});
   }
@@ -986,7 +1002,7 @@
   function renderCounts() {
     const list = activeVisibleAttendees();
     const pending = list.filter(a => a.approval === "pending").length+list.filter(a=>roomingApprovalStatus(a)==="pending").length;
-    const unread = state.notifications.filter(n => !n.read).length;
+    const unread = state.notifications.filter(n => !n.read&&(n.publicSource||(!backend&&n.auditOnly!==true))).length;
     $("#navAttendeeCount").textContent = list.length;
     $("#navApprovalCount").textContent = pending || "";
     $("#navNoticeCount").textContent = unread || "";
@@ -1112,7 +1128,7 @@
     const segmentBadge=(a,segment,label)=>{ const status=segmentApproval(a,segment); const text=status==="approved"?"已审批":status==="pending"?"待审批":status==="rejected"?"已退回":"无需审批"; return `<span class="segment-status ${status}">${label}·${text}</span>`; };
     const templateHeader=column=>escapeHtml(column.header||column.key||"未命名字段").replaceAll("\n","<br>");
     const templateValue=(attendee,column,index)=>{if(column.key==="sequence")return String(index+1);if(column.key==="contactName")return attendee.contactName||"";if(column.key==="contactMobile")return attendee.contactMobile||"";if(column.key==="venue")return normalizeVenueLabel(attendee.venue);if(/TransportType$/.test(column.key))return TravelFields.TYPES[attendee[column.key]]||attendee[column.key]||"";if(/Station$/.test(column.key))return TravelFields.displayStation(attendee[column.key],attendee[column.key.replace("Station","TransportType")],stationDictionary());return column.custom?attendee.customFields?.[column.key]??"":attendee[column.key]??"";};
-    const templateCell=(attendee,column,index)=>{const raw=templateValue(attendee,column,index);const empty=raw===null||raw===undefined||String(raw).trim()==="";const display=empty?"未填写":String(raw);const verified=TravelVerification.verifiedField(attendee,column.key);return `<td class="template-data-cell ${verified?"travel-verified-cell":""}" data-template-key="${escapeHtml(column.key||"")}" title="${escapeHtml(display)}"><span class="${empty?"template-empty":""}">${escapeHtml(display)}</span>${verified?'<small class="travel-verified-label">✓ 已核验</small>':""}</td>`;};
+    const templateCell=(attendee,column,index)=>{const raw=templateValue(attendee,column,index);const empty=raw===null||raw===undefined||String(raw).trim()==="";const sensitive=["phone","contactMobile"].includes(column.key);const display=empty?"未填写":sensitive?maskPhone(raw):String(raw);const verified=TravelVerification.verifiedField(attendee,column.key);return `<td class="template-data-cell ${verified?"travel-verified-cell":""}" data-template-key="${escapeHtml(column.key||"")}" title="${escapeHtml(display)}"><span class="${empty?"template-empty":""}">${escapeHtml(display)}</span>${verified?'<small class="travel-verified-label">✓ 已核验</small>':""}</td>`;};
     const selectable=list.filter(a=>a.businessStatus!=="cancelled"&&!isLocked(a)&&canEditAttendeeData()&&(currentUser().role!=="sales"||a.ownerId===currentUser().id));
     const allSelected=selectable.length>0&&selectable.every(a=>selectedAttendeeIds.has(a.id));
     $("#attendeeTableHead").innerHTML=`<th class="roster-check-cell"><input id="selectVisibleAttendees" type="checkbox" aria-label="全选当前名单" ${allSelected?"checked":""} ${selectable.length?"":"disabled"}></th>${templateColumns.map(column=>`<th data-template-key="${escapeHtml(column.key||"")}">${templateHeader(column)}</th>`).join("")}<th>新增多段行程</th><th>去程送站地点</th><th>预约送站时间</th><th>去程送站备注</th><th>返程接站目的地</th><th>预估接站时间</th><th>返程接站备注</th><th>报名状态</th><th>隐私沟通函</th><th>出票状态</th><th>负责人</th><th>行程审批</th><th>操作</th>`;
@@ -1170,7 +1186,7 @@
   function suggestedRoomType(attendee){return isInternalMeeting()?"":RoomingEngine.recommendation(attendee,configuredRoomingRules()).type;}
   function roomingSuggestion(attendee){return isInternalMeeting()?{type:"",source:"内部会议由会务人工安排"}:RoomingEngine.recommendation(attendee,configuredRoomingRules());}
   function roomingConflict(attendee){if(isInternalMeeting())return false;const room=roomingRecord(attendee);return room.requestedType&&room.requestedType!=="none"&&room.requestedType!==suggestedRoomType(attendee);}
-  function roomingApprovalStatus(attendee){const room=roomingRecord(attendee);if(!(state.settings.roomingRules?.conflictApproval&&roomingConflict(attendee)))return"normal";return room.approvalStatus==="approved"?"approved":room.approvalStatus==="rejected"?"rejected":"pending";}
+  function roomingApprovalStatus(attendee){if(isInternalMeeting())return"normal";const room=roomingRecord(attendee),eligible=(configuredRoomingRules().singleTitles||[]).includes(attendee.title),singleException=room.requestedType==="single"&&(!eligible||room.exceptionRequested===true);if(!(state.settings.roomingRules?.conflictApproval&&singleException))return"normal";return room.approvalStatus==="approved"?"approved":room.approvalStatus==="rejected"?"rejected":"pending";}
   function roomingStatistics(attendees=activeVisibleAttendees()){
     const records=attendees.map(attendee=>({attendee,room:roomingRecord(attendee)}));
     const effectiveType=({attendee,room})=>room.assignedType||(attendee.accommodation==="N"?"none":"");
@@ -1213,9 +1229,10 @@
   function renderApprovals() {
     const list = activeVisibleAttendees().filter(a => ["outbound","return"].some(segment=>["pending","rejected"].includes(segmentApproval(a,segment))));
     const roomList=activeVisibleAttendees().filter(a=>["pending","rejected"].includes(roomingApprovalStatus(a)));
-    const segmentRow=(a,segment)=>{ const outbound=segment==="outbound"; const status=segmentApproval(a,segment); const risks=evaluateSegmentRisks(a)[segment]; if(status==="normal")return""; return `<div class="segment-approval-row"><div><span class="segment-status ${status}">${outbound?"去程":"返程"} · ${status==="approved"?"已审批":status==="rejected"?"已退回/拒绝":"待审批"}</span><strong>${escapeHtml(outbound?`${a.outFrom} → ${a.outTo} · ${a.outNo}`:`${a.returnFrom} → ${a.returnTo} · ${a.returnNo}`)}</strong><small>${risks.map(escapeHtml).join("；")}</small></div><div class="segment-actions three-actions"><button class="button button-secondary" data-travel-decision="returned" data-attendee="${a.id}" data-segment="${segment}" ${canEditAttendeeData()?"":"disabled"}>退回修改</button><button class="button button-ghost" data-travel-decision="rejected" data-attendee="${a.id}" data-segment="${segment}" ${canEditAttendeeData()?"":"disabled"}>不予批准</button><button class="button button-primary" data-travel-decision="approved" data-attendee="${a.id}" data-segment="${segment}" ${canEditAttendeeData()?"":"disabled"}>审批通过</button></div></div>`; };
+    const rules=state.settings.travelApprovalRules||{};
+    const segmentRow=(a,segment)=>{ const outbound=segment==="outbound"; const status=segmentApproval(a,segment); const risks=evaluateSegmentRisks(a)[segment]; if(status==="normal")return""; const threshold=outbound?`允许最早抵达：${rules.earliestArrival||rules.arrivalStart||"未设置"}`:`允许最晚撤离：${rules.latestDeparture||rules.returnEnd||"未设置"}`;return `<div class="segment-approval-row"><div><span class="segment-status ${status}">${outbound?"去程":"返程"} · ${status==="approved"?"已审批":status==="rejected"?"已驳回":"待审批"}</span><strong>${escapeHtml(outbound?`${a.departCity||a.outFrom} → ${a.arriveCity||a.outTo} · ${a.outNo}`:`${a.returnDepartCity||a.returnFrom} → ${a.returnArriveCity||a.returnTo} · ${a.returnNo}`)}</strong><small>触发原因：${risks.map(escapeHtml).join("；")}</small><small>会议规则：${escapeHtml(threshold)}；城市一致性校验${rules.mismatchEnabled!==false?"已开启":"已关闭"}</small></div><div class="segment-actions three-actions"><button class="button button-secondary" data-travel-decision="returned" data-attendee="${a.id}" data-segment="${segment}" ${canEditAttendeeData()?"":"disabled"}>退回修改</button><button class="button button-ghost" data-travel-decision="rejected" data-attendee="${a.id}" data-segment="${segment}" ${canEditAttendeeData()?"":"disabled"}>驳回</button><button class="button button-primary" data-travel-decision="approved" data-attendee="${a.id}" data-segment="${segment}" ${canEditAttendeeData()?"":"disabled"}>通过</button></div></div>`; };
     const travelCards=list.map(a=>`<article class="panel approval-card segment-approval-card"><span class="status status-pending">行程合规审批</span><h3>${escapeHtml(a.name)}</h3><div class="approval-meta">${escapeHtml(a.hospital)} · 负责人 ${escapeHtml(userName(a.ownerId))}</div><div class="segment-approval-list">${segmentRow(a,"outbound")}${segmentRow(a,"return")}</div></article>`).join("");
-    const roomCards=roomList.map(a=>{const room=roomingRecord(a);return`<article class="panel approval-card rooming-approval-card"><span class="status status-pending">住宿审批</span><h3>${escapeHtml(a.name)}</h3><div class="approval-meta">${escapeHtml(a.title||"职称未填写")} · ${escapeHtml(a.hospital||"医院未填写")}</div><div class="rooming-approval-compare"><div><small>申请房型</small><strong>${roomTypeLabel(room.requestedType)}</strong></div><div><small>系统建议</small><strong>${roomTypeLabel(suggestedRoomType(a))}</strong></div></div><div class="segment-actions"><button class="button button-secondary" data-room-decision="rejected" data-attendee="${a.id}">退回调整</button><button class="button button-primary" data-room-decision="approved" data-attendee="${a.id}">批准例外</button></div></article>`;}).join("");
+    const roomCards=roomList.map(a=>{const room=roomingRecord(a);return`<article class="panel approval-card rooming-approval-card"><span class="status status-pending">住宿单间例外审批</span><h3>${escapeHtml(a.name)}</h3><div class="approval-meta">${escapeHtml(a.title||"职称未填写")} · ${escapeHtml(a.hospital||"单位未填写")} · ${escapeHtml(a.region||"大区未填写")}</div><div class="approval-reason">触发原因：${escapeHtml(room.exceptionRequested?"已标记特殊单间需求":"非副高及以上职称申请单间")}</div><div class="rooming-approval-compare"><div><small>申请房型</small><strong>${roomTypeLabel(room.requestedType)}</strong></div><div><small>基础规则</small><strong>主任医师 / 副主任医师可单间，其余标间拼住</strong></div></div><div class="segment-actions"><button class="button button-secondary" data-room-decision="rejected" data-attendee="${a.id}">驳回</button><button class="button button-primary" data-room-decision="approved" data-attendee="${a.id}">通过</button></div></article>`;}).join("");
     $("#approvalBoard").innerHTML = travelCards+roomCards || `<article class="panel empty-state" style="grid-column:1/-1">当前没有行程或住宿审批待办</article>`;
     bindDynamicButtons();
   }
@@ -1263,7 +1280,7 @@
     targets.forEach(a=>{const room=patches.get(String(a.id));if(!room)return;a.customFields={...(a.customFields||{}),_rooming:{...room,approvalStatus:roomingConflict(a)?"pending":"normal",autoRunAt:new Date().toISOString(),autoRunBy:state.currentUserId}};});
     addNotification("change",`${currentUser().name}重新执行了自动分房：处理${targets.length}人，人工设置保持不变`);saveState();renderAll();toast(`自动分房完成：${targets.filter(a=>roomingRecord(a).assignedType==="shared"&&!roomingRecord(a).roommateId).length} 人待人工安排`);
   }
-  function decideRoomingApproval(id,decision){if(!canEditAttendeeData())return deny();const attendee=state.attendees.find(item=>item.id===id);if(!attendee)return;const note=decision==="rejected"?(prompt("请输入退回原因")||"房型申请与项目规则不一致"):"批准房型例外";saveRooming(attendee,{approvalStatus:decision,approvalNote:note},`${decision==="approved"?"住宿例外已批准":"住宿申请已退回"}（${note}）`);toast(decision==="approved"?"住宿例外已批准":"住宿申请已退回");}
+  function decideRoomingApproval(id,decision){if(!canEditAttendeeData())return deny();const attendee=state.attendees.find(item=>item.id===id);if(!attendee)return;const note=decision==="rejected"?prompt("请输入驳回备注"):"批准单间例外申请";if(decision==="rejected"&&!note)return;const patch=decision==="approved"?{approvalStatus:"approved",approvalNote:note,assignedType:"single",assignmentSource:"approval"}:{approvalStatus:"rejected",approvalNote:note,assignedType:"shared",roommateId:"",pendingManual:true,assignmentSource:"approval_rejected"};saveRooming(attendee,patch,`${decision==="approved"?"住宿例外已批准":"住宿申请已驳回并恢复标间拼住"}（${note}）`);toast(decision==="approved"?"住宿例外已批准":"住宿申请已驳回");}
   function exportRoomingList(){
     const attendees=activeVisibleAttendees(),stats=roomingStatistics(attendees),occupancy=roomingOccupancyData(),headers=["序号","姓名","性别","大区","省份","城市","医院","职称","会场","入住日期","退房日期","住宿日期推算间夜（参考）","实际允许住宿间夜数","申请房型","系统建议","实际房型","拼住室友","匹配依据","房号","安排状态","住宿审批"];
     const rows=attendees.filter(a=>a.accommodation==="Y"||roomingRecord(a).requestedType||roomingRecord(a).assignedType).map((a,index)=>{const room=roomingRecord(a),dates=roomingDates(a);return[index+1,a.name,a.sex,a.region,RoomingEngine.province(a),a.city,a.hospital,a.title,a.venue,dates.checkIn,dates.checkOut,roomingNights(a),room.actualNights,roomTypeLabel(room.requestedType),roomTypeLabel(suggestedRoomType(a)),roomTypeLabel(room.assignedType),state.attendees.find(item=>item.id===room.roommateId)?.name||"",room.pairingReason||"",room.roomNumber,room.assignedType==="shared"&&!room.roommateId?"待人工安排":"已安排",roomingApprovalStatus(a)==="approved"?"已批准":roomingApprovalStatus(a)==="pending"?"待审批":roomingApprovalStatus(a)==="rejected"?"已退回":"无需审批"]});
@@ -1556,7 +1573,8 @@
 
   function renderNotifications() {
     const icons = { change: "↻", approval: "✓", lock: "▣", create: "+" };
-    $("#notificationList").innerHTML = state.notifications.length ? state.notifications.map(n => `<button type="button" class="notification-item ${n.read?"":"unread"} ${n.auditOnly?"audit-only":""}" data-notification-detail="${escapeHtml(String(n.id))}"><span class="notice-icon">${icons[n.type]||"◌"}</span><p><strong>${escapeHtml(n.attendeeName||(n.type==="lock"?"系统设置":"变更记录"))}</strong>${escapeHtml(n.text)}</p><small>${new Date(n.time).toLocaleString("zh-CN",{hour12:false})}${n.changes?.length?` · ${n.changes.length}项变更`:""}${n.auditOnly?" · 仅审计":""}</small></button>`).join("") : `<div class="empty-state">暂无变更记录</div>`;
+    const reminders=state.notifications.filter(n=>n.publicSource||(!backend&&n.auditOnly!==true));
+    $("#notificationList").innerHTML = reminders.length ? reminders.map(n => `<button type="button" class="notification-item ${n.read?"":"unread"}" data-notification-detail="${escapeHtml(String(n.id))}"><span class="notice-icon">${icons[n.type]||"◌"}</span><p><strong>${escapeHtml(n.attendeeName||"报名端变更")}</strong>${escapeHtml(n.text)}</p><small>${new Date(n.time).toLocaleString("zh-CN",{hour12:false})}${n.changes?.length?` · ${n.changes.length}项变更`:""}</small></button>`).join("") : `<div class="empty-state">暂无报名端新增或自行修改提醒；管理员操作请在系统设置的全局操作日志中查询。</div>`;
     $$('[data-notification-detail]').forEach(button=>button.onclick=()=>openNotificationDetail(button.dataset.notificationDetail));
   }
   function openNotificationDetail(id){const item=state.notifications.find(n=>String(n.id)===String(id));if(!item)return;item.read=true;const changes=item.changes||[];$("#notificationDetailContent").innerHTML=`<div class="detail-head"><span class="kicker">CHANGE LOG</span><h2>${escapeHtml(item.attendeeName||"变更详情")}</h2><p>${escapeHtml(item.actorName||"系统")} · ${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</p></div><div class="detail-body"><div class="change-detail-list">${changes.length?changes.map(change=>`<div class="change-detail-row"><strong>${escapeHtml(change.label||change.field||"字段")}</strong><span class="change-before"><small>修改前</small>${escapeHtml(String(change.before??"未填写"))}</span><b>→</b><span class="change-after"><small>修改后</small>${escapeHtml(String(change.after??"未填写"))}</span></div>`).join(""):`<div class="empty-state">该历史提醒仅保存了操作摘要：${escapeHtml(item.text)}</div>`}</div></div>`;localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderNotifications();renderCounts();$("#notificationDetailDialog").showModal();}
@@ -1564,9 +1582,9 @@
     const form = $("#settingsForm");
     if(!form.elements.fieldClothingSize){const grid=form.querySelector(".field-toggle-grid");const label=document.createElement("label");label.className="check-row";label.innerHTML='<input name="fieldClothingSize" type="checkbox" /> 收集衣服尺寸';grid?.append(label);}
     const travelRules=state.settings.travelApprovalRules||{};const roomRules=configuredRoomingRules();
-    const values = { eventName:state.settings.eventName, clientName:state.settings.clientName, startDate:state.settings.startDate, endDate:state.settings.endDate, venues:state.settings.venues.map(normalizeVenueLabel).filter(Boolean).join("、"), registrationRegions:(state.settings.quotaRegions||[]).join("、"), deadline:state.settings.deadline, capacity:state.settings.capacity, servicePhone:state.settings.servicePhone, flightLeadMinutes:state.settings.flightLeadMinutes, trainLeadMinutes:state.settings.trainLeadMinutes, transportGroupMinutes:state.settings.transportGroupMinutes||30, arrivalWindowStart:travelRules.arrivalStart||"", arrivalWindowEnd:travelRules.arrivalEnd||"", returnWindowStart:travelRules.returnStart||"", returnWindowEnd:travelRules.returnEnd||"", tourismCities:(travelRules.tourismCities||DEFAULT_TOURISM_CITIES).join("、"), singleRoomTitles:(roomRules.singleTitles||[]).join("、"), twinSingleKeywords:(roomRules.twinSingleKeywords||[]).join("、"), defaultRoomType:roomRules.defaultType||"shared", pairingPriority1:roomRules.pairingPriorities[0], pairingPriority2:roomRules.pairingPriorities[1], pairingPriority3:roomRules.pairingPriorities[2], pairingPriority4:roomRules.pairingPriorities[3] };
+    const values = { eventName:state.settings.eventName, clientName:state.settings.clientName, startDate:state.settings.startDate, endDate:state.settings.endDate, venues:state.settings.venues.map(normalizeVenueLabel).filter(Boolean).join("、"), registrationRegions:(state.settings.quotaRegions||[]).join("、"), deadline:state.settings.deadline, capacity:state.settings.capacity, servicePhone:state.settings.servicePhone, flightLeadMinutes:state.settings.flightLeadMinutes, trainLeadMinutes:state.settings.trainLeadMinutes, transportGroupMinutes:state.settings.transportGroupMinutes||30, earliestArrival:travelRules.earliestArrival||travelRules.arrivalStart||"", latestDeparture:travelRules.latestDeparture||travelRules.returnEnd||"", tourismCities:(travelRules.tourismCities||DEFAULT_TOURISM_CITIES).join("、"), singleRoomTitles:(roomRules.singleTitles||[]).join("、"), twinSingleKeywords:(roomRules.twinSingleKeywords||[]).join("、"), defaultRoomType:roomRules.defaultType||"shared", pairingPriority1:roomRules.pairingPriorities[0], pairingPriority2:roomRules.pairingPriorities[1], pairingPriority3:roomRules.pairingPriorities[2], pairingPriority4:roomRules.pairingPriorities[3] };
     Object.entries(values).forEach(([name,value]) => { if (form.elements[name]) form.elements[name].value=value??""; });
-    form.elements.mismatchRule.checked = travelRules.mismatchEnabled??state.settings.mismatchRule; form.elements.approvalTimeRule.checked=!!travelRules.timeEnabled;form.elements.tourismCityRule.checked=!!travelRules.tourismEnabled;form.elements.roomConflictApproval.checked=roomRules.conflictApproval!==false;
+    form.elements.mismatchRule.checked = travelRules.mismatchEnabled??state.settings.mismatchRule; form.elements.approvalTimeRule.checked=!!travelRules.timeEnabled;form.elements.tourismCityRule.checked=!!travelRules.tourismEnabled;form.elements.approvalEmailNotifications.checked=state.settings.fieldConfig.approvalEmailNotifications===true;form.elements.roomConflictApproval.checked=roomRules.conflictApproval!==false;
     const fieldNames = {fieldTitle:"title",fieldHcpId:"hcpId",fieldAccommodation:"accommodation",fieldFlight:"flight",fieldMslContact:"mslContact",fieldRemarks:"remarks",fieldClothingSize:"clothingSize"};
     Object.entries(fieldNames).forEach(([name,key]) => form.elements[name].checked = state.settings.fieldConfig[key] !== false);
     $("#transferCollectionSwitch").checked=!!state.settings.transferCollectionEnabled;const allowedTransferRoles=new Set(state.settings.transferCollectionRoles||[]);$$('[name="transferCollectionRole"]',form).forEach(input=>input.checked=allowedTransferRoles.has(input.value));$("#transferCollectionStatus").textContent=state.settings.transferCollectionEnabled?"已启用":"未启用";$("#transferCollectionStatus").className=`status ${state.settings.transferCollectionEnabled?"status-ok":"status-locked"}`;
@@ -1576,6 +1594,7 @@
     $("#templateColumns").innerHTML=template.columns.length?template.columns.filter(column=>column.key!=="sequence").map(column=>`<span class="${column.custom?"custom":""}">${escapeHtml(column.header.replace(/\s+/g," "))}${column.required?" *":""}</span>`).join(""):`<span>等待导入 Excel / CSV 模板</span>`;
     $$('input,textarea,select,button[type="submit"]', form).forEach(input => input.disabled = !canManage() && input.id !== "resetDemo");
     const roomPanel=form.querySelector(".rooming-rules-panel"), internal=isInternalMeeting();
+    const approvalPanel=form.querySelector(".approval-rules-panel");if(approvalPanel){approvalPanel.classList.toggle("internal-disabled-approval",internal);$("#approvalRuleScope").textContent=internal?"内部会议不启用":"外部会议生效";$("#approvalRuleScope").className=`status ${internal?"status-locked":"status-normal"}`;$$('input,textarea,select',approvalPanel).forEach(input=>input.disabled=internal||!canManage());}
     if(roomPanel){roomPanel.classList.toggle("internal-manual-rooming",internal);const heading=roomPanel.querySelector("h2"),copy=roomPanel.querySelector(".panel-heading p");heading.textContent=internal?"内部会议分房方式":"外部会议分房规则";copy.textContent=internal?"内部会议采用人工分房，不执行职称、医院、城市、省份或大区自动匹配规则。":"按职称建议房型，并按医院、城市、省份和大区匹配同性拼住。";$$('input,textarea,select',roomPanel).forEach(input=>input.disabled=internal||!canManage());}
     $("#projectTemplateFile").disabled=!canManage();
     const attachmentDelete=$("#removeProjectTemplateAttachment");attachmentDelete.classList.toggle("is-hidden",!canManage());attachmentDelete.disabled=!state.settings.templateImported||state.settings.templateIsSystemDefault||(!state.settings.templateName&&!state.settings.templateStoragePath);attachmentDelete.title=state.settings.templateIsSystemDefault?"系统内置默认模板没有可删除附件":(!state.settings.templateName&&!state.settings.templateStoragePath)?"原始模板附件已删除":"仅删除原始附件，报名字段和历史数据保留";
@@ -1997,7 +2016,7 @@
     const splitList=value=>[...new Set(String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean))];
     const pairingPriorities=[data.pairingPriority1,data.pairingPriority2,data.pairingPriority3,data.pairingPriority4].filter(Boolean);if(!isInternalMeeting()&&new Set(pairingPriorities).size!==4)return toast("四级拼住匹配条件不能重复，请重新选择","error");
     const stationNames=new FormData(event.currentTarget).getAll("transportRuleStation").map(value=>String(value).trim());const stationMinutes=new FormData(event.currentTarget).getAll("transportRuleMinutes");const transportStationRules=stationNames.map((station,index)=>({station,minutes:Math.max(0,Number(stationMinutes[index])||0)})).filter(rule=>rule.station);if(new Set(transportStationRules.map(rule=>comparableStation(rule.station))).size!==transportStationRules.length)return toast("同一场站不能重复配置，请合并后保存","error");
-    Object.assign(state.settings,{ eventName:data.eventName, clientName:data.clientName, startDate:data.startDate, endDate:data.endDate, deadline:data.deadline, capacity:Number(data.capacity)||120, servicePhone:data.servicePhone, transportStationRules, transportGroupMinutes:Math.min(180,Math.max(10,Number(data.transportGroupMinutes)||30)), venues:[...new Set(String(data.venues||"").split(/[、,，\s]+/).map(normalizeVenueLabel).filter(Boolean))], quotaRegions:splitList(data.registrationRegions), mismatchRule:!!data.mismatchRule, departureRule:false, travelApprovalRules:{timeEnabled:!!data.approvalTimeRule,arrivalStart:data.arrivalWindowStart||"",arrivalEnd:data.arrivalWindowEnd||"",returnStart:data.returnWindowStart||"",returnEnd:data.returnWindowEnd||"",tourismEnabled:!!data.tourismCityRule,tourismCities:splitList(data.tourismCities),mismatchEnabled:!!data.mismatchRule}, roomingRules:isInternalMeeting()?{...(state.settings.roomingRules||{}),mode:"manual"}:{singleTitles:splitList(data.singleRoomTitles),twinSingleKeywords:splitList(data.twinSingleKeywords),defaultType:data.defaultRoomType||"shared",pairingPriorities,conflictApproval:!!data.roomConflictApproval}, fieldConfig:{...state.settings.fieldConfig,title:!!data.fieldTitle,hcpId:!!data.fieldHcpId,accommodation:!!data.fieldAccommodation,flight:!!data.fieldFlight,mslContact:!!data.fieldMslContact,remarks:!!data.fieldRemarks,clothingSize:!!data.fieldClothingSize,internalRoomingMode:"manual"} });
+    Object.assign(state.settings,{ eventName:data.eventName, clientName:data.clientName, startDate:data.startDate, endDate:data.endDate, deadline:data.deadline, capacity:Number(data.capacity)||120, servicePhone:data.servicePhone, transportStationRules, transportGroupMinutes:Math.min(180,Math.max(10,Number(data.transportGroupMinutes)||30)), venues:[...new Set(String(data.venues||"").split(/[、,，\s]+/).map(normalizeVenueLabel).filter(Boolean))], quotaRegions:splitList(data.registrationRegions), mismatchRule:!!data.mismatchRule, departureRule:false, travelApprovalRules:{timeEnabled:!!data.approvalTimeRule,earliestArrival:data.earliestArrival||"",latestDeparture:data.latestDeparture||"",tourismEnabled:!!data.tourismCityRule,tourismCities:splitList(data.tourismCities),mismatchEnabled:!!data.mismatchRule}, roomingRules:isInternalMeeting()?{...(state.settings.roomingRules||{}),mode:"manual"}:{singleTitles:splitList(data.singleRoomTitles),twinSingleKeywords:splitList(data.twinSingleKeywords),defaultType:data.defaultRoomType||"shared",pairingPriorities,conflictApproval:!!data.roomConflictApproval}, fieldConfig:{...state.settings.fieldConfig,title:!!data.fieldTitle,hcpId:!!data.fieldHcpId,accommodation:!!data.fieldAccommodation,flight:!!data.fieldFlight,mslContact:!!data.fieldMslContact,remarks:!!data.fieldRemarks,clothingSize:!!data.fieldClothingSize,approvalEmailNotifications:!!data.approvalEmailNotifications,internalRoomingMode:"manual"} });
     state.settings.transferCollectionEnabled=!!data.transferCollectionEnabled;state.settings.transferCollectionRoles=[...new Set(new FormData(event.currentTarget).getAll("transferCollectionRole").map(String))];
     state.attendees.forEach(attendee=>refreshTravelApprovals(attendee));
     const project=currentProject(); Object.assign(project,{name:state.settings.eventName,clientName:state.settings.clientName,startDate:state.settings.startDate,endDate:state.settings.endDate,brandColor:state.settings.brandColor});

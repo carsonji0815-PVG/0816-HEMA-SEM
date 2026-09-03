@@ -14,17 +14,22 @@ test('PostgreSQL migration: authorization, feature gates, idempotency, late retr
  create table public.meetings(id uuid primary key,owner_user_id uuid,name text,activity_type text);
  create table public.attendees(id uuid primary key,meeting_id uuid,name text,department text,phone text,business_status text);
  create function public.can_manage_project(m uuid) returns boolean language sql stable security definer as $$ select exists(select 1 from public.meetings where id=m and owner_user_id=auth.uid()) $$;
+ create function public.is_system_admin() returns boolean language sql stable as $$ select auth.uid()='${U}'::uuid $$;
  insert into auth.users values('${U}'),('${V}');
  insert into public.meetings values('${A}','${U}','内部大会','internal'),('${B}','${V}','外部会议','external');
  insert into public.attendees values('${P}','${A}','张三','市场部','13800138000','active');`)
  const sql = await readFile(new URL('../../../supabase/migrations/2026083101_integrated_luggage.sql',import.meta.url),'utf8')
  await db.exec(sql); await db.exec(sql)
+ const operations = await readFile(new URL('../../../supabase/migrations/2026090303_luggage_operations.sql',import.meta.url),'utf8')
+ await db.exec(operations); await db.exec(operations)
  const rpc=(name,args)=>db.query(`select public.${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) as value`,args)
  await assert.rejects(rpc('set_meeting_luggage_enabled',[A,true]),/权限/)
  await db.query("select set_config('request.jwt.claim.sub',$1,false)",[U])
  await assert.rejects(rpc('luggage_attendees',[A]),/未启用/)
  await assert.rejects(rpc('set_meeting_luggage_enabled',[B,true]),/权限/)
  await rpc('set_meeting_luggage_enabled',[A,true])
+ const configured=(await rpc('save_luggage_config',[A,{enable_luggage:true,total_rows:2,per_row_max_position:2,allow_multi_bag:false,label_template:{paperWidth:80,paperHeight:120}}])).rows[0].value
+ assert.equal(configured.capacity,4)
  const roster=(await rpc('luggage_attendees',[A])).rows[0].value
  assert.deepEqual(Object.keys(roster[0]).sort(),['attend_id','dept','mobile','name'])
  const bag={event_id:A,attend_id:P,name:'forged',mobile:'forged',luggage_barcode:'LUG1788000000000ABCDE',storage_row:1,storage_slot:2,status:'寄存',checkin_time:'2026-08-31T02:00:00Z',checkout_time:null,revision:1,updated_at:'2026-08-31T02:00:00Z',operator_checkin:'现场人员'}

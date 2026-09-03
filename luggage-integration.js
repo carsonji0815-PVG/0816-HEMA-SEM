@@ -1,6 +1,6 @@
 /* First-party integration. This script does not load Vue, scanners or IndexedDB until requested. */
 window.createJourneyLuggage = function createJourneyLuggage(deps) {
-  let frame = null, frameContext = null, hooks = null, toggling = false;
+  let frame = null, frameContext = null, hooks = null, toggling = false, requestedTab = '';
   const $ = id => document.getElementById(id);
   function authorized() {
     return deps.canManage() && (!deps.isProduction() || (deps.backend() && deps.authenticated()));
@@ -50,6 +50,25 @@ window.createJourneyLuggage = function createJourneyLuggage(deps) {
       }
       return deps.attendees().filter(a => a.businessStatus !== 'cancelled').map(a => ({ attend_id: a.id, name: a.name, dept: a.department || '', mobile: a.phone || '' }));
     },
+    async config(eventId) {
+      guard(eventId);
+      if (deps.isProduction()) return rpc('luggage_config', { p_meeting_id:eventId });
+      const saved = JSON.parse(localStorage.getItem(`luggage-config:${eventId}`) || 'null');
+      return saved || { meeting_id:eventId,enable_luggage:!!deps.current().enabled,total_rows:50,per_row_max_position:50,allow_multi_bag:false,label_template:{paperWidth:80,paperHeight:120,margin:4,fontSize:12,fields:['barcode','position','name']} };
+    },
+    async saveConfig(eventId, config) {
+      guard(eventId);
+      let saved;
+      if (deps.isProduction()) saved = await rpc('save_luggage_config', { p_meeting_id:eventId,p_config:config });
+      else { saved={...config,meeting_id:eventId};localStorage.setItem(`luggage-config:${eventId}`,JSON.stringify(saved)); }
+      deps.setEnabled(!!saved.enable_luggage);
+      return saved;
+    },
+    async reset(eventId) {
+      guard(eventId,true);
+      if (deps.isProduction()) await rpc('reset_meeting_luggage',{p_meeting_id:eventId,p_confirmation:'RESET LUGGAGE'});
+      return true;
+    },
     async sync(eventId, payload) {
       guard(eventId);
       if (payload.event_id !== eventId) throw new Error('会议不匹配');
@@ -98,7 +117,10 @@ window.createJourneyLuggage = function createJourneyLuggage(deps) {
       frameContext = { ...value };
       frame = document.createElement('iframe');
       frame.id = 'luggageFrame'; frame.title = '本场会议行李管理';
-      frame.src = new URL('luggage/index.html', document.baseURI).href;
+      const frameUrl = new URL('luggage/index.html', document.baseURI);
+      if (requestedTab) frameUrl.searchParams.set('tab',requestedTab);
+      requestedTab = '';
+      frame.src = frameUrl.href;
       frame.setAttribute('allow', "camera 'self'");
       $('luggageMount').replaceChildren(frame);
     }
@@ -146,6 +168,7 @@ window.createJourneyLuggage = function createJourneyLuggage(deps) {
     });
   }
   $('luggageSwitch').addEventListener('change', e => void toggle(e.target.checked));
+  $('luggageSettingsEntry').addEventListener('click',()=>{requestedTab='setup';});
   window.addEventListener('beforeunload', e => { if (!canLeave()) { e.preventDefault(); e.returnValue = ''; } });
   async function accessSnapshot(userId, action, value) {
     if (!userId || !window.indexedDB) return null;

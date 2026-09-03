@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { initDB, attendeeStore, luggageStore, importAttendees, getAttendee, getAttendees, createLuggageRecord, getLuggageByAttendee, getAllLuggage, getLuggageRecord, checkoutLuggage, markSynced, createBackup, restoreBackup, mergeCloudLuggage } from '../src/utils/db.js'
+import { initDB, attendeeStore, luggageStore, importAttendees, getAttendee, getAttendees, createLuggageRecord, getLuggageByAttendee, getAllLuggage, getLuggageRecord, checkoutLuggage, markSynced, createBackup, restoreBackup, mergeCloudLuggage, nextAvailablePosition, findLuggage } from '../src/utils/db.js'
 import { recordsToCSV, csvCell } from '../src/utils/download.js'
 import { fetchAttendeeList, syncLuggageRecord, toSyncPayload } from '../src/utils/api.js'
 
@@ -22,8 +22,7 @@ test('2500-person import, event isolation, invalid import leaves original snapsh
 })
 
 test('multiple bags, unique codes, exactly one concurrent checkout, late sync ACK cannot lose checkout', async () => {
-  const input = { eventId: 'C', person, row: 1, slot: 3 }
-  const bags = await Promise.all(Array.from({ length: 30 }, () => createLuggageRecord(input)))
+  const bags = await Promise.all(Array.from({ length: 30 }, (_,i) => createLuggageRecord({ eventId:'C',person,row:1+Math.floor(i/10),slot:1+i%10,allowMultiBag:true })))
   assert.equal(new Set(bags.map(b => b.luggage_barcode)).size, 30)
   assert.equal((await getLuggageByAttendee('C', person.attend_id)).length, 30)
   assert.equal((await getLuggageByAttendee('B', person.attend_id)).length, 0)
@@ -39,6 +38,19 @@ test('multiple bags, unique codes, exactly one concurrent checkout, late sync AC
   assert.ok(current.checkout_time)
   assert.equal(await markSynced(current, true), true)
   assert.equal((await getLuggageRecord('C', old.luggage_barcode)).sync_status, 'mock')
+})
+
+test('automatic allocation fills rows in order, capacity blocks, attendee ID and phone fallback work',async()=>{
+  const first=await createLuggageRecord({eventId:'AUTO',person,row:1,slot:1})
+  assert.deepEqual(await nextAvailablePosition('AUTO',2,2),{row:1,slot:2})
+  await assert.rejects(createLuggageRecord({eventId:'AUTO',person,row:1,slot:2}),/已有未取/)
+  const other={...person,attend_id:'OTHER'}
+  await createLuggageRecord({eventId:'AUTO',person:other,row:1,slot:2})
+  await createLuggageRecord({eventId:'AUTO',person:{...other,attend_id:'THIRD'},row:2,slot:1})
+  await createLuggageRecord({eventId:'AUTO',person:{...other,attend_id:'FOURTH'},row:2,slot:2})
+  await assert.rejects(nextAvailablePosition('AUTO',2,2),/已满/)
+  assert.equal((await findLuggage('AUTO',person.mobile)).length,4)
+  assert.equal((await findLuggage('AUTO',first.luggage_barcode)).length,1)
 })
 
 test('failed validation writes nothing; zero/fractional/missing locations rejected', async () => {
@@ -120,7 +132,7 @@ test('storage failures never report success or mutate existing checkout state', 
   const original = luggageStore.setItem
   luggageStore.setItem = async () => { throw new Error('QuotaExceededError') }
   try {
-    await assert.rejects(createLuggageRecord(input), /QuotaExceeded/)
+    await assert.rejects(createLuggageRecord({ ...input, slot:2,allowMultiBag:true }), /QuotaExceeded/)
     await assert.rejects(checkoutLuggage('DISK', record.luggage_barcode), /QuotaExceeded/)
   } finally { luggageStore.setItem = original }
   assert.equal((await getLuggageRecord('DISK', record.luggage_barcode)).status, '寄存')

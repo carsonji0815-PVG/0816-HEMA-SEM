@@ -1,10 +1,12 @@
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import JsBarcode from 'jsbarcode'
 import { ElMessage } from 'element-plus'
 import { formatTime } from '../utils/download'
 import AppIcon from './AppIcon.vue'
-const props = defineProps({ record: { type: Object, default: null } })
+const props = defineProps({ record: { type: Object, default: null }, template: { type:Object,default:()=>({}) } })
+const paperStyle=computed(()=>({width:`${Number(props.template.paperWidth)||80}mm`,height:`${Number(props.template.paperHeight)||120}mm`,padding:`0 ${Number(props.template.margin)||4}mm`,fontSize:`${Number(props.template.fontSize)||12}px`}))
+function fieldOrder(name){const index=(props.template.fields||['barcode','position','name']).indexOf(name);return index<0?9:index+1}
 const barcodeA = ref(null)
 const barcodeB = ref(null)
 const paper = ref(null)
@@ -43,22 +45,19 @@ defineExpose({ print })
   <div class="label-preview">
     <div v-if="!record" class="label-empty"><AppIcon name="print" :size="40" /><strong>双联标签将在这里生成</strong><span>先识别参会人，再填写存放位置</span><div class="paper-skeleton"><i /><i /><i /><b>80 × 120 mm</b></div></div>
     <template v-else>
-      <div ref="paper" class="paper-label">
+      <div ref="paper" class="paper-label" :style="paperStyle">
         <section class="label-half label-a">
           <header><b>会务服务 / 行李寄存</b><span>A 联 · 行李粘贴</span></header>
-          <div class="label-person">{{ record.name }}</div>
-          <div class="label-dept">{{ record.dept || '—' }}</div>
-          <div class="label-location">{{ record.storage_row }} 排 <strong>{{ record.storage_slot }}</strong> 位</div>
-          <p class="label-time">寄存 {{ formatTime(record.checkin_time) }}</p>
-          <svg ref="barcodeA" class="label-barcode" role="img" :aria-label="`行李条码 ${record.luggage_barcode}`" />
-          <div class="label-code">{{ record.luggage_barcode }}</div>
+          <div class="label-person" :style="{order:fieldOrder('name')}">{{ record.name }}</div>
+          <div class="label-location" :style="{order:fieldOrder('position')}">{{ record.storage_row }} 排 <strong>{{ record.storage_slot }}</strong> 位</div>
+          <div class="label-barcode-group" :style="{order:fieldOrder('barcode')}"><svg ref="barcodeA" class="label-barcode" role="img" :aria-label="`行李条码 ${record.luggage_barcode}`" /><div class="label-code">{{ record.luggage_barcode }}</div></div>
         </section>
         <div class="tear-line"><span>✂ 沿此线撕开</span></div>
         <section class="label-half label-b">
           <header><b>请妥善保管此回执</b><span>B 联 · 客人留存</span></header>
-          <div class="receipt-person"><strong>{{ record.name }}</strong><span>{{ record.storage_row }} 排 {{ record.storage_slot }} 位</span></div>
-          <svg ref="barcodeB" class="label-barcode" role="img" :aria-label="`回执条码 ${record.luggage_barcode}`" />
-          <div class="label-code">{{ record.luggage_barcode }}</div>
+          <div class="receipt-person" :style="{order:fieldOrder('name')}"><strong>{{ record.name }}</strong></div>
+          <div class="receipt-person" :style="{order:fieldOrder('position')}"><span>{{ record.storage_row }} 排 {{ record.storage_slot }} 位</span></div>
+          <div class="label-barcode-group" :style="{order:fieldOrder('barcode')}"><svg ref="barcodeB" class="label-barcode" role="img" :aria-label="`回执条码 ${record.luggage_barcode}`" /><div class="label-code">{{ record.luggage_barcode }}</div></div>
           <p class="label-tip">请凭此回执取件，并与工作人员核对行李。<br>一件一签，请勿遗失。</p>
         </section>
       </div>
@@ -73,7 +72,8 @@ defineExpose({ print })
 <style>
 .label-preview { padding: 22px 12px; background: #eef0ec; border: 1px solid #e1e5dd; border-radius: 12px; }
 .paper-label { width: 80mm; height: 120mm; padding: 0 4mm; box-sizing: border-box; background: #fff; color: #000; margin: auto; box-shadow: 0 4px 18px #213b2910; font-family: Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
-.label-half { box-sizing: border-box; overflow: hidden; }
+.label-half { box-sizing: border-box; overflow: hidden; display:flex; flex-direction:column; }
+.label-half header { order:0; }.label-tip { order:20; }.label-barcode-group { flex:0 0 auto; }
 .label-a { height: 60mm; padding: 4mm 0 2mm; }
 .label-b { height: 58mm; padding: 4mm 0 3mm; }
 .label-half header { display: flex; justify-content: space-between; font-size: 9px; gap: 3mm; border-bottom: 1px solid #000; padding-bottom: 2mm; }

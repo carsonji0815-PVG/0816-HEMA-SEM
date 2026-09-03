@@ -5,14 +5,17 @@ import AppIcon from './components/AppIcon.vue'
 import { host, initialContext, requireContext } from './utils/host.js'
 import CameraScanner from './components/CameraScanner.vue'
 import LuggageDualLabel from './components/LuggageDualLabel.vue'
-import { initDB, importAttendees, getAttendees, getAttendee, createLuggageRecord, getLuggageRecord, getLuggageByAttendee, getAllLuggage, checkoutLuggage, createBackup, restoreBackup, mergeCloudLuggage } from './utils/db'
+import BadgeQrExport from './components/BadgeQrExport.vue'
+import LabelTemplateEditor from './components/LabelTemplateEditor.vue'
+import { initDB, importAttendees, getAttendees, getAttendee, createLuggageRecord, getLuggageRecord, getLuggageByAttendee, findLuggage, nextAvailablePosition, clearMeetingLuggage, getAllLuggage, checkoutLuggage, createBackup, restoreBackup, mergeCloudLuggage } from './utils/db'
 import { fetchAttendeeList, fetchCloudLuggage, USE_MOCK } from './utils/api'
 import { scheduleSync, startSync } from './utils/sync'
 import { downloadFile, recordsToCSV, formatTime, safeFilename } from './utils/download'
 
 const offline = inject('offline')
 if (initialContext.offlineUntil) { offline.ready=true; offline.message='离线恢复模式 · 联网后请刷新主页面验证登录并同步' }
-const tab = ref(initialContext.enabled ? 'deposit' : 'ledger')
+const requestedTab=new URLSearchParams(location.search).get('tab')
+const tab = ref(['setup','deposit','pickup','ledger'].includes(requestedTab)?requestedTab:(initialContext.enabled ? 'deposit' : 'ledger'))
 const enabled = computed(() => !!host.context()?.enabled)
 const menuOpen = ref(false)
 const menuButton = ref(null)
@@ -32,6 +35,7 @@ const eventId = ref('')
 const operator = ref('')
 const attendees = ref([])
 const records = ref([])
+const config = ref({enable_luggage:!!initialContext.enabled,total_rows:50,per_row_max_position:50,allow_multi_bag:false,label_template:{paperWidth:80,paperHeight:120,margin:4,fontSize:12,fields:['barcode','position','name']}})
 const ledgerSource = ref('local')
 const ledgerLoadError = ref('')
 const badgeInput = ref('')
@@ -55,6 +59,8 @@ const restoreInput = ref(null)
 const persistent = ref(false)
 const dateText = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())
 const activeCount = computed(() => records.value.filter(record => record.status === '寄存').length)
+const capacity = computed(() => Number(config.value.total_rows||0)*Number(config.value.per_row_max_position||0))
+const remaining = computed(() => Math.max(0,capacity.value-activeCount.value))
 const pendingCount = computed(() => records.value.filter(record => record.sync_status === 'pending' || (!USE_MOCK && record.sync_status === 'mock')).length)
 const filtered = computed(() => {
   const term = filter.value.trim().toLowerCase()
@@ -108,6 +114,7 @@ async function initialize() {
     await initDB()
     eventId.value = initialContext.eventId
     operator.value = initialContext.operator
+    try { config.value={...config.value,...await host.config(eventId.value)} } catch(error) { console.warn('[luggage config]',error); ElMessage.warning('暂未读取云端行李配置，现场将使用本机默认配置') }
     ready.value = true
     await refresh()
     void host.prepareOffline().then(cached => { if(cached) {offline.ready=true;offline.message='页面已缓存 · 本机授权12小时内可离线重开'} }).catch(error => console.warn('[offline preparation]',error))
@@ -158,6 +165,8 @@ async function identify(value = badgeInput.value) {
     // Wait for the input watcher before assigning the successful result.
     await nextTick()
     selected.value = person
+    const position=await nextAvailablePosition(eventId.value,Number(config.value.total_rows),Number(config.value.per_row_max_position))
+    row.value=position.row;slot.value=position.slot
     ElMessage.success(`已识别 ${person.name}`)
   })
 }
@@ -165,7 +174,7 @@ async function deposit() {
   if (!canWork.value || !selected.value) return
   await run(async () => {
     requireContext(true)
-    const record = await createLuggageRecord({ eventId: eventId.value, person: selected.value, row: row.value, slot: slot.value, operator: operator.value })
+    const record = await createLuggageRecord({ eventId: eventId.value, person: selected.value, row: row.value, slot: slot.value, operator: operator.value, allowMultiBag:!!config.value.allow_multi_bag })
     latest.value = record
     // Reset selection immediately: double taps cannot create a second bag.
     selected.value = null; badgeInput.value = ''
@@ -193,7 +202,7 @@ async function searchPickup(value = pickupInput.value, kind = pickupKind.value) 
       if (record) { list = [record]; resolved = 'barcode' }
     }
     if (!list.length && kind !== 'barcode') {
-      list = await getLuggageByAttendee(eventId.value, pickupInput.value)
+      list = kind==='auto' ? await findLuggage(eventId.value,pickupInput.value) : await getLuggageByAttendee(eventId.value, pickupInput.value)
       resolved = 'attendee'
     }
     pickupSource.value = { value: pickupInput.value, kind: resolved }
@@ -245,6 +254,13 @@ async function refreshCloud() {
 }
 function syncLabel(record) { return record.sync_status === 'synced' ? '已同步' : record.sync_status === 'mock' && USE_MOCK ? '模拟成功' : '待同步' }
 async function reprint(record) { latest.value = record; tab.value = 'deposit'; await nextTick(); await label.value?.print() }
+async function saveConfig(){await run(async()=>{requireContext();const payload={...config.value,enable_luggage:!!config.value.enable_luggage};config.value={...config.value,...await host.saveConfig(eventId.value,payload)};ElMessage.success('行李寄存配置与标签模板已保存')})}
+async function resetMeeting(){
+  if(!confirm('高风险操作：将清空本场全部云端和本机寄存记录，且无法恢复。确定继续？'))return
+  const typed=prompt('请输入 RESET LUGGAGE 确认清空')
+  if(typed!=='RESET LUGGAGE')return ElMessage.warning('确认文字不正确，已取消重置')
+  await run(async()=>{await host.reset(eventId.value);await clearMeetingLuggage(eventId.value);latest.value=null;pickupRecords.value=[];await refresh();announce();ElMessage.success('本场行李记录和库位计数已重置')})
+}
 </script>
 
 <template>
@@ -262,6 +278,8 @@ async function reprint(record) { latest.value = record; tab.value = 'deposit'; a
         <article class="stat"><span class="stat-icon green"><AppIcon name="bag" /></span><div><span>在库行李</span><strong>{{ activeCount.toLocaleString() }}<small>件</small></strong></div><span class="stat-note green-text">妥善保管中</span></article>
         <article class="stat"><span class="stat-icon"><AppIcon name="check" /></span><div><span>已完成取件</span><strong>{{ (records.length - activeCount).toLocaleString() }}<small>件</small></strong></div><span class="stat-note">本场累计</span></article>
         <article class="stat"><span class="stat-icon amber"><AppIcon name="refresh" /></span><div><span>等待后台同步</span><strong>{{ pendingCount.toLocaleString() }}<small>条</small></strong></div><span class="stat-note">本地优先保存</span></article>
+        <article class="stat"><span class="stat-icon green"><AppIcon name="database" /></span><div><span>已占用库位</span><strong>{{ activeCount.toLocaleString() }}<small>位</small></strong></div><span class="stat-note">实时计算</span></article>
+        <article class="stat"><span class="stat-icon"><AppIcon name="check" /></span><div><span>剩余可用库位</span><strong>{{ remaining.toLocaleString() }}<small>位</small></strong></div><span class="stat-note">总容量 {{ capacity }}</span></article>
       </section>
       <div v-if="!eventId && ready && tab !== 'setup'" class="notice"><AppIcon name="settings" /><span>首次使用，请先设置会议并导入参会名单。</span><el-button link type="primary" @click="tab = 'setup'">前往初始化 <AppIcon name="arrow" :size="16" /></el-button></div>
 
@@ -278,7 +296,13 @@ async function reprint(record) { latest.value = record; tab.value = 'deposit'; a
           <div class="check-row"><span class="check-dot" :class="{ done: offline.ready }"><AppIcon name="check" :size="14" /></span><div><strong>离线页面</strong><p>{{ offline.message }}</p></div></div>
           <div class="check-row"><span class="check-dot" :class="{ done: persistent }"><AppIcon name="check" :size="14" /></span><div><strong>持久存储</strong><p>{{ persistent ? '已获授权，仍需定期备份' : '降低浏览器自动回收数据的风险' }}</p></div></div>
           <el-button class="full-width" :disabled="!ready" @click="requestPersistence">申请持久存储</el-button>
-        </article><div class="deployment-note"><AppIcon name="bag" :size="30" /><h3>开场前，试寄存一件行李。</h3><p>确认扫码权限、80 × 120 mm 纸张与打印服务，完成一次寄存和取件演练。</p><p>两台平板数据独立。离线期间请在原寄存终端取件；同一份名单不等于共享台账。</p><small>{{ USE_MOCK ? '当前为 mock：仅模拟成功，不向真实后端备份。' : '真实接口已启用，请确认后端幂等与版本控制。' }}</small></div></div>
+        </article><div class="deployment-note"><AppIcon name="bag" :size="30" /><h3>开场前，试寄存一件行李。</h3><p>确认扫码枪、热敏纸张与浏览器打印机，完成一次寄存和取件演练。</p><p>断网时业务会写入 IndexedDB；联网后自动同步。多工位离线期间请按预先划分的排号区域操作，避免占用同一库位。</p><small>{{ USE_MOCK ? '当前为 mock：仅模拟成功，不向真实后端备份。' : '服务器对重复人员、库位冲突和容量执行最终校验。' }}</small></div></div>
+        <article class="panel setup-full"><div class="panel-heading"><div><span class="section-index">LUGGAGE CONFIG</span><h2>本场行李寄存配置</h2><p>配置只作用于当前会议，内部、外部会议均可独立设置。</p></div><span class="subtle-badge">{{ activeCount }} / {{ capacity }} 已占用</span></div>
+          <el-form label-position="top"><div class="config-grid"><el-form-item label="本场启用行李寄存"><el-switch v-model="config.enable_luggage" /></el-form-item><el-form-item label="允许同一参会人多件寄存"><el-switch v-model="config.allow_multi_bag" /></el-form-item><el-form-item label="库位总排数"><el-input-number v-model="config.total_rows" :min="1" :max="9999" /></el-form-item><el-form-item label="每排最大位置数"><el-input-number v-model="config.per_row_max_position" :min="1" :max="9999" /></el-form-item></div></el-form>
+          <LabelTemplateEditor v-model="config.label_template" />
+          <div class="config-actions"><el-button type="danger" plain :disabled="busy" @click="resetMeeting">清空本场记录并重置库位</el-button><el-button type="primary" :loading="busy" @click="saveConfig">保存行李配置与打印模板</el-button></div>
+        </article>
+        <article class="panel setup-full"><BadgeQrExport :attendees="attendees" :event-name="initialContext.eventName" /></article>
       </section>
 
       <section v-if="tab === 'deposit'" class="register-layout">
@@ -294,23 +318,23 @@ async function reprint(record) { latest.value = record; tab.value = 'deposit'; a
             <div class="person-meta"><span>参会编号</span><code>{{ selected?.attend_id || '—' }}</code></div>
             <div class="person-meta"><span>联系电话</span><span>{{ selected?.mobile || '—' }}</span></div>
             <div class="setup-divider" />
-            <el-form label-position="top" @submit.prevent="deposit"><div class="position-inputs"><el-form-item label="存放排号"><el-input-number v-model="row" :min="1" :max="9999" :step="1" :precision="0" :disabled="!canWork" controls-position="right" aria-label="存放排号" /></el-form-item><el-form-item label="存放位号"><el-input-number v-model="slot" :min="1" :max="9999" :step="1" :precision="0" :disabled="!canWork" controls-position="right" aria-label="存放位号" /></el-form-item></div>
+            <el-form label-position="top" @submit.prevent="deposit"><div class="position-inputs"><el-form-item label="自动分配排号"><el-input-number v-model="row" :disabled="true" controls-position="right" aria-label="存放排号" /></el-form-item><el-form-item label="自动分配位号"><el-input-number v-model="slot" :disabled="true" controls-position="right" aria-label="存放位号" /></el-form-item></div>
               <div class="location-preview"><AppIcon name="bag" :size="22" /><span>存放位置</span><strong>{{ row || '—' }} 排 / {{ slot || '—' }} 位</strong></div>
               <el-button native-type="submit" type="primary" class="full-width print-primary" :disabled="!canWork || !enabled || !selected" :loading="busy"><AppIcon name="print" />生成并打印双联标签<AppIcon name="arrow" :size="18" /></el-button>
             </el-form>
-            <p class="micro-copy">每次生成独立行李编号 · 同一参会人可寄存多件</p>
-            <el-button v-if="latest && !selected" class="full-width" :disabled="!canWork" @click="addAnother">为 {{ latest.name }} 再寄存一件</el-button>
+            <p class="micro-copy">每次生成独立寄存单号 · {{ config.allow_multi_bag ? '允许同一参会人寄存多件' : '同一参会人只允许一件在库行李' }}</p>
+            <el-button v-if="latest && !selected && config.allow_multi_bag" class="full-width" :disabled="!canWork" @click="addAnother">为 {{ latest.name }} 再寄存一件</el-button>
           </article>
           <div class="workflow-note"><span><AppIcon name="check" :size="15" />先保存，再打印</span><span><AppIcon name="shield" :size="15" />纸质标签不含手机号</span><span><AppIcon name="refresh" :size="15" />后台失败不影响办理</span></div>
         </div>
-        <aside class="panel print-panel"><div class="panel-heading"><div><span class="section-index">03 / LABEL</span><h2>双联标签预览</h2></div><span class="subtle-badge">80 × 120</span></div><LuggageDualLabel ref="label" :record="latest" /></aside>
+        <aside class="panel print-panel"><div class="panel-heading"><div><span class="section-index">03 / LABEL</span><h2>双联标签预览</h2></div><span class="subtle-badge">{{ config.label_template.paperWidth || 80 }} × {{ config.label_template.paperHeight || 120 }}</span></div><LuggageDualLabel ref="label" :record="latest" :template="config.label_template" /></aside>
       </section>
 
       <section v-if="tab === 'pickup'" class="pickup-layout">
         <article class="panel"><div class="panel-heading"><div><span class="section-index">01 / SCAN & VERIFY</span><h2>查找待取行李</h2><p>行李条码查单件，胸卡查本人全部行李。</p></div></div><CameraScanner ref="pickupScanner" mode="both" :disabled="!canWork" @decoded="({ text, kind }) => searchPickup(text, kind)" />
           <div class="or-divider"><span>手动输入 / 扫码枪输入</span></div>
-          <el-select v-model="pickupKind" aria-label="编号类型" :disabled="!canWork"><el-option label="自动匹配编号" value="auto" /><el-option label="行李牌 Code128" value="barcode" /><el-option label="胸卡 attend_id" value="attendee" /></el-select>
-          <form class="input-action pickup-manual" @submit.prevent="searchPickup()"><el-input v-model="pickupInput" :disabled="!canWork" aria-label="取件编号" placeholder="行李编号或 attend_id" clearable /><el-button type="primary" :disabled="!canWork" @click="searchPickup()">查询</el-button></form>
+          <el-select v-model="pickupKind" aria-label="编号类型" :disabled="!canWork"><el-option label="自动匹配：寄存单号 / 参会ID / 手机号" value="auto" /><el-option label="行李牌 Code128" value="barcode" /><el-option label="胸卡参会人 ID" value="attendee" /></el-select>
+          <form class="input-action pickup-manual" @submit.prevent="searchPickup()"><el-input v-model="pickupInput" :disabled="!canWork" aria-label="取件编号" placeholder="寄存单号、参会人 ID 或手机号" clearable /><el-button type="primary" :disabled="!canWork" @click="searchPickup()">查询</el-button></form>
           <p class="muted-copy">查不到记录？请确认会议编号，并在原寄存终端办理。不要凭名单直接交付行李。</p>
         </article>
         <article class="panel pickup-results"><div class="panel-heading"><div><span class="section-index">02 / CHECK OUT</span><h2>核对并办理出库</h2><p>{{ pickupSource ? `查询编号：${pickupSource.value}` : '请先扫描客人回执或胸卡' }}</p></div><span class="subtle-badge">{{ pickupRecords.length }} 件行李</span></div>
@@ -323,7 +347,7 @@ async function reprint(record) { latest.value = record; tab.value = 'deposit'; a
       <section v-if="tab === 'ledger'" class="panel ledger-panel"><div class="panel-heading ledger-heading"><div><span class="section-index">RECORDS & BACKUP</span><h2>每一件行李，都有记录</h2><p>{{ ledgerSource === 'cloud' ? '已读取当前会议云端台账，并与本机待同步记录合并。' : '当前显示本机缓存；联网后刷新可读取服务器台账。' }}</p></div><div class="ledger-actions"><el-button :disabled="!canWork" @click="run(async () => { await refresh(); ElMessage.success(`台账已刷新，共 ${records.length} 条`) })"><AppIcon name="refresh" />刷新</el-button><el-button :disabled="!canWork" @click="refreshCloud">导出云端台账</el-button><el-button :disabled="!canWork" @click="exportCSV"><AppIcon name="download" />导出 CSV</el-button><el-button type="primary" :disabled="!ready || busy" @click="exportJSON"><AppIcon name="database" />备份本场 JSON</el-button></div></div>
         <div v-if="ledgerLoadError" class="notice compact luggage-ledger-error"><AppIcon name="alert" :size="18" /><span>云端行李台账读取失败：{{ ledgerLoadError }}。当前仅显示本机缓存，请检查网络或会议权限后重试。</span></div>
         <div class="ledger-toolbar"><el-input v-model="filter" placeholder="搜索姓名、手机号、参会编号或行李编号" clearable aria-label="搜索台账" /><el-select v-model="statusFilter" aria-label="台账状态"><el-option v-for="state in ['全部', '寄存', '已取']" :key="state" :label="state === '全部' ? '全部状态' : state" :value="state" /></el-select><span>{{ filtered.length }} 条记录</span></div>
-        <el-table :data="paged" row-key="luggage_barcode" empty-text="本场会议还没有寄存记录"><el-table-column label="参会人" min-width="115"><template #default="{ row: item }"><strong>{{ item.name }}</strong><small class="table-subtext">{{ item.dept }}</small></template></el-table-column><el-table-column prop="mobile" label="联系电话" min-width="140" /><el-table-column label="行李编号 / 胸卡编号" min-width="255"><template #default="{ row: item }"><span class="table-code">{{ item.luggage_barcode }}</span><small class="table-subtext">{{ item.attend_id }}</small></template></el-table-column><el-table-column label="位置" min-width="100"><template #default="{ row: item }">{{ item.storage_row }} 排 {{ item.storage_slot }} 位</template></el-table-column><el-table-column label="状态" width="85"><template #default="{ row: item }"><el-tag :type="item.status === '寄存' ? 'success' : 'info'">{{ item.status }}</el-tag></template></el-table-column><el-table-column label="寄存 / 取件时间" min-width="165"><template #default="{ row: item }"><span>{{ formatTime(item.checkin_time) }}</span><small class="table-subtext">{{ formatTime(item.checkout_time) }}</small></template></el-table-column><el-table-column label="同步" min-width="100"><template #default="{ row: item }"><span :class="{ 'amber-text': item.sync_status !== 'synced' }">{{ syncLabel(item) }}</span></template></el-table-column><el-table-column label="操作" width="90" fixed="right"><template #default="{ row: item }"><el-button link type="primary" :disabled="!canWork" @click="reprint(item)">补打</el-button></template></el-table-column></el-table>
+        <el-table :data="paged" row-key="luggage_barcode" empty-text="本场会议还没有寄存记录"><el-table-column label="参会人" min-width="115"><template #default="{ row: item }"><strong>{{ item.name }}</strong><small class="table-subtext">{{ item.dept }}</small></template></el-table-column><el-table-column prop="mobile" label="联系电话" min-width="140" /><el-table-column label="寄存单号 / 胸卡编号" min-width="255"><template #default="{ row: item }"><span class="table-code">{{ item.luggage_barcode }}</span><small class="table-subtext">{{ item.attend_id }}</small></template></el-table-column><el-table-column label="位置" min-width="100"><template #default="{ row: item }">{{ item.storage_row }} 排 {{ item.storage_slot }} 位</template></el-table-column><el-table-column label="状态" width="95"><template #default="{ row: item }"><el-tag :type="item.status === '寄存' ? 'success' : 'info'">{{ item.status === '寄存' ? '未取件' : '已取件' }}</el-tag></template></el-table-column><el-table-column label="操作日志" min-width="210"><template #default="{ row: item }"><span>寄存：{{ item.operator_checkin || '—' }} · {{ formatTime(item.checkin_time) }}</span><small class="table-subtext">取件：{{ item.operator_checkout || '—' }} · {{ formatTime(item.checkout_time) }}</small></template></el-table-column><el-table-column label="同步" min-width="100"><template #default="{ row: item }"><span :class="{ 'amber-text': item.sync_status !== 'synced' }">{{ syncLabel(item) }}</span></template></el-table-column><el-table-column label="操作" width="90" fixed="right"><template #default="{ row: item }"><el-button link type="primary" :disabled="!canWork" @click="reprint(item)">补打</el-button></template></el-table-column></el-table>
         <div class="ledger-bottom"><span>导出文件包含手机号，请仅交由授权工作人员保管。</span><el-pagination v-model:current-page="page" :page-size="10" :total="filtered.length" layout="prev, pager, next" /></div>
         <div class="backup-strip"><div><strong>定期备份，为现场多一份保障</strong><p>恢复采用合并方式，不覆盖已有名单信息，不把已取记录恢复为在库。</p></div><div class="backup-actions"><el-button :disabled="!ready || busy" @click="scheduleSync(); ElMessage.info('已触发后台重试，不影响当前业务')">重试后台同步</el-button><el-button :disabled="!ready || busy" @click="restoreInput.click()"><AppIcon name="upload" />恢复 JSON 备份</el-button></div><input ref="restoreInput" type="file" accept=".json,application/json" hidden @change="restoreFile" /></div>
       </section>

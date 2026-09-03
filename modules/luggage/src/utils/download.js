@@ -9,6 +9,7 @@ export function downloadFile(content, filename, mime = 'text/plain;charset=utf-8
 const columns = [
   ['event_id', '会议编号'], ['attend_id', '参会编号'], ['name', '姓名'], ['dept', '部门'],
   ['mobile', '手机号'], ['luggage_barcode', '寄存编号'], ['storage_row', '排号'], ['storage_slot', '位号'],
+  ['bag_count', '行李件数'],
   ['status', '状态'], ['checkin_time', '寄存时间(ISO)'], ['checkout_time', '出库时间(ISO)'],
   ['operator_checkin', '寄存操作员'], ['operator_checkout', '出库操作员'], ['sync_status', '同步状态'],
 ]

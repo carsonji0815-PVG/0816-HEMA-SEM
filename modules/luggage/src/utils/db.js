@@ -105,6 +105,26 @@ export async function mergeCloudLuggage(eventId, list) {
 export async function getLuggageByAttendee(eventId, attendId) {
   return (await getAllLuggage(eventId)).filter(record => record.attend_id === attendId)
 }
+export async function findLuggage(eventId, value) {
+  const term=String(value||'').trim().toLowerCase()
+  if(!term)return []
+  return (await getAllLuggage(eventId)).filter(record=>[record.luggage_barcode,record.attend_id,record.mobile].some(item=>String(item||'').toLowerCase()===term))
+}
+export async function nextAvailablePosition(eventId,totalRows,perRow) {
+  positiveInt(totalRows,'排数'); positiveInt(perRow,'每排位置数')
+  const occupied=new Set((await getAllLuggage(eventId)).filter(item=>item.status==='寄存').map(item=>`${item.storage_row}:${item.storage_slot}`))
+  for(let index=0;index<totalRows*perRow;index++){
+    const row=Math.floor(index/perRow)+1,slot=index%perRow+1
+    if(!occupied.has(`${row}:${slot}`))return {row,slot}
+  }
+  throw new Error('本场行李库位已满，请先办理取件或由管理员扩充容量')
+}
+export async function clearMeetingLuggage(eventId) {
+  const keys=[]
+  await luggageStore.iterate((value,key)=>{if(value?.event_id===eventId)keys.push(key)})
+  await exclusive(async()=>{for(const key of keys)await luggageStore.removeItem(key)})
+  return keys.length
+}
 function positiveInt(value, title) {
   if (!Number.isInteger(value) || value < 1 || value > 9999) throw new Error(`${title}需为 1–9999 的整数`)
   return value
@@ -114,17 +134,20 @@ function barcode() {
   const bytes = crypto.getRandomValues(new Uint8Array(6))
   return `LUG${Date.now()}${Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('').toUpperCase()}`
 }
-export async function createLuggageRecord({ eventId, person, row, slot, operator = '' }) {
+export async function createLuggageRecord({ eventId, person, row, slot, operator = '', allowMultiBag = false }) {
   const id = validateEventId(eventId)
   const attendee = validateAttendees([person])[0]
   positiveInt(row, '排号'); positiveInt(slot, '位号')
   return exclusive(async () => {
+    const current=await getAllLuggage(id)
+    if(current.some(item=>item.status==='寄存'&&item.storage_row===row&&item.storage_slot===slot))throw new Error('该库位已被占用，请重新分配')
+    if(!allowMultiBag&&current.some(item=>item.status==='寄存'&&item.attend_id===attendee.attend_id))throw new Error('该参会人已有未取行李，本场未开启多件寄存')
     let code
     do { code = barcode() } while (await getLuggageRecord(id, code))
     const time = new Date().toISOString()
     const record = {
       event_id: id, ...attendee, luggage_barcode: code,
-      storage_row: row, storage_slot: slot, status: '寄存',
+      storage_row: row, storage_slot: slot, bag_count:1, status: '寄存',
       checkin_time: time, checkout_time: null,
       operator_checkin: optional(operator, '操作员', 64), operator_checkout: '',
       revision: 1, updated_at: time, sync_status: 'pending', synced_at: null,
@@ -183,6 +206,7 @@ export function validateBackup(data) {
     return {
       event_id, ...validateAttendees([record])[0], luggage_barcode: code,
       storage_row: positiveInt(record.storage_row, '排号'), storage_slot: positiveInt(record.storage_slot, '位号'),
+      bag_count: Number.isInteger(record.bag_count) ? record.bag_count : 1,
       status: record.status, checkin_time: new Date(record.checkin_time).toISOString(),
       checkout_time: record.checkout_time ? new Date(record.checkout_time).toISOString() : null,
       operator_checkin: optional(record.operator_checkin, '操作员', 64), operator_checkout: optional(record.operator_checkout, '操作员', 64),

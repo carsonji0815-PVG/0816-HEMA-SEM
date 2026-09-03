@@ -10,6 +10,11 @@ const fixture=".tmp/browser/offline-roster.csv"; await fs.writeFile(fixture,"\uf
 
 const browser=await chromium.launch({headless:true,executablePath:"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"});
 const page=await browser.newPage({viewport:{width:1440,height:1000}}); const errors=[]; page.on("pageerror",error=>errors.push(error.message));
+await page.route("http://127.0.0.1:4173/",async route=>{
+  const response=await route.fetch();
+  const html=(await response.text()).replace('mode: "production"','mode: "demo"');
+  await route.fulfill({response,body:html,headers:{...response.headers(),"content-type":"text/html; charset=utf-8"}});
+});
 await page.goto("http://127.0.0.1:4173/#attendees",{waitUntil:"domcontentloaded"});
 await page.locator("#loginDialog").evaluate(dialog=>{if(dialog.open)dialog.close();}); await page.waitForSelector('[data-page="attendees"].active');
 const before=await page.locator("#attendeeTableBody tr").count(); await page.click("#importRoster"); await page.setInputFiles("#rosterFile",fixture);

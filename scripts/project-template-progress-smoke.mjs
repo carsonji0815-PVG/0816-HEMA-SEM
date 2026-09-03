@@ -24,7 +24,7 @@ guRow=page.locator("#attendeeTableBody tr",{hasText:"顾明远"});
 if(await guRow.locator('[data-progress-field="ticketStatus"]').inputValue()!=="pending") throw new Error("Ticketing was not blocked before approval");
 await page.goto("http://127.0.0.1:4173/#approvals",{waitUntil:"domcontentloaded"});
 const guApproval=page.locator(".approval-card",{hasText:"顾明远"});
-await guApproval.locator('[data-approve][data-segment="return"]').click();
+await guApproval.locator('[data-travel-decision="approved"][data-segment="return"]').click();
 await page.goto("http://127.0.0.1:4173/#attendees",{waitUntil:"domcontentloaded"});
 guRow=page.locator("#attendeeTableBody tr",{hasText:"顾明远"});
 await guRow.locator('[data-progress-field="ticketStatus"]').selectOption("ticketed");

@@ -167,7 +167,15 @@
           select.name=`${side}Station`;select.disabled=false;input.disabled=false;
           const official=officialStation(old,type.value,[...customDictionary,...matches]),selected=matches.find(item=>item.name===official);
           if(selected){select.value=selected.name;input.value=selected.shortName||displayStation(selected.name,selected.type);input.dataset.stationMode="selected";input.placeholder="输入关键词搜索或选择场站";}
-          else{select.value="";input.value=old;drawOptions(old,{clearSelection:false});if(old&&!filtered.length){select.name="";input.name=`${side}Station`;input.dataset.stationMode="manual";}else closeList();}
+          else if(old){
+            // Legacy records may contain a city-level station value (for
+            // example "大连") that is not an exact dictionary option. Keep
+            // that value as a named manual field until the user explicitly
+            // searches/selects a replacement; an async option refresh must
+            // never erase it merely because similar suggestions exist.
+            select.value="";select.name="";input.name=`${side}Station`;input.value=old;
+            input.dataset.stationMode="manual";input.placeholder="输入关键词搜索或选择场站";closeList();
+          }else{input.value="";drawOptions("",{clearSelection:false});closeList();}
         }else{
           input.name=`${side}Station`;input.disabled=false;input.placeholder="未查询到对应场站，请手动录入";input.dataset.stationMode="manual";input.value=old;listbox.innerHTML="";
         }

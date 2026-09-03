@@ -1538,6 +1538,11 @@
         for(const segment of targetSegments){
           for(const [kind,key] of Object.entries(TravelVerification.keys(segment))){
             if(locked(key))continue;
+            // Station controls load their city/type options asynchronously. If a
+            // user saves before that work finishes, the temporarily unnamed
+            // control is absent from FormData. Treat absence as "unchanged"
+            // instead of clearing a valid itinerary and its verification proof.
+            if(!fd.has(key))continue;
             let next=String(fd.get(key)??"").trim();
             if(["from","to"].includes(kind))next=TravelFields.officialStation(next,fd.get(TravelVerification.keys(segment).departTransportType)||TravelVerification.snapshot(a,segment).departTransportType,stationDictionary())||"";
             const previous=String(TravelVerification.getValue(a,key)||"");if(next!==previous){TravelVerification.setValue(draft,key,next);changes.push({field:key,label:FIELD_LABELS[key]||({date:"出发日期",departCity:"出发城市",departTransportType:"出行方式",from:"出发场站",arriveDate:"抵达日期",arriveCity:"抵达城市",to:"抵达场站",number:"航班 / 车次号",departure:"出发时间",arrival:"到达时间"}[kind]||key),before:previous||"未填写",after:next||"未填写"});changedSegments.add(segment);}

@@ -54,7 +54,7 @@ window.createJourneyLuggage = function createJourneyLuggage(deps) {
       guard(eventId);
       if (deps.isProduction()) return rpc('luggage_config', { p_meeting_id:eventId });
       const saved = JSON.parse(localStorage.getItem(`luggage-config:${eventId}`) || 'null');
-      return saved || { meeting_id:eventId,enable_luggage:!!deps.current().enabled,total_rows:50,per_row_max_position:50,allow_multi_bag:false,label_template:{paperWidth:80,paperHeight:120,margin:4,fontSize:12,fields:['barcode','position','name']} };
+      return saved || { meeting_id:eventId,enable_luggage:!!deps.current().enabled,total_rows:50,per_row_max_position:50,allow_multi_bag:false,label_template:{preset:'classic',paperWidth:80,paperHeight:120,margin:4,fontSize:12,fields:['name','mobile','position','barcode']} };
     },
     async saveConfig(eventId, config) {
       guard(eventId);

@@ -6,13 +6,14 @@ import { formatTime } from '../utils/download'
 import AppIcon from './AppIcon.vue'
 const props = defineProps({ record: { type: Object, default: null }, template: { type:Object,default:()=>({}) } })
 const paperStyle=computed(()=>({width:`${Number(props.template.paperWidth)||80}mm`,height:`${Number(props.template.paperHeight)||120}mm`,padding:`0 ${Number(props.template.margin)||4}mm`,fontSize:`${Number(props.template.fontSize)||12}px`}))
-function fieldOrder(name){const index=(props.template.fields||['barcode','position','name']).indexOf(name);return index<0?9:index+1}
+const presetClass=computed(()=>`label-preset-${['classic','position','compact'].includes(props.template.preset)?props.template.preset:'classic'}`)
+function fieldOrder(name){const index=(props.template.fields||['name','mobile','position','barcode']).indexOf(name);return index<0?9:index+1}
 const barcodeA = ref(null)
 const barcodeB = ref(null)
 const paper = ref(null)
 const printRoot = ref(null)
 function preparePrint() {
-  if (paper.value && printRoot.value) printRoot.value.replaceChildren(paper.value.cloneNode(true))
+  if (paper.value && printRoot.value) { printRoot.value.style.width=paperStyle.value.width;printRoot.value.style.height=paperStyle.value.height;printRoot.value.replaceChildren(paper.value.cloneNode(true)) }
 }
 onMounted(() => window.addEventListener('beforeprint', preparePrint))
 onBeforeUnmount(() => window.removeEventListener('beforeprint', preparePrint))
@@ -45,10 +46,11 @@ defineExpose({ print })
   <div class="label-preview">
     <div v-if="!record" class="label-empty"><AppIcon name="print" :size="40" /><strong>双联标签将在这里生成</strong><span>先识别参会人，再填写存放位置</span><div class="paper-skeleton"><i /><i /><i /><b>80 × 120 mm</b></div></div>
     <template v-else>
-      <div ref="paper" class="paper-label" :style="paperStyle">
+      <div ref="paper" class="paper-label" :class="presetClass" :style="paperStyle">
         <section class="label-half label-a">
           <header><b>会务服务 / 行李寄存</b><span>A 联 · 行李粘贴</span></header>
           <div class="label-person" :style="{order:fieldOrder('name')}">{{ record.name }}</div>
+          <div class="label-mobile" :style="{order:fieldOrder('mobile')}">{{ record.mobile }}</div>
           <div class="label-location" :style="{order:fieldOrder('position')}">{{ record.storage_row }} 排 <strong>{{ record.storage_slot }}</strong> 位</div>
           <div class="label-barcode-group" :style="{order:fieldOrder('barcode')}"><svg ref="barcodeA" class="label-barcode" role="img" :aria-label="`行李条码 ${record.luggage_barcode}`" /><div class="label-code">{{ record.luggage_barcode }}</div></div>
         </section>
@@ -56,13 +58,14 @@ defineExpose({ print })
         <section class="label-half label-b">
           <header><b>请妥善保管此回执</b><span>B 联 · 客人留存</span></header>
           <div class="receipt-person" :style="{order:fieldOrder('name')}"><strong>{{ record.name }}</strong></div>
+          <div class="label-mobile" :style="{order:fieldOrder('mobile')}">{{ record.mobile }}</div>
           <div class="receipt-person" :style="{order:fieldOrder('position')}"><span>{{ record.storage_row }} 排 {{ record.storage_slot }} 位</span></div>
           <div class="label-barcode-group" :style="{order:fieldOrder('barcode')}"><svg ref="barcodeB" class="label-barcode" role="img" :aria-label="`回执条码 ${record.luggage_barcode}`" /><div class="label-code">{{ record.luggage_barcode }}</div></div>
           <p class="label-tip">请凭此回执取件，并与工作人员核对行李。<br>一件一签，请勿遗失。</p>
         </section>
       </div>
       <el-button class="reprint-button" @click="print"><AppIcon name="print" />重新打印此标签</el-button>
-      <p class="print-footnote">80 × 120 mm · 双联模切纸 · 不含手机号</p>
+      <p class="print-footnote">{{ template.paperWidth || 80 }} × {{ template.paperHeight || 120 }} mm · 双联背胶吊牌 · 条码仅含寄存单号</p>
     </template>
   </div>
   <Teleport to="body">
@@ -78,6 +81,7 @@ defineExpose({ print })
 .label-b { height: 58mm; padding: 4mm 0 3mm; }
 .label-half header { display: flex; justify-content: space-between; font-size: 9px; gap: 3mm; border-bottom: 1px solid #000; padding-bottom: 2mm; }
 .label-person { margin-top: 2mm; font-size: 23px; line-height: 1.15; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label-mobile { font-size:12px; line-height:1.4; font-weight:600; white-space:nowrap; }
 .label-dept { font-size: 11px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label-location { font-size: 17px; font-weight: 600; line-height: 1.15; }
 .label-location strong { font-size: 27px; }
@@ -90,6 +94,7 @@ defineExpose({ print })
 .receipt-person strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .receipt-person span { white-space: nowrap; }
 .label-tip { margin: 3mm 0 0; font-size: 10px; line-height: 1.7; }
+.label-preset-position .label-location { font-size:20px }.label-preset-position .label-location strong{font-size:34px}.label-preset-compact .label-person{font-size:19px}.label-preset-compact .label-barcode{height:9mm}
 .reprint-button { width: 100%; margin-top: 20px; }
 .print-footnote { font-size: 11px; color: #78837c; text-align: center; margin: 12px 0 0; }
 .label-empty { min-height: 380px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #7f8e83; gap: 14px; }
@@ -100,11 +105,11 @@ defineExpose({ print })
 .paper-skeleton i:nth-child(2) { width: 45%; height: 18px; }
 .paper-skeleton b { border-top: 1px dashed #ced5c9; padding-top: 20px; margin-top: 15px; font-size: 11px; font-weight: 400; }
 #print-root { display: none; }
-@page { size: 80mm 120mm; margin: 0; }
+@page { size: auto; margin: 0; }
 @media print {
-  html, body { width: 80mm !important; height: 120mm !important; margin: 0 !important; padding: 0 !important; background: white !important; }
+  html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
   body > :not(#print-root) { display: none !important; }
-  #print-root { display: block !important; width: 80mm; height: 120mm; }
+  #print-root { display: block !important; }
   #print-root .paper-label { margin: 0 !important; box-shadow: none !important; break-inside: avoid; }
 }
 </style>

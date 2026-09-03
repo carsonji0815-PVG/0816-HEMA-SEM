@@ -8,10 +8,15 @@ create table if not exists public.meeting_luggage_config (
   total_rows integer not null default 50 check (total_rows between 1 and 9999),
   per_row_max_position integer not null default 50 check (per_row_max_position between 1 and 9999),
   allow_multi_bag boolean not null default false,
-  label_template jsonb not null default '{"paperWidth":80,"paperHeight":120,"margin":4,"fontSize":12,"fields":["barcode","position","name"]}'::jsonb,
+  label_template jsonb not null default '{"preset":"classic","paperWidth":80,"paperHeight":120,"margin":4,"fontSize":12,"fields":["name","mobile","position","barcode"]}'::jsonb,
   updated_by uuid references auth.users(id),
   updated_at timestamptz not null default now()
 );
+alter table public.meeting_luggage_config alter column label_template set default '{"preset":"classic","paperWidth":80,"paperHeight":120,"margin":4,"fontSize":12,"fields":["name","mobile","position","barcode"]}'::jsonb;
+update public.meeting_luggage_config set label_template=
+  jsonb_set(jsonb_set(label_template,'{preset}',coalesce(label_template->'preset','"custom"'::jsonb),true),'{fields}',
+    case when coalesce(label_template->'fields','[]'::jsonb) ? 'mobile' then coalesce(label_template->'fields','[]'::jsonb)
+    else coalesce(label_template->'fields','[]'::jsonb)||'"mobile"'::jsonb end,true);
 
 insert into public.meeting_luggage_config(meeting_id,enable_luggage)
 select id,coalesce(luggage_enabled,false) from public.meetings

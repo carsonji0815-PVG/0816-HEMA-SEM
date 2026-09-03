@@ -35,7 +35,7 @@ const eventId = ref('')
 const operator = ref('')
 const attendees = ref([])
 const records = ref([])
-const config = ref({enable_luggage:!!initialContext.enabled,total_rows:50,per_row_max_position:50,allow_multi_bag:false,label_template:{paperWidth:80,paperHeight:120,margin:4,fontSize:12,fields:['barcode','position','name']}})
+const config = ref({enable_luggage:!!initialContext.enabled,total_rows:50,per_row_max_position:50,allow_multi_bag:false,label_template:{preset:'classic',paperWidth:80,paperHeight:120,margin:4,fontSize:12,fields:['name','mobile','position','barcode']}})
 const ledgerSource = ref('local')
 const ledgerLoadError = ref('')
 const badgeInput = ref('')
@@ -325,7 +325,7 @@ async function resetMeeting(){
             <p class="micro-copy">每次生成独立寄存单号 · {{ config.allow_multi_bag ? '允许同一参会人寄存多件' : '同一参会人只允许一件在库行李' }}</p>
             <el-button v-if="latest && !selected && config.allow_multi_bag" class="full-width" :disabled="!canWork" @click="addAnother">为 {{ latest.name }} 再寄存一件</el-button>
           </article>
-          <div class="workflow-note"><span><AppIcon name="check" :size="15" />先保存，再打印</span><span><AppIcon name="shield" :size="15" />纸质标签不含手机号</span><span><AppIcon name="refresh" :size="15" />后台失败不影响办理</span></div>
+          <div class="workflow-note"><span><AppIcon name="check" :size="15" />先保存，再打印</span><span><AppIcon name="shield" :size="15" />条码不含人员隐私</span><span><AppIcon name="refresh" :size="15" />后台失败不影响办理</span></div>
         </div>
         <aside class="panel print-panel"><div class="panel-heading"><div><span class="section-index">03 / LABEL</span><h2>双联标签预览</h2></div><span class="subtle-badge">{{ config.label_template.paperWidth || 80 }} × {{ config.label_template.paperHeight || 120 }}</span></div><LuggageDualLabel ref="label" :record="latest" :template="config.label_template" /></aside>
       </section>

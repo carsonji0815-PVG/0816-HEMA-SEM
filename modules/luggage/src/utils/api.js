@@ -4,6 +4,11 @@ export async function fetchAttendeeList(eventId) {
   try { requireContext(true); return await host.attendees(eventId) }
   catch (error) { console.warn('[luggage roster]', error); return null }
 }
+export async function fetchCloudLuggage(eventId) {
+  if (USE_MOCK || globalThis.navigator?.onLine === false) return null
+  requireContext()
+  return host.ledger(eventId)
+}
 export function toSyncPayload(record) {
   const { sync_status, synced_at, ...payload } = record
   return payload

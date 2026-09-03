@@ -74,6 +74,34 @@ export async function getAllLuggage(eventId) {
   })
   return records.sort((a, b) => b.checkin_time.localeCompare(a.checkin_time) || a.luggage_barcode.localeCompare(b.luggage_barcode))
 }
+// Merge the authoritative meeting ledger into this browser. A stale server
+// response must never overwrite a newer checkout that is still pending sync.
+export async function mergeCloudLuggage(eventId, list) {
+  const id = validateEventId(eventId)
+  if (!Array.isArray(list)) return 0
+  let merged = 0
+  const cloudCodes = new Set(list.filter(item => item?.event_id === id).map(item => item.luggage_barcode))
+  await exclusive(async () => {
+    for (const raw of list) {
+      if (!raw || raw.event_id !== id || typeof raw.luggage_barcode !== 'string') continue
+      const key = luggageKey(id, raw.luggage_barcode)
+      const local = await luggageStore.getItem(key)
+      const cloudRevision = Number(raw.revision) || 1
+      const localRevision = Number(local?.revision) || 0
+      if (local && (local.sync_status !== 'synced' || localRevision > cloudRevision)) continue
+      await luggageStore.setItem(key, { ...raw, event_id:id, revision:cloudRevision, sync_status:'synced', synced_at:raw.synced_at || new Date().toISOString() })
+      merged++
+    }
+    // A successful full-ledger response is authoritative for already-synced
+    // cache rows. Never remove local pending rows, which may contain newer on-site actions.
+    const staleKeys = []
+    await luggageStore.iterate((value, key) => {
+      if (value?.event_id === id && value.sync_status === 'synced' && !cloudCodes.has(value.luggage_barcode)) staleKeys.push(key)
+    })
+    for (const key of staleKeys) await luggageStore.removeItem(key)
+  })
+  return merged
+}
 export async function getLuggageByAttendee(eventId, attendId) {
   return (await getAllLuggage(eventId)).filter(record => record.attend_id === attendId)
 }

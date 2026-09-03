@@ -5,6 +5,10 @@ import path from 'node:path'
 const root=fileURLToPath(new URL('../',import.meta.url)), out=path.join(root,'.site-build')
 await rm(out,{recursive:true,force:true});await mkdir(out,{recursive:true})
 for(const file of ['index.html','会议行程管理系统.html','app.js','styles.css','travel-fields.js','travel-verification.js','travel-verification-panel.js','travel-verification-storage.js','luggage-integration.js','assets','luggage']) await cp(path.join(root,file),path.join(out,file),{recursive:true})
+// Finder/OneDrive may leave conflict copies such as "index-xxx 2.js" beside
+// generated assets. They are never referenced by the app and must not ship.
+async function removeConflictCopies(dir){for(const entry of await readdir(dir,{withFileTypes:true})){const file=path.join(dir,entry.name);if(entry.isDirectory())await removeConflictCopies(file);else if(/ \d+\.(?:js|css)$/i.test(entry.name))await rm(file);}}
+await removeConflictCopies(path.join(out,'luggage'))
 await writeFile(path.join(out,'.nojekyll'),'')
 async function walk(dir='') {const files=[];for(const e of await readdir(path.join(out,dir),{withFileTypes:true})){const f=path.posix.join(dir,e.name);if(e.isDirectory())files.push(...await walk(f));else files.push(f)}return files}
 const files=(await walk()).filter(f=>f!=='.nojekyll')

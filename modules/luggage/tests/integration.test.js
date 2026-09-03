@@ -15,6 +15,7 @@ test('host UI: default-off, enable internally, one shell, authorized roster, swi
  w.eval(await readFile(new URL('travel-verification.js',root),'utf8'))
  w.eval(await readFile(new URL('travel-verification-panel.js',root),'utf8'))
  w.eval(await readFile(new URL('travel-verification-storage.js',root),'utf8'))
+ w.eval(await readFile(new URL('rooming-engine.js',root),'utf8'))
  w.eval(await readFile(new URL('app.js',root),'utf8'))
  w.document.dispatchEvent(new w.Event('DOMContentLoaded'))
  await pause()
@@ -76,7 +77,7 @@ test('saved meeting feature survives reload; normalization is safe during bootst
  try {
  w.APP_CONFIG={mode:'demo'};w.scrollTo=()=>{};w.confirm=()=>true;w.indexedDB=new IDBFactory();w.matchMedia=()=>({matches:false,addEventListener(){}})
  w.localStorage.setItem('journey-desk-state-v1',JSON.stringify({currentUserId:'u-ops',activeProjectId:'saved-meeting',projects:[{id:'saved-meeting',name:'2500人内部会议',slug:'internal-large',luggageEnabled:true,registrationOpen:true}],settings:{eventName:'2500人内部会议',luggageEnabled:true,luggageUsed:true,registrationOpen:true},attendees:[{id:'saved-attendee',name:'测试参会人',phone:'13800138000',ownerId:'u-ops',privacyLetterStatus:'sent',transport:{pickup:{},dropoff:{}}}]}))
- w.eval(await readFile(new URL('luggage-integration.js',root),'utf8'));w.eval(await readFile(new URL('travel-fields.js',root),'utf8'));w.eval(await readFile(new URL('travel-verification.js',root),'utf8'));w.eval(await readFile(new URL('travel-verification-panel.js',root),'utf8'));w.eval(await readFile(new URL('travel-verification-storage.js',root),'utf8'));w.eval(await readFile(new URL('app.js',root),'utf8'));w.document.dispatchEvent(new w.Event('DOMContentLoaded'));await pause()
+ w.eval(await readFile(new URL('luggage-integration.js',root),'utf8'));w.eval(await readFile(new URL('travel-fields.js',root),'utf8'));w.eval(await readFile(new URL('travel-verification.js',root),'utf8'));w.eval(await readFile(new URL('travel-verification-panel.js',root),'utf8'));w.eval(await readFile(new URL('travel-verification-storage.js',root),'utf8'));w.eval(await readFile(new URL('rooming-engine.js',root),'utf8'));w.eval(await readFile(new URL('app.js',root),'utf8'));w.document.dispatchEvent(new w.Event('DOMContentLoaded'));await pause()
  assert.equal(w.document.querySelectorAll('#luggageFrame').length,1)
  assert.equal(w.JourneyLuggageHost.context().eventId,'saved-meeting')
  assert.equal((await w.JourneyLuggageHost.attendees('saved-meeting'))[0].attend_id,'saved-attendee')

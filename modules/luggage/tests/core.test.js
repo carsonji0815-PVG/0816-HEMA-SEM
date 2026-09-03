@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { initDB, attendeeStore, luggageStore, importAttendees, getAttendee, getAttendees, createLuggageRecord, getLuggageByAttendee, getAllLuggage, getLuggageRecord, checkoutLuggage, markSynced, createBackup, restoreBackup } from '../src/utils/db.js'
+import { initDB, attendeeStore, luggageStore, importAttendees, getAttendee, getAttendees, createLuggageRecord, getLuggageByAttendee, getAllLuggage, getLuggageRecord, checkoutLuggage, markSynced, createBackup, restoreBackup, mergeCloudLuggage } from '../src/utils/db.js'
 import { recordsToCSV, csvCell } from '../src/utils/download.js'
 import { fetchAttendeeList, syncLuggageRecord, toSyncPayload } from '../src/utils/api.js'
 
@@ -47,6 +47,21 @@ test('failed validation writes nothing; zero/fractional/missing locations reject
     await assert.rejects(createLuggageRecord({ eventId: 'C', person, row, slot: 1 }))
   }
   assert.equal((await getAllLuggage()).length, before)
+})
+
+test('cloud ledger populates an empty browser and never overwrites newer pending checkout', async () => {
+  const cloud={event_id:'CLOUD',...person,luggage_barcode:'LUG1999000000000ABCDE',storage_row:1,storage_slot:2,status:'寄存',checkin_time:'2026-09-03T01:00:00Z',checkout_time:null,operator_checkin:'云端',operator_checkout:'',revision:1,updated_at:'2026-09-03T01:00:00Z',sync_status:'synced'}
+  assert.equal(await mergeCloudLuggage('CLOUD',[cloud]),1)
+  assert.equal((await getAllLuggage('CLOUD')).length,1)
+  const checked=await checkoutLuggage('CLOUD',cloud.luggage_barcode)
+  assert.equal(checked.status,'已取')
+  await mergeCloudLuggage('CLOUD',[cloud])
+  assert.equal((await getLuggageRecord('CLOUD',cloud.luggage_barcode)).status,'已取')
+  await mergeCloudLuggage('CLOUD',[])
+  assert.ok(await getLuggageRecord('CLOUD',cloud.luggage_barcode),'pending local record must survive cloud reconciliation')
+  await markSynced(checked)
+  await mergeCloudLuggage('CLOUD',[])
+  assert.equal(await getLuggageRecord('CLOUD',cloud.luggage_barcode),null,'deleted cloud row must leave the synced cache')
 })
 
 test('backup round trip, old backups cannot revert checkout, conflicts abort before writes', async () => {

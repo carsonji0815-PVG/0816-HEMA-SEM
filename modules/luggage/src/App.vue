@@ -5,8 +5,8 @@ import AppIcon from './components/AppIcon.vue'
 import { host, initialContext, requireContext } from './utils/host.js'
 import CameraScanner from './components/CameraScanner.vue'
 import LuggageDualLabel from './components/LuggageDualLabel.vue'
-import { initDB, importAttendees, getAttendees, getAttendee, createLuggageRecord, getLuggageRecord, getLuggageByAttendee, getAllLuggage, checkoutLuggage, createBackup, restoreBackup } from './utils/db'
-import { fetchAttendeeList, USE_MOCK } from './utils/api'
+import { initDB, importAttendees, getAttendees, getAttendee, createLuggageRecord, getLuggageRecord, getLuggageByAttendee, getAllLuggage, checkoutLuggage, createBackup, restoreBackup, mergeCloudLuggage } from './utils/db'
+import { fetchAttendeeList, fetchCloudLuggage, USE_MOCK } from './utils/api'
 import { scheduleSync, startSync } from './utils/sync'
 import { downloadFile, recordsToCSV, formatTime, safeFilename } from './utils/download'
 
@@ -32,6 +32,8 @@ const eventId = ref('')
 const operator = ref('')
 const attendees = ref([])
 const records = ref([])
+const ledgerSource = ref('local')
+const ledgerLoadError = ref('')
 const badgeInput = ref('')
 const selected = ref(null)
 const row = ref(1)
@@ -70,7 +72,21 @@ async function refresh() {
   if (!ready.value || !eventId.value) return
   const id = eventId.value
   const token = ++refreshNumber
-  const [people, all] = await Promise.all([getAttendees(id), getAllLuggage(id)])
+  const peoplePromise = getAttendees(id)
+  let cloud = null
+  try {
+    cloud = await fetchCloudLuggage(id)
+    ledgerLoadError.value = ''
+  } catch (error) {
+    console.warn('[luggage ledger]', error)
+    ledgerLoadError.value = error?.message || '服务器行李台账读取失败'
+  }
+  const people = await peoplePromise
+  if (Array.isArray(cloud)) {
+    await mergeCloudLuggage(id, cloud)
+    ledgerSource.value = 'cloud'
+  } else ledgerSource.value = 'local'
+  const all = await getAllLuggage(id)
   if (token !== refreshNumber || id !== eventId.value) return
   attendees.value = people; records.value = all
   if (selected.value) selected.value = people.find(person => person.attend_id === selected.value.attend_id) || null
@@ -304,7 +320,8 @@ async function reprint(record) { latest.value = record; tab.value = 'deposit'; a
         </article>
       </section>
 
-      <section v-if="tab === 'ledger'" class="panel ledger-panel"><div class="panel-heading ledger-heading"><div><span class="section-index">RECORDS & BACKUP</span><h2>每一件行李，都有记录</h2><p>本机台账按会议和账号隔离；可另行导出本会议云端台账。</p></div><div class="ledger-actions"><el-button :disabled="!canWork" @click="run(async () => { await refresh(); ElMessage.success('台账已刷新') })"><AppIcon name="refresh" />刷新</el-button><el-button :disabled="!canWork" @click="refreshCloud">导出云端台账</el-button><el-button :disabled="!canWork" @click="exportCSV"><AppIcon name="download" />导出 CSV</el-button><el-button type="primary" :disabled="!ready || busy" @click="exportJSON"><AppIcon name="database" />备份本场 JSON</el-button></div></div>
+      <section v-if="tab === 'ledger'" class="panel ledger-panel"><div class="panel-heading ledger-heading"><div><span class="section-index">RECORDS & BACKUP</span><h2>每一件行李，都有记录</h2><p>{{ ledgerSource === 'cloud' ? '已读取当前会议云端台账，并与本机待同步记录合并。' : '当前显示本机缓存；联网后刷新可读取服务器台账。' }}</p></div><div class="ledger-actions"><el-button :disabled="!canWork" @click="run(async () => { await refresh(); ElMessage.success(`台账已刷新，共 ${records.length} 条`) })"><AppIcon name="refresh" />刷新</el-button><el-button :disabled="!canWork" @click="refreshCloud">导出云端台账</el-button><el-button :disabled="!canWork" @click="exportCSV"><AppIcon name="download" />导出 CSV</el-button><el-button type="primary" :disabled="!ready || busy" @click="exportJSON"><AppIcon name="database" />备份本场 JSON</el-button></div></div>
+        <div v-if="ledgerLoadError" class="notice compact luggage-ledger-error"><AppIcon name="alert" :size="18" /><span>云端行李台账读取失败：{{ ledgerLoadError }}。当前仅显示本机缓存，请检查网络或会议权限后重试。</span></div>
         <div class="ledger-toolbar"><el-input v-model="filter" placeholder="搜索姓名、手机号、参会编号或行李编号" clearable aria-label="搜索台账" /><el-select v-model="statusFilter" aria-label="台账状态"><el-option v-for="state in ['全部', '寄存', '已取']" :key="state" :label="state === '全部' ? '全部状态' : state" :value="state" /></el-select><span>{{ filtered.length }} 条记录</span></div>
         <el-table :data="paged" row-key="luggage_barcode" empty-text="本场会议还没有寄存记录"><el-table-column label="参会人" min-width="115"><template #default="{ row: item }"><strong>{{ item.name }}</strong><small class="table-subtext">{{ item.dept }}</small></template></el-table-column><el-table-column prop="mobile" label="联系电话" min-width="140" /><el-table-column label="行李编号 / 胸卡编号" min-width="255"><template #default="{ row: item }"><span class="table-code">{{ item.luggage_barcode }}</span><small class="table-subtext">{{ item.attend_id }}</small></template></el-table-column><el-table-column label="位置" min-width="100"><template #default="{ row: item }">{{ item.storage_row }} 排 {{ item.storage_slot }} 位</template></el-table-column><el-table-column label="状态" width="85"><template #default="{ row: item }"><el-tag :type="item.status === '寄存' ? 'success' : 'info'">{{ item.status }}</el-tag></template></el-table-column><el-table-column label="寄存 / 取件时间" min-width="165"><template #default="{ row: item }"><span>{{ formatTime(item.checkin_time) }}</span><small class="table-subtext">{{ formatTime(item.checkout_time) }}</small></template></el-table-column><el-table-column label="同步" min-width="100"><template #default="{ row: item }"><span :class="{ 'amber-text': item.sync_status !== 'synced' }">{{ syncLabel(item) }}</span></template></el-table-column><el-table-column label="操作" width="90" fixed="right"><template #default="{ row: item }"><el-button link type="primary" :disabled="!canWork" @click="reprint(item)">补打</el-button></template></el-table-column></el-table>
         <div class="ledger-bottom"><span>导出文件包含手机号，请仅交由授权工作人员保管。</span><el-pagination v-model:current-page="page" :page-size="10" :total="filtered.length" layout="prev, pager, next" /></div>

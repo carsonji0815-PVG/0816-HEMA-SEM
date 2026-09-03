@@ -77,6 +77,14 @@
       const dateNights=nightsBetween(checkIn,checkOut);if(dateNights<=0)continue;
       let roomKey=`${type}:${attendee.id}`;
       if(type==="shared"){
+        // A confirmed room number is the strongest room-entity identity. Every
+        // occupant assigned to the same venue + room number counts as one room,
+        // regardless of how many attendee rows reference that room.
+        if(room.roomNumber){
+          roomKey=`shared:${clean(attendee.venue)}:${room.roomNumber}`;
+          completed.push({type,roomKey,checkIn,checkOut});
+          continue;
+        }
         const mate=byId.get(String(room.roommateId)),mateRoom=mate&&record(mate);
         if(!mate||mateRoom.assignedType!=="shared"||String(mateRoom.roommateId)!==String(attendee.id))continue;
         roomKey=`shared:${[String(attendee.id),String(mate.id)].sort().join("+")}`;

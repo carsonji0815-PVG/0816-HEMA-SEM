@@ -45,7 +45,7 @@ assert.equal(R.record(manuallyDated).actualNights,2,"travel changes must not ove
 const invalidDates=attendee("invalid","女","D院","上海","上海市","华东大区",{customFields:{province:"上海市",_rooming:{checkInDate:"2026-09-07",checkOutDate:"2026-09-04"}}});
 assert.equal(R.lodgingDateIssue(invalidDates),"退房日期不能早于入住日期");
 
-const finalRoom=(id,type,checkInDate,checkOutDate,actualNights,roommateId="")=>attendee(id,"女",`${id}院`,"上海","上海市","华东大区",{customFields:{province:"上海市",_rooming:{assignedType:type,checkInDate,checkOutDate,actualNights,roommateId,manualFields:["assignedType","checkInDate","checkOutDate","actualNights","roommateId"]}}});
+const finalRoom=(id,type,checkInDate,checkOutDate,actualNights,roommateId="",roomNumber="")=>attendee(id,"女",`${id}院`,"上海","上海市","华东大区",{venue:"上海会场",customFields:{province:"上海市",_rooming:{assignedType:type,checkInDate,checkOutDate,actualNights,roommateId,roomNumber,manualFields:["assignedType","checkInDate","checkOutDate","actualNights","roommateId","roomNumber"]}}});
 const occupancy=R.dailyOccupancy([
   finalRoom("single","single","2026-09-03","2026-09-06",1),
   finalRoom("twin","twin_single","2026-09-04","2026-09-06",2),
@@ -64,5 +64,17 @@ const noStay=finalRoom("no-stay","single","2026-09-03","2026-09-05",2);noStay.ac
 assert.equal(R.dailyOccupancy([noStay]).rows.length,0,"no-stay attendees must be excluded even when an old room assignment remains");
 assert.deepEqual(R.dailyOccupancy([finalRoom("incomplete","single","2026-09-03","",2)]),{rows:[],from:"",to:"",sourceCount:0},"incomplete final lodging dates must yield an empty table without errors");
 assert.deepEqual(R.dailyOccupancy([finalRoom("single","single","2026-09-03","2026-09-06",3)],{from:"2026-09-04",to:"2026-09-05"}).rows.map(row=>row.date),["2026-09-04","2026-09-05"],"date range must be inclusive");
+
+const entityRooms=R.dailyOccupancy([
+  finalRoom("single-1","single","2026-09-03","2026-09-04",1),
+  finalRoom("single-2","single","2026-09-03","2026-09-04",1),
+  finalRoom("twin-single","twin_single","2026-09-03","2026-09-04",1),
+  finalRoom("shared-a1","shared","2026-09-03","2026-09-04",1,"","8801"),
+  finalRoom("shared-a2","shared","2026-09-03","2026-09-04",1,"","8801"),
+  finalRoom("shared-b1","shared","2026-09-03","2026-09-04",1,"","8802"),
+  finalRoom("shared-b2","shared","2026-09-03","2026-09-04",1,"","8802"),
+]);
+assert.deepEqual(entityRooms.rows,[{date:"2026-09-03",single:2,shared:2,twinSingle:1}],"two shared-room entities with four occupants must count as two rooms");
+assert.equal(entityRooms.rows[0].single+entityRooms.rows[0].shared+entityRooms.rows[0].twinSingle,5,"2 single + 1 twin-single + 2 shared rooms must total 5 rooms");
 
 console.log("rooming engine: room types, pairing, independent dates and daily room occupancy passed");

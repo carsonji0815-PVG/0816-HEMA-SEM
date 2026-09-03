@@ -109,7 +109,7 @@ $$;
 
 create or replace function public.create_admin_access_link(p_minutes integer default 60,p_target_email text default null)
 returns table(token text,expires_at timestamptz) language plpgsql security definer set search_path=public as $$
-declare v_token text:=encode(gen_random_bytes(32),'hex'); v_expires timestamptz;
+declare v_token text:=encode(extensions.gen_random_bytes(32),'hex'); v_expires timestamptz;
 begin
   if not public.is_system_admin() then raise exception '仅超级管理员可生成临时登录链接'; end if;
   p_minutes:=greatest(5,least(1440,coalesce(p_minutes,60)));
@@ -118,7 +118,7 @@ begin
   end if;
   v_expires:=now()+make_interval(mins=>p_minutes);
   insert into public.admin_access_links(token_hash,target_email,expires_at,created_by)
-  values(encode(digest(v_token,'sha256'),'hex'),nullif(lower(trim(p_target_email)),''),v_expires,auth.uid());
+  values(encode(extensions.digest(v_token,'sha256'),'hex'),nullif(lower(trim(p_target_email)),''),v_expires,auth.uid());
   insert into public.operation_audit_logs(meeting_id,actor_user_id,actor_label,action,target_type,target_id,metadata)
   select m.id,auth.uid(),coalesce((select display_name from public.profiles where user_id=auth.uid()),'超级管理员'),'create_temp_login_link','security',null,
     jsonb_build_object('expiresAt',v_expires,'targetEmail',nullif(lower(trim(p_target_email)),''))
@@ -128,7 +128,7 @@ end; $$;
 
 create or replace function public.validate_admin_access_link(p_token text)
 returns table(valid boolean,target_email text,expires_at timestamptz) language plpgsql security definer set search_path=public as $$
-declare v_hash text:=encode(digest(coalesce(p_token,''),'sha256'),'hex');
+declare v_hash text:=encode(extensions.digest(coalesce(p_token,''),'sha256'),'hex');
 begin
   update public.admin_access_links set last_validated_at=now()
   where token_hash=v_hash and revoked_at is null and admin_access_links.expires_at>now();

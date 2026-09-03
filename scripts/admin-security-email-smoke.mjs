@@ -8,7 +8,7 @@ const checks={
   sessionRegistry:sql.includes("staff_login_sessions")&&sql.includes("register_staff_session")&&app.includes("registerStaffSession"),
   deviceLimit:sql.includes("maxConcurrentDevices")&&html.includes("maxConcurrentDevices")&&sql.includes("超出同账号最大在线设备数"),
   temporaryLinks:sql.includes("create_admin_access_link")&&sql.includes("validate_admin_access_link")&&app.includes("createAdminAccessLink")&&html.includes("adminAccessLinkResult"),
-  hashedTokens:sql.includes("digest(v_token,'sha256')")&&!sql.includes("token text not null unique"),
+  hashedTokens:sql.includes("extensions.digest(v_token,'sha256')")&&!sql.includes("token text not null unique"),
   readonlyRole:sql.includes("system_role in ('super_admin','ops','readonly')")&&app.includes("isReadOnlyStaff")&&app.includes("只读账号没有敏感数据导出权限"),
   serverEnforcement:sql.includes("create or replace function public.is_allowed_staff()")&&sql.includes("current_auth_session_id"),
   smtpWorker:worker.includes("notification_email_outbox")&&worker.includes("smtplib")&&worker.includes("status='sent'"),

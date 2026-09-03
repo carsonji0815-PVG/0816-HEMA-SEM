@@ -16,8 +16,8 @@ try{
   assert.ok(await page.locator("#roomingOccupancyBody tr").count()>=3,"prefilled travel dates were not materialized into final lodging dates");
   assert.deepEqual(await page.evaluate(id=>{const attendee=JSON.parse(localStorage.getItem("journey-desk-state-v1")).attendees.find(item=>item.id===id);return{checkInDate:attendee.customFields._rooming.checkInDate,checkOutDate:attendee.customFields._rooming.checkOutDate};},seedId),{checkInDate:"2026-09-03",checkOutDate:"2026-09-06"},"visible default lodging dates must be persisted as final rooming data");
   assert.ok(await page.locator("#roomingTableBody tr").count()>0);
-  assert.equal(await page.locator("[data-rooming-stat]").count(),5,"five accommodation KPI cards missing");
-  for(const key of ["totalStay","noStay","single","shared","twinSingle"])assert.equal(await page.locator(`[data-rooming-stat="${key}"]`).count(),1,`missing KPI ${key}`);
+  assert.equal(await page.locator("[data-rooming-stat]").count(),6,"six compact accommodation KPI cards missing");
+  for(const key of ["managedTotal","totalStay","noStay","single","shared","twinSingle"])assert.equal(await page.locator(`[data-rooming-stat="${key}"]`).count(),1,`missing KPI ${key}`);
   assert.ok(await page.locator('#roomingTableBody option[value="twin_single"]').count()>0,"third room type missing");
   const nights=page.locator('[data-room-field="actualNights"]:not(:disabled)').first();
   const attendeeId=await nights.getAttribute("data-attendee");
@@ -31,16 +31,18 @@ try{
   assert.equal(await page.locator(`[data-room-field="checkOutDate"][data-attendee="${attendeeId}"]`).inputValue(),"2026-09-07","automatic rerun overwrote manual check-out date");
   await page.waitForSelector("#roomingOccupancyBody tr");
   assert.ok(await page.locator("#roomingOccupancyBody tr").count()>0,"daily occupancy rows missing");
+  assert.deepEqual(await page.locator(".rooming-occupancy-table thead th").allTextContents(),["住宿日期","单间","标间单住","标间拼住","房间总数"]);
+  assert.equal(await page.locator("#roomingOccupancyBody tr").evaluateAll(rows=>rows.every(row=>{const values=[...row.cells].slice(1).map(cell=>Number(cell.textContent.trim()));return values[3]===values[0]+values[1]+values[2];})),true,"daily total must equal the sum of all three room types");
   assert.deepEqual(await page.locator(".rooming-occupancy-table thead").evaluate(node=>{const style=getComputedStyle(node.querySelector("th"));return{position:style.position,background:style.backgroundColor,color:style.color};}),{position:"sticky",background:"rgb(23, 57, 94)",color:"rgb(255, 255, 255)"},"daily occupancy header must stay fixed and visibly match quota table");
   const occupancyDates=await page.locator("#roomingOccupancyBody tr td:first-child").allTextContents();
   if(occupancyDates.length>1){const date=occupancyDates[1].slice(0,10);await page.locator("#roomingOccupancyFrom").fill(date);await page.locator("#roomingOccupancyFrom").dispatchEvent("change");await page.locator("#roomingOccupancyTo").fill(date);await page.locator("#roomingOccupancyTo").dispatchEvent("change");assert.equal(await page.locator("#roomingOccupancyBody tr").count(),1,"inclusive date filter must show the selected day only");}
   await page.evaluate(()=>{window.__roomingWorkbook=null;window.XLSX.writeFile=workbook=>{window.__roomingWorkbook=workbook;};});
   await page.locator("#exportRoomingList").click();
-  assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["住宿统计","按天房型占用","Rooming List"]);
+  assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["住宿统计","分房统计","Rooming List"]);
   await page.locator("#exportRoomingOccupancy").click();
-  assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["按天房型占用"]);
+  assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["分房统计"]);
   const displayedOccupancy=await page.locator("#roomingOccupancyBody tr").evaluateAll(rows=>rows.map(row=>[...row.cells].map(cell=>cell.textContent.trim())));
-  const exportedOccupancy=await page.evaluate(()=>XLSX.utils.sheet_to_json(window.__roomingWorkbook.Sheets["按天房型占用"],{header:1}).slice(1).map(row=>row.map(String)));
+  const exportedOccupancy=await page.evaluate(()=>XLSX.utils.sheet_to_json(window.__roomingWorkbook.Sheets["分房统计"],{header:1}).slice(1).map(row=>row.map(String)));
   assert.deepEqual(exportedOccupancy,displayedOccupancy,"daily occupancy export must exactly match the filtered table");
   await page.screenshot({path:".tmp/browser/rooming-complete.png",fullPage:true});
   await page.goto(`${base}#settings`,{waitUntil:"domcontentloaded"});
@@ -51,5 +53,5 @@ try{
   await page.locator("#userSelect").selectOption("u-client");
   assert.equal(await page.locator('[name="pairingPriority1"]').isDisabled(),true,"client must not edit rooming rules");
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({roomingRows:"pass",fiveRealtimeMetrics:"pass",defaultDatesMaterialized:"pass",dailyOccupancy:"pass",stickyOccupancyHeader:"pass",thirdRoomType:"pass",manualDatesAndNightsSurviveRerun:"pass",statisticsAndRoomingExport:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
+  console.log(JSON.stringify({roomingRows:"pass",sixCompactMetrics:"pass",defaultDatesMaterialized:"pass",roomingSummaryColumnsAndTotals:"pass",stickyOccupancyHeader:"pass",thirdRoomType:"pass",manualDatesAndNightsSurviveRerun:"pass",statisticsAndRoomingExport:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
 }finally{await browser.close();}

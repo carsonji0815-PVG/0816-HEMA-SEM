@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import {chromium} from "playwright";
+const base=process.env.TRAVEL_PREVIEW_URL||"http://127.0.0.1:4173/";
+const browser=await chromium.launch({headless:true,executablePath:"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"});
+try{
+  const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];
+  page.on("pageerror",error=>errors.push(error.message));
+  await page.route("https://fonts.**",route=>route.abort());
+  await page.route(base,async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text()).replace('mode: "production"','mode: "demo"')});});
+  await page.addInitScript(()=>localStorage.removeItem("journey-desk-state-v1"));
+  await page.goto(`${base}#rooming`,{waitUntil:"domcontentloaded"});
+  await page.waitForSelector("#roomingTableBody tr");
+  assert.ok(await page.locator("#roomingTableBody tr").count()>0);
+  assert.ok(await page.locator('#roomingTableBody option[value="twin_single"]').count()>0,"third room type missing");
+  const nights=page.locator('[data-room-field="actualNights"]:not(:disabled)').first();
+  const attendeeId=await nights.getAttribute("data-attendee");
+  await nights.fill("4");await nights.dispatchEvent("change");
+  await page.locator("#applyRoomingSuggestions").click();
+  assert.equal(await page.locator(`[data-room-field="actualNights"][data-attendee="${attendeeId}"]`).inputValue(),"4","automatic rerun overwrote manual nights");
+  await page.screenshot({path:".tmp/browser/rooming-complete.png",fullPage:true});
+  await page.goto(`${base}#settings`,{waitUntil:"domcontentloaded"});
+  await page.waitForSelector('[name="pairingPriority4"]');
+  assert.equal(await page.locator('[name="pairingPriority1"]').inputValue(),"hospital");
+  assert.equal(await page.locator('[name="pairingPriority4"]').inputValue(),"region");
+  assert.equal(await page.locator('[name="twinSingleKeywords"]').isDisabled(),false);
+  await page.locator("#userSelect").selectOption("u-client");
+  assert.equal(await page.locator('[name="pairingPriority1"]').isDisabled(),true,"client must not edit rooming rules");
+  assert.deepEqual(errors,[]);
+  console.log(JSON.stringify({roomingRows:"pass",thirdRoomType:"pass",manualNightsSurviveRerun:"pass",configurablePriorities:"pass",permissionBoundary:"pass"},null,2));
+}finally{await browser.close();}

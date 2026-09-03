@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+const root=new URL("../",import.meta.url);
+const [html,app,styles]=await Promise.all([readFile(new URL("index.html",root),"utf8"),readFile(new URL("app.js",root),"utf8"),readFile(new URL("styles.css",root),"utf8")]);
+for(const token of ["实际允许间夜","标间单住","待人工安排","pairingPriority1","twinSingleKeywords","rooming-engine.js"])assert.ok(html.includes(token),`missing HTML token: ${token}`);
+for(const token of ["RoomingEngine.autoAssign","actualNights","manualFields","重新执行了自动分房","实际总间夜","RoomingEngine.province"])assert.ok(app.includes(token),`missing app token: ${token}`);
+for(const token of ["rooming-pending-row","rooming-priority-config","manual-value"])assert.ok(styles.includes(token),`missing CSS token: ${token}`);
+assert.ok(/const canManage = \(\) => isSystemAdmin\(\) \|\| currentUser\(\)\?\.role === "ops"/.test(app),"rooming settings must use administrator/ops permission boundary");
+assert.ok(/staying\.reduce\(\(sum,a\)=>sum\+\(Number\(roomingRecord\(a\)\.actualNights\)\|\|0\),0\)/.test(app),"metrics must use actual nights");
+assert.ok(/room\.actualNights/.test(app.match(/function exportRoomingList\(\)[^\n]+/)?.[0]||""),"Rooming List must export actual nights");
+console.log("complete rooming UI, permissions, actual-night statistics and export smoke passed");

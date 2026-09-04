@@ -18,13 +18,13 @@ async function check(name, url, options, test) {
   try { const r = await request(url, options); results.push({ name, status: r.status, passed: !!test(r) }); }
   catch (e) { results.push({ name, passed: false, error: e.name }); }
 }
-await check('HTTPS meeting frontend', `${base}/meeting/`, {}, r => r.ok && r.text.includes('礼来会议管理平台') && r.text.includes(api) && !r.text.includes('bupsipicxwyeuxunkvii.supabase.co'));
+await check('HTTPS meeting frontend', `${base}/meeting/`, {}, r => r.ok && r.text.includes('礼来会议管理平台') && r.text.includes('window.location.origin') && r.text.includes('${productionOrigin}/supabase') && !r.text.includes('bupsipicxwyeuxunkvii.supabase.co'));
 for (const file of ['app.js', 'styles.css', 'assets/lilly-logo-red.png', 'assets/vendor/supabase.js', 'luggage/index.html']) {
   await check(`Static asset ${file}`, `${base}/meeting/${file}`, {}, r => r.ok && r.text.length > 50);
 }
 await check('Original document frontend', `${base}/`, {}, r => r.ok);
 await check('REST missing key denied', `${api}/rest/v1/attendees?select=id`, {}, r => [401, 403].includes(r.status));
-await check('Anonymous roster isolation', `${api}/rest/v1/attendees?select=id`, { headers: publicHeaders }, r => r.ok && Array.isArray(r.data) && !r.data.length);
+await check('Anonymous roster isolation', `${api}/rest/v1/attendees?select=id`, { headers: publicHeaders }, r => [401, 403].includes(r.status) || (r.ok && Array.isArray(r.data) && !r.data.length));
 await check('Auth health', `${api}/auth/v1/health`, { headers: publicHeaders }, r => r.ok);
 await check('Public meeting list', `${api}/functions/v1/public-trip-query`, { method: 'POST', headers: { ...publicHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list-projects' }) }, r => r.ok && Array.isArray(r.data?.projects));
 const profiles = await request(`${api}/rest/v1/profiles?select=user_id&limit=1`, { headers: serviceHeaders });
@@ -37,7 +37,9 @@ const signed = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: owner, e
 const token = `${signed}.${createHmac('sha256', c.services.auth.environment.GOTRUE_JWT_SECRET).update(signed).digest('base64url')}`;
 const headers = { ...publicHeaders, Authorization: `Bearer ${token}` };
 await check('Migrated operator identity', `${api}/auth/v1/user`, { headers }, r => r.ok && r.data?.id === owner);
-await check('Migrated operator roster access', `${api}/rest/v1/attendees?select=id`, { headers }, r => r.ok && Array.isArray(r.data) && r.data.length >= 24);
+// A self-signed identity without a server-recorded active login session must not
+// bypass the 30-minute session guard, even when it names a migrated operator.
+await check('Synthetic operator session cannot read roster', `${api}/rest/v1/attendees?select=id`, { headers }, r => r.ok && Array.isArray(r.data) && r.data.length === 0);
 const meetings = await request(`${api}/rest/v1/meetings?select=id`, { headers });
 for (const meeting of meetings.data || []) {
   if (!/^[a-f0-9-]{36}$/.test(meeting.id)) throw new Error('Invalid project identifier.');
@@ -46,7 +48,7 @@ for (const meeting of meetings.data || []) {
 const pid = execFileSync('systemctl', ['show', 'lilly-meetings', '--property=MainPID', '--value'], { encoding: 'utf8' }).trim();
 const processEnv = Object.fromEntries(readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean).map(item => { const i = item.indexOf('='); return [item.slice(0, i), item.slice(i + 1)]; }));
 results.push({ name: 'Document service uses Alibaba Auth', passed: processEnv.SUPABASE_URL === 'http://127.0.0.1:18000' });
-for (const unit of ['nginx', 'lilly-meetings', 'lilly-platform', 'lilly-platform-backup.timer']) {
+for (const unit of ['nginx', 'lilly-meetings', 'lilly-platform', 'auditd', 'lilly-platform-backup.timer', 'lilly-platform-restore-drill.timer']) {
   results.push({ name: `Service ${unit}`, passed: execFileSync('systemctl', ['is-active', unit], { encoding: 'utf8' }).trim() === 'active' });
 }
 const freezeCount = execFileSync('docker', ['exec', 'lilly-stage-db', 'psql', '-U', 'postgres', '-d', 'postgres', '-Atc', "select count(*) from pg_trigger where tgname='lilly_migration_readonly'"], { encoding: 'utf8' }).trim();

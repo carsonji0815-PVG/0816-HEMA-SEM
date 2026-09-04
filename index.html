@@ -478,7 +478,8 @@
     <dialog id="mfaDialog" class="login-dialog mfa-dialog">
       <div class="login-brand"><span class="brand-mark">盾</span><div><strong>管理端双重验证</strong><small id="mfaDialogHint">使用身份验证器完成登录</small></div></div>
       <div id="mfaEnrollment" class="mfa-enrollment is-hidden">
-        <p class="form-hint">首次使用请用 Microsoft Authenticator、Google Authenticator 或其他兼容TOTP的验证器扫描二维码。</p>
+        <p class="form-hint">中国境内建议使用「阿里云 App → 虚拟 MFA」扫描二维码；Microsoft Authenticator 或其他兼容 TOTP 的验证器也可使用。动态码离线生成，不依赖境外网络。</p>
+        <p class="form-hint mfa-security-warning">二维码和手动密钥等同于登录密码，请勿截图、转发或与他人共享。</p>
         <img id="mfaQrCode" class="mfa-qr-code" alt="TOTP绑定二维码" />
         <label>无法扫码时手动输入密钥<input id="mfaSecret" readonly autocomplete="off" /></label>
       </div>

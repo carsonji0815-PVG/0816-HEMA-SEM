@@ -124,7 +124,7 @@
                   <label class="is-hidden" data-clothing-field>衣服尺寸<input name="custom__clothingSize" placeholder="例如：M / XL" /></label>
                   <label class="span-2" data-template-field="remarks" data-config-field="remarks">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>
                 </div></section>
-                <section class="public-form-section"><h3>去程信息</h3><div class="public-field-grid">
+                <section class="public-form-section" id="publicOutboundJourneySection"><h3>去程信息</h3><div class="public-field-grid">
                   <label data-journey-field="departDate">出发日期<input name="departDate" type="date" required /></label>
                   <label data-journey-field="departCity">出发城市<input name="departCity" required /></label>
                   <label data-journey-field="departTransportType">出发出行方式<select name="departTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label>
@@ -136,17 +136,19 @@
                   <label data-journey-field="outNo">航班 / 车次号<input name="outNo" required /></label>
                   <label data-journey-field="outDeparture">出发时间<input name="outDeparture" type="time" required /></label><label data-journey-field="outArrival">到达时间<input name="outArrival" type="time" required /></label>
                 </div><div class="extra-journey-list" data-extra-journeys="outbound"></div><button class="button button-secondary add-journey-button" data-add-journey="outbound" type="button">＋ 新增一段去程</button></section>
-                <section class="public-form-section optional-transfer-section is-hidden" id="publicTransferCollectionSection"><h3>往返接送信息 <small>选填，不影响报名提交</small></h3><div class="public-field-grid">
-                  <label>去程送站出发地点<input name="outboundTransferOrigin" placeholder="例如：住所 / 酒店 / 单位" /></label><label>预约送站时间<input name="outboundTransferTime" type="datetime-local" /></label><label class="span-2">去程送站备注<textarea name="outboundTransferNotes" rows="2"></textarea></label>
-                  <label>返程接站送达目的地<input name="returnTransferDestination" placeholder="例如：住所 / 酒店 / 单位" /></label><label>预估接站时间<input name="returnTransferTime" type="datetime-local" /></label><label class="span-2">返程接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
+                <section class="public-form-section optional-transfer-section is-hidden" id="publicOutboundTransferCollectionSection"><h3>去程出发地（属地）送站信息 <small>选填，不影响报名提交</small></h3><div class="public-field-grid">
+                  <label>属地送站出发地点<input name="outboundTransferOrigin" placeholder="例如：住所 / 酒店 / 单位" /></label><label>属地预约送站时间<input name="outboundTransferTime" type="datetime-local" /></label><label class="span-2">属地送站备注<textarea name="outboundTransferNotes" rows="2"></textarea></label>
                 </div></section>
-                <section class="public-form-section"><h3>返程信息</h3><div class="public-field-grid">
+                <section class="public-form-section" id="publicReturnJourneySection"><h3>返程信息</h3><div class="public-field-grid">
                   <label data-journey-field="returnDepartDate">返程出发日期<input name="returnDepartDate" type="date" required /></label><label data-journey-field="returnDepartCity">返程出发城市<input name="returnDepartCity" required /></label>
                   <label data-journey-field="returnDepartTransportType">返程出发方式<select name="returnDepartTransportType" required><option value="">请选择</option><option value="PLANE">飞机</option><option value="HIGH_SPEED_RAIL">高铁</option><option value="LOCAL_ATTEND">本地参会</option></select></label><label data-journey-field="returnDepartStation">返程出发场站<select data-station-select="returnDepart" hidden></select><input data-station-input="returnDepart" hidden /></label>
                   <label data-journey-field="returnArriveDate">返程抵达日期<input name="returnArriveDate" type="date" required /></label><label data-journey-field="returnArriveCity">返程抵达城市<input name="returnArriveCity" required /></label>
                   <input name="returnArriveTransportType" type="hidden" /><label data-journey-field="returnArriveStation">返程抵达场站<select data-station-select="returnArrive" hidden></select><input data-station-input="returnArrive" hidden /></label><label data-journey-field="returnNo">航班 / 车次号<input name="returnNo" required /></label>
                   <label data-journey-field="returnDeparture">出发时间<input name="returnDeparture" type="time" required /></label><label data-journey-field="returnArrival">到达时间<input name="returnArrival" type="time" required /></label>
                 </div><div class="extra-journey-list" data-extra-journeys="return"></div><button class="button button-secondary add-journey-button" data-add-journey="return" type="button">＋ 新增一段返程</button></section>
+                <section class="public-form-section optional-transfer-section is-hidden" id="publicReturnTransferCollectionSection"><h3>返程出发地（属地）接站信息 <small>选填，不影响报名提交</small></h3><div class="public-field-grid">
+                  <label>属地接站送达目的地<input name="returnTransferDestination" placeholder="例如：住所 / 酒店 / 单位" /></label><label>属地预估接站时间<input name="returnTransferTime" type="datetime-local" /></label><label class="span-2">属地接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
+                </div></section>
                 <section class="public-form-section is-hidden" id="publicCustomFieldsSection"><h3>项目补充信息</h3><div class="public-field-grid" id="publicCustomFields"></div></section>
                 <div id="publicFullRegistrationResult" class="lookup-result" aria-live="polite"></div>
                 <div class="public-form-actions"><button class="button button-secondary" id="backToPublicAuth" type="button">返回我的名单</button><button class="button button-primary" type="submit">保存参会人员信息</button></div>
@@ -285,7 +287,7 @@
                     <label class="span-2">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>
                   </div>
                 </article>
-                <article class="panel form-section trip-section">
+                <article class="panel form-section trip-section" id="adminOutboundJourneySection">
                   <div class="section-number">02</div><div class="section-title"><h2>去程信息</h2><p>系统将按会议规则自动检查异常</p></div>
                   <div class="field-grid">
                     <label data-journey-field="departDate">出发日期<input name="departDate" type="date" required /></label>
@@ -300,13 +302,12 @@
                     <label>出发时间<input name="outDeparture" type="time" required /></label><label>到达时间<input name="outArrival" type="time" required /></label>
                   </div><div class="extra-journey-list" data-extra-journeys="outbound"></div><button class="button button-secondary add-journey-button" data-add-journey="outbound" type="button">＋ 新增一段去程</button>
                 </article>
-                <article class="panel form-section optional-transfer-section is-hidden" id="adminTransferCollectionSection">
-                  <div class="section-number">03</div><div class="section-title"><h2>往返接送信息</h2><p>选填，仅收集信息，不参与行程核验</p></div><div class="field-grid">
-                    <label>去程送站出发地点<input name="outboundTransferOrigin" /></label><label>预约送站时间<input name="outboundTransferTime" type="datetime-local" /></label><label class="span-2">去程送站备注<textarea name="outboundTransferNotes" rows="2"></textarea></label>
-                    <label>返程接站送达目的地<input name="returnTransferDestination" /></label><label>预估接站时间<input name="returnTransferTime" type="datetime-local" /></label><label class="span-2">返程接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
+                <article class="panel form-section optional-transfer-section is-hidden" id="adminOutboundTransferCollectionSection">
+                  <div class="section-number">03</div><div class="section-title"><h2>去程出发地（属地）送站信息</h2><p>选填，安排属地至去程场站的送站信息，不参与行程核验</p></div><div class="field-grid">
+                    <label>属地送站出发地点<input name="outboundTransferOrigin" /></label><label>属地预约送站时间<input name="outboundTransferTime" type="datetime-local" /></label><label class="span-2">属地送站备注<textarea name="outboundTransferNotes" rows="2"></textarea></label>
                   </div>
                 </article>
-                <article class="panel form-section trip-section">
+                <article class="panel form-section trip-section" id="adminReturnJourneySection">
                   <div class="section-number">04</div><div class="section-title"><h2>返程信息</h2><p>返程到达城市不同将进入审批</p></div>
                   <div class="field-grid">
                     <label data-journey-field="returnDepartDate">返程出发日期<input name="returnDepartDate" type="date" required /></label><label data-journey-field="returnDepartCity">返程出发城市<input name="returnDepartCity" required /></label>
@@ -315,6 +316,11 @@
                     <input name="returnArriveTransportType" type="hidden" /><label data-journey-field="returnArriveStation">返程抵达场站<select data-station-select="returnArrive" hidden></select><input data-station-input="returnArrive" hidden /></label><label>航班 / 车次号<input name="returnNo" required /></label>
                     <label>出发时间<input name="returnDeparture" type="time" required /></label><label>到达时间<input name="returnArrival" type="time" required /></label>
                   </div><div class="extra-journey-list" data-extra-journeys="return"></div><button class="button button-secondary add-journey-button" data-add-journey="return" type="button">＋ 新增一段返程</button>
+                </article>
+                <article class="panel form-section optional-transfer-section is-hidden" id="adminReturnTransferCollectionSection">
+                  <div class="section-number">05</div><div class="section-title"><h2>返程出发地（属地）接站信息</h2><p>选填，安排返程场站至属地目的地的接站信息，不参与行程核验</p></div><div class="field-grid">
+                    <label>属地接站送达目的地<input name="returnTransferDestination" /></label><label>属地预估接站时间<input name="returnTransferTime" type="datetime-local" /></label><label class="span-2">属地接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
+                  </div>
                 </article>
               </div>
               <aside class="form-aside">

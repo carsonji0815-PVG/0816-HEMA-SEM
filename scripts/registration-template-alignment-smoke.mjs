@@ -8,8 +8,8 @@ const columns=[
   ["医院/连锁","hospital"],["科室/门店","department"],["职称","title"],["性别","venue"],
   ["身份证号/护照号*","sex"],["手机号","idNumber"],["客户编号*","phone"],["会场","hcpId"],
   ["住宿安排(Y/N)","accommodation"],["是否航空(Y/N)","flight"],["大区","outDate"],
-  ["去程送站出发地点","outboundTransferOrigin"],["预约送站时间","outboundTransferTime"],["去程送站备注","outboundTransferNotes"],
-  ["返程接站送达目的地","returnTransferDestination"],["预估接站时间","returnTransferTime"],["返程接站备注","returnTransferNotes"],
+  ["去程属地送站出发地点","outboundTransferOrigin"],["去程属地预约送站时间","outboundTransferTime"],["去程属地送站备注","outboundTransferNotes"],
+  ["返程属地接站送达目的地","returnTransferDestination"],["返程属地预估接站时间","returnTransferTime"],["返程属地接站备注","returnTransferNotes"],
 ].map(([header,key])=>({header,key,required:header.includes("*"),custom:false}));
 await page.addInitScript(({columns})=>{
   Object.defineProperty(window,"APP_CONFIG",{value:{mode:"demo"},writable:false,configurable:false});
@@ -29,16 +29,18 @@ const rowValues=await page.locator("#attendeeTableBody tr").first().locator("td.
 for(const value of ["男","310***********2345","138****0001","HCP-001","长沙","上海大区"])if(!rowValues.includes(value))throw new Error(`Roster value missing after repair: ${value}`);
 const tableHeaders=await page.locator("#attendeeTableHead th").allTextContents();
 if(tableHeaders.includes("新增多段行程"))throw new Error("Empty extra-journey column should be hidden");
-for(const header of ["去程送站出发地点","预约送站时间","去程送站备注","返程接站送达目的地","预估接站时间","返程接站备注"])if(tableHeaders.filter(value=>value.trim()===header).length!==1)throw new Error(`Duplicate roster column: ${header}`);
-await page.evaluate(()=>{window.XLSX.writeFile=(workbook,fileName)=>{window.__alignmentExport={fileName,rows:window.XLSX.utils.sheet_to_json(workbook.Sheets["报名表"],{header:1,defval:""})};};});
+for(const header of ["去程属地送站出发地点","去程属地预约送站时间","去程属地送站备注","返程属地接站送达目的地","返程属地预估接站时间","返程属地接站备注"])if(tableHeaders.filter(value=>value.trim()===header).length!==1)throw new Error(`Duplicate roster column: ${header}`);
+await page.evaluate(()=>{const createObjectURL=URL.createObjectURL.bind(URL);URL.createObjectURL=blob=>{blob.arrayBuffer().then(async buffer=>{const workbook=XLSX.read(buffer,{type:"array"}),zip=await JSZip.loadAsync(buffer),styles=await zip.file("xl/styles.xml").async("string");window.__alignmentExport={rows:XLSX.utils.sheet_to_json(workbook.Sheets["报名表"],{header:1,defval:""}),styles};});return createObjectURL(blob);};});
 await page.click("#exportExcel");
+await page.waitForFunction(()=>window.__alignmentExport?.rows?.length>0);
 const exported=await page.evaluate(()=>window.__alignmentExport);
 if(!exported?.rows?.length)throw new Error("Excel export was not captured");
+for(const marker of ['name val="微软雅黑"','sz val="12"','horizontal="center"','vertical="center"','left style="thin"','right style="thin"','top style="thin"','bottom style="thin"'])if(!exported.styles.includes(marker))throw new Error(`Excel style missing: ${marker}`);
 const exportHeaders=exported.rows[0],exportRow=exported.rows[1];
 if(exportHeaders.includes("新增多段行程明细")||exportHeaders.includes("新增多段行程核验"))throw new Error("Empty extra-journey columns should not be exported");
-for(const header of ["去程送站出发地点","预约送站时间","去程送站备注","返程接站送达目的地","预估接站时间","返程接站备注"])if(exportHeaders.filter(value=>value===header).length!==1)throw new Error(`Duplicate Excel column: ${header}`);
+for(const header of ["去程属地送站出发地点","去程属地预约送站时间","去程属地送站备注","返程属地接站送达目的地","返程属地预估接站时间","返程属地接站备注"])if(exportHeaders.filter(value=>value===header).length!==1)throw new Error(`Duplicate Excel column: ${header}`);
 for(const [header,value] of [["性别","男"],["身份证号/护照号*","310123456789012345"],["手机号","13800000001"],["客户编号*","HCP-001"],["会场","长沙"],["大区","上海大区"]]){
   const index=exportHeaders.indexOf(header);if(index<0||exportRow[index]!==value)throw new Error(`Export mismatch for ${header}: ${exportRow[index]}`);
 }
-console.log(JSON.stringify({rosterColumnAlignment:"pass",excelColumnAlignment:"pass",emptyJourneyHidden:"pass",supplementalColumnsDeduplicated:"pass",errors},null,2));
+console.log(JSON.stringify({rosterColumnAlignment:"pass",excelColumnAlignment:"pass",excelUnifiedStyle:"pass",emptyJourneyHidden:"pass",supplementalColumnsDeduplicated:"pass",errors},null,2));
 await browser.close();if(errors.length)process.exitCode=1;

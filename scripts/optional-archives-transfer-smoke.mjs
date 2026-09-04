@@ -34,7 +34,10 @@ assert.match(sql,/registration-template-files/);
 assert.match(sql,/template_is_system_default/);
 
 assert.match(html,/接送机 \/ 接送站信息收集设置/);
-assert.match(html,/id="publicTransferCollectionSection"/);
+for(const id of ["publicOutboundTransferCollectionSection","publicReturnTransferCollectionSection","adminOutboundTransferCollectionSection","adminReturnTransferCollectionSection"])assert.match(html,new RegExp(`id="${id}"`));
+for(const label of ["去程出发地（属地）送站信息","返程出发地（属地）接站信息"])assert.match(html,new RegExp(label));
+const orderedIds=["publicOutboundJourneySection","publicOutboundTransferCollectionSection","publicReturnJourneySection","publicReturnTransferCollectionSection","adminOutboundJourneySection","adminOutboundTransferCollectionSection","adminReturnJourneySection","adminReturnTransferCollectionSection"];
+for(let index=1;index<orderedIds.length;index++)assert.ok(html.indexOf(`id="${orderedIds[index-1]}"`)<html.indexOf(`id="${orderedIds[index]}"`),`${orderedIds[index]} must follow ${orderedIds[index-1]}`);
 assert.match(app,/transferCollectionAllowed/);
 for(const field of ["outbound_transfer_origin","outbound_transfer_time","outbound_transfer_notes","return_transfer_destination","return_transfer_time","return_transfer_notes"]){assert.match(sql,new RegExp(field));assert.match(edge,new RegExp(field));}
 assert.match(sql,/activity_type.*internal/si);

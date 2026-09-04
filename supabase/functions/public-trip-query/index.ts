@@ -120,21 +120,26 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const employeeNo = clean(payload.employeeNo, 50);
     const employeeNoNorm = normalized(employeeNo, 50);
     const mode = clean(payload.mode, 20) === "manage" ? "manage" : "register";
-    if (!name || !regionInput || !employeeNoNorm) return reply({ error:"请填写大区、姓名和员工编号" }, 400);
-    const regions=registrationRegions(meeting);if(!regions.length)return reply({error:"当前会议尚未配置报名大区，请联系会务负责人"},503);
-    const region=regions.find(value=>normalized(value,50)===normalized(regionInput,50));if(!region)return reply({error:"请选择当前会议配置的大区"},400);
+    if (!name || !employeeNoNorm) return reply({ error:"请填写姓名和员工编号" }, 400);
+    const regions=registrationRegions(meeting);
+    const configuredRegion=regions.find(value=>normalized(value,50)===normalized(regionInput,50));
+    if(regions.length&&!regionInput)return reply({error:"请选择当前会议配置的大区"},400);
+    if(regions.length&&!configuredRegion)return reply({error:"请选择当前会议配置的大区"},400);
+    const requestedRegion=regions.length?configuredRegion||"":regionInput;
     if(!await enforceRateLimit(`registrant-login:${meeting.id}:${employeeNoNorm}`,30))return reply({error:"身份进入尝试过于频繁，请10分钟后重试"},429);
-    await db.from("operation_audit_logs").insert({ meeting_id:meeting.id, actor_label:`${name}（${employeeNo}）`, action:"registrant_login", target_type:"registrant", metadata:{ region, name, employeeNo, mode, ipHash } });
     let { data:registrant, error:registrantError } = await db.from("registrants").select("*").eq("meeting_id",meeting.id).eq("employee_no_norm",employeeNoNorm).maybeSingle();
     if (registrantError) return reply({ error:"身份校验暂不可用，请稍后重试" },500);
     if (registrant) {
-      if (normalized(registrant.display_name,50)!==normalized(name,50) || normalized(registrant.region,50)!==normalized(region,50)) return reply({ error:"大区、姓名或员工编号不匹配，请核对后重试" },403);
+      if (normalized(registrant.display_name,50)!==normalized(name,50)) return reply({ error:"姓名或员工编号不匹配，请核对后重试" },403);
+      if(requestedRegion&&registrant.region&&normalized(registrant.region,50)!==normalized(requestedRegion,50))return reply({error:"大区、姓名或员工编号不匹配，请核对后重试"},403);
       if (!registrant.active) return reply({ error:"该填报人账号已停用，请联系会务负责人" },403);
+      if(requestedRegion&&!registrant.region){const updated=await db.from("registrants").update({region:requestedRegion}).eq("id",registrant.id).select("*").single();if(updated.error||!updated.data)return reply({error:"大区信息保存失败，请稍后重试"},500);registrant=updated.data;}
     } else {
-      const createResult=await db.from("registrants").insert({meeting_id:meeting.id,region,display_name:name,employee_no:employeeNo,employee_no_norm:employeeNoNorm}).select("*").single();
+      const createResult=await db.from("registrants").insert({meeting_id:meeting.id,region:requestedRegion,display_name:name,employee_no:employeeNo,employee_no_norm:employeeNoNorm}).select("*").single();
       if (createResult.error || !createResult.data) return reply({ error:"填报人身份建立失败，请稍后重试" },500);
       registrant=createResult.data;
     }
+    await db.from("operation_audit_logs").insert({ meeting_id:meeting.id, actor_label:`${name}（${employeeNo}）`, action:"registrant_login", target_type:"registrant", metadata:{ region:registrant.region||"", name, employeeNo, mode, ipHash } });
     const tokenBytes=crypto.getRandomValues(new Uint8Array(32));
     const sessionToken=[...tokenBytes].map(byte=>byte.toString(16).padStart(2,"0")).join("");
     const tokenHash=await hash(sessionToken);

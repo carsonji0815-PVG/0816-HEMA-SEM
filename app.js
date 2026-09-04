@@ -1930,7 +1930,7 @@
       const response = await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/public-trip-query`, { method:"POST", headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey}, body:JSON.stringify({action:"project-info",meeting:currentEventSlug()}) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "读取项目失败");
-      publicProjectConfig = payload.project || null; applyPublicProject(publicProjectConfig); $("#publicProjectSelector").classList.add("is-hidden"); $("#publicRegistrationResult").innerHTML=""; submit.disabled=!publicProjectConfig?.newRegistrationAllowed||!configuredPublicRegions(publicProjectConfig).length;
+      publicProjectConfig = payload.project || null; applyPublicProject(publicProjectConfig); $("#publicProjectSelector").classList.add("is-hidden"); $("#publicRegistrationResult").innerHTML=""; submit.disabled=!publicProjectConfig?.newRegistrationAllowed;
     } catch (error) {
       await loadAvailablePublicProjects(error.message);
     } finally {
@@ -1965,7 +1965,7 @@
     const result = mode==="manage"?$("#publicManageResult"):$("#publicRegistrationResult");
     const submit = form.querySelector('button[type="submit"]');
     const data = Object.fromEntries(new FormData(form));
-    if(!String(data.region||"").trim()||!String(data.name||"").trim()||!String(data.employeeNo||"").trim()){result.innerHTML=`<div class="lookup-error">请完整填写大区、姓名和员工编号。</div>`;return;}
+    if(!String(data.name||"").trim()||!String(data.employeeNo||"").trim()){result.innerHTML=`<div class="lookup-error">请填写姓名和员工编号。</div>`;return;}
     if(mode==="register"&&!publicProjectConfig?.newRegistrationAllowed){result.innerHTML=`<div class="lookup-error">当前项目已暂停新增报名，您可使用“更改已报名”或“参会信息查询”。</div>`;return;}
     if (!window.APP_CONFIG?.supabaseUrl) { result.innerHTML = `<div class="lookup-error">报名服务暂不可用，请联系会务负责人。</div>`; return; }
     submit.disabled = true; submit.textContent = "正在进入…";
@@ -1985,7 +1985,7 @@
 
   function enterRegistrantWorkspace(mode="register") {
     $("#publicRegistrationResult").innerHTML = "";$("#publicManageResult").innerHTML=""; $("#publicAuthStep").classList.add("is-hidden"); $("#publicFullRegistrationStep").classList.remove("is-hidden"); $(".portal-card").classList.add("expanded","workspace-mode");$('[data-portal-panel="register"]').classList.remove("is-hidden");$('[data-portal-panel="manage"]').classList.add("is-hidden");
-    $("#publicRegistrantIdentity").textContent = `${publicAuthSession.region} · ${publicAuthSession.name} · 员工编号 ${publicAuthSession.employeeNo}`;
+    $("#publicRegistrantIdentity").textContent = [publicAuthSession.region,publicAuthSession.name,`员工编号 ${publicAuthSession.employeeNo}`].filter(Boolean).join(" · ");
     $("#publicRegistrantProject").textContent = `当前项目：${publicProjectConfig?.name || currentEventSlug()}`;
     $("#newPublicAttendee").classList.toggle("is-hidden",mode==="manage");$("#newPublicAttendee").disabled=mode==="manage"||!publicProjectConfig?.newRegistrationAllowed||!!publicProjectConfig?.masterLocked;
     renderPublicAttendeeList(); closePublicAttendeeEditor();
@@ -2034,9 +2034,9 @@
     const footer=$(".public-footer"); if (footer) footer.textContent = project.servicePhone ? `会务服务台 ${project.servicePhone} · 工作时间 08:00–21:00` : "会务服务台 · 工作时间 08:00–21:00";
     const venueSelect=$("#publicFullRegistrationForm").elements.venue;
     if (venueSelect && project.venues?.length) { const selected=normalizeVenueLabel(venueSelect.value); const venues=[...new Set(project.venues.map(normalizeVenueLabel).filter(Boolean))]; venueSelect.innerHTML=`<option value="">请选择</option>${venues.map(venue=>`<option>${escapeHtml(venue)}</option>`).join("")}`; venueSelect.value=venues.includes(selected) ? selected : ""; }
-    const regions=configuredPublicRegions(project);["publicRegistrationForm","publicManageForm"].forEach(id=>{const form=$("#"+id);const select=form?.elements.region;if(!select)return;const selected=select.value;select.innerHTML=regions.length?`<option value="">请选择当前会议大区</option>${regions.map(region=>`<option value="${escapeHtml(region)}">${escapeHtml(region)}</option>`).join("")}`:`<option value="">当前会议尚未配置报名大区</option>`;select.disabled=!regions.length;select.value=regions.includes(selected)?selected:"";const button=form.querySelector('button[type="submit"]');if(button)button.disabled=!regions.length||(id==="publicRegistrationForm"&&!project.newRegistrationAllowed);});
+    const regions=configuredPublicRegions(project);["publicRegistrationForm","publicManageForm"].forEach(id=>{const form=$("#"+id);let control=form?.elements.region;if(!control)return;const selected=control.value;if(regions.length){if(control.tagName!=="SELECT"){const select=document.createElement("select");select.name="region";control.replaceWith(select);control=select;}control.required=true;control.innerHTML=`<option value="">请选择当前会议大区</option>${regions.map(region=>`<option value="${escapeHtml(region)}">${escapeHtml(region)}</option>`).join("")}`;control.value=regions.includes(selected)?selected:"";}else{if(control.tagName!=="INPUT"){const input=document.createElement("input");input.name="region";input.maxLength=50;control.replaceWith(input);control=input;}control.required=false;control.placeholder="大区待确认，可自行填写或暂不填写";control.value=selected||"";}control.disabled=false;const button=form.querySelector('button[type="submit"]');if(button)button.disabled=id==="publicRegistrationForm"&&!project.newRegistrationAllowed;});
     const registrationTab=$('[data-portal-tab="register"]');if(registrationTab){registrationTab.disabled=!project.newRegistrationAllowed;registrationTab.title=project.newRegistrationAllowed?"进入报名":"当前项目已暂停新增报名";}
-    const registrationSubmit=$("#publicRegistrationForm")?.querySelector('button[type="submit"]');if(registrationSubmit)registrationSubmit.disabled=!project.newRegistrationAllowed||!regions.length;
+    const registrationSubmit=$("#publicRegistrationForm")?.querySelector('button[type="submit"]');if(registrationSubmit)registrationSubmit.disabled=!project.newRegistrationAllowed;
     const currentPublicRoute=(location.hash||"#portal").slice(1);if(!project.newRegistrationAllowed&&["portal","register"].includes(currentPublicRoute)&&!publicAuthSession){history.replaceState(null,"",`${location.pathname}${location.search}#manage`);setPortalTab("manage");$("#publicManageResult").innerHTML=`<div class="lookup-error">当前项目已暂停新增报名；更改已报名和参会信息查询仍可正常使用。</div>`;}
     applyPublicTemplate(project.registrationTemplate,project.templateName,{});
   }

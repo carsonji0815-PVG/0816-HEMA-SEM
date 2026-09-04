@@ -18,9 +18,11 @@ for(const page of [html,legacyHtml]){
   assert.match(page,/name="registrationRegions"/);
 }
 assert.match(app,/configuredPublicRegions/);
+assert.match(app,/大区待确认，可自行填写或暂不填写/);
 assert.match(app,/quotaRegions:splitList\(data\.registrationRegions\)/);
 assert.match(edge,/registrationRegions\(meeting\)/);
 assert.match(edge,/请选择当前会议配置的大区/);
+assert.match(edge,/const requestedRegion=regions\.length\?configuredRegion\|\|"":regionInput/);
 assert.match(edge,/registrant-login:\$\{meeting\.id\}:\$\{employeeNoNorm\}/);
 assert.match(edge,/attendee-lookup:\$\{meeting\.id\}:\$\{phone\}/);
 assert.doesNotMatch(edge,/eq\("ip_hash", ipHash\)/);

@@ -16,6 +16,13 @@
     <script src="assets/vendor/supabase.js" defer></script>
     <script>
       (() => {
+        if (window.location.protocol === "file:") {
+          const target = new URL("https://139.196.97.236/meeting/");
+          target.search = window.location.search;
+          target.hash = window.location.hash;
+          window.location.replace(target.href);
+          return;
+        }
         const productionOrigin = /^https?:$/.test(window.location.protocol)
           ? window.location.origin
           : "https://139.196.97.236";

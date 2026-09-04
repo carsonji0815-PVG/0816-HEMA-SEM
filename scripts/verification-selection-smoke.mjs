@@ -27,6 +27,10 @@ assert.doesNotMatch(disabledPaid.html,/data-disable-flight-query="person-1"[^>]*
 
 const app=fs.readFileSync(new URL("../app.js",import.meta.url),"utf8");
 const html=fs.readFileSync(new URL("../index.html",import.meta.url),"utf8");
+assert.match(html,/window\.location\.protocol === "file:"/);
+assert.match(html,/window\.location\.replace\(target\.href\)/);
+assert.match(html,/target\.search = window\.location\.search/);
+assert.match(html,/target\.hash = window\.location\.hash/);
 assert.match(app,/selection\.has\(verificationSelectionKey/);
 assert.match(app,/variflightGlobalEnabled/);
 assert.match(app,/disabledVerificationFlightSegments/);

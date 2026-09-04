@@ -1,0 +1,14 @@
+[Unit]
+Description=Isolated restore drill for the Lilly platform backup
+After=docker.service lilly-platform-backup.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/snap/node/current/bin/node /opt/lilly-migration/staging/aliyun-restore-drill.mjs
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+ProtectHome=true
+UMask=0077
+TimeoutStartSec=10min

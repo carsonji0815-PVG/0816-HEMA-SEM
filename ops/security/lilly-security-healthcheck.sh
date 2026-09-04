@@ -5,7 +5,7 @@ failures=()
 pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures+=("$1"); }
 
-for service in nginx docker lilly-meetings fail2ban lilly-platform-backup.timer; do
+for service in nginx docker lilly-meetings fail2ban lilly-platform-backup.timer lilly-platform-restore-drill.timer; do
   if systemctl is-active --quiet "$service"; then pass "service:$service"; else fail "service:$service"; fi
 done
 
@@ -37,6 +37,17 @@ if [[ -n "$latest_manifest" ]] && /snap/node/current/bin/node -e '
   pass 'backup:encrypted-offsite-fresh'
 else
   fail 'backup:missing-stale-or-unverified'
+fi
+
+latest_restore_report=$(find /var/backups/lilly-platform/restore-drills -maxdepth 1 -name '*.json' -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+if [[ -n "$latest_restore_report" ]] && /snap/node/current/bin/node -e '
+  const fs=require("fs"); const report=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+  const age=Date.now()-Date.parse(report.finishedAt);
+  if(report.status!=="passed"||!Number.isFinite(age)||age>35*24*60*60*1000)process.exit(1);
+' "$latest_restore_report"; then
+  pass 'backup:isolated-restore-tested-within-35-days'
+else
+  fail 'backup:isolated-restore-test-missing-or-stale'
 fi
 
 disk_used=$(df --output=pcent / | tail -1 | tr -dc '0-9')

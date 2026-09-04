@@ -33,6 +33,7 @@
 - 前端：`/var/www/lilly-platform/current` → `releases/106ef37730ad6485`。
 - 文件服务新增 `/etc/lilly-meetings/supabase.env` 和 systemd drop-in，连接本机Auth；不得打印环境文件。
 - 每日03:45（上海时区，最多随机延迟3分钟）执行 `lilly-platform-backup.timer`，PostgreSQL、SQLite、附件、配置和前端一起加密备份至现有OSS。
+- 每月第一个星期日05:30执行 `lilly-platform-restore-drill.timer`：使用最新OSS回读密文，在无网络、无公网端口的临时PostgreSQL容器中完整解密恢复，同时检查SQLite、附件和配置；演练不连接、不停止、不写入生产数据库。每日安全巡检要求最近35天内至少有一次成功报告。
 - 备份目录 `/var/backups/lilly-platform`；每份 manifest 必须为 `encrypted-offsite-readback-verified` 才算异地回验成功。没有自动清理旧备份，应定期检查磁盘。
 - 切换后已实际执行 systemd 备份服务，Result=success、ExecMainStatus=0；备份 `2026-08-31T14-39-35-383Z-ibh3YH`，加密包1,573,281字节，OSS下载、密文校验、解密校验均通过。
 - AES-256-GCM 恢复密钥独立保存于服务器 `/opt/lilly-migration/backup-encryption.key`，以及用户本机 `/Users/carson/Documents/礼来平台恢复资料/139.196.97.236-backup-encryption.key`（0600）；密钥不进备份包、不进Git。
@@ -48,7 +49,7 @@
 - 已安装 Docker 29.1.3、Compose 2.40.3；没有升级已有系统包，也未重启现有业务服务。
 - 准备阶段 `nginx` 和 `lilly-meetings` 保持运行；切换时短暂停止文件服务取最终快照，切换后已恢复。现有业务服务仅监听本地 8787。
 - HTTPS 证书到期：北京时间 2026-09-03 20:28:42；Certbot 自动续期计时器已启用，仍需监控后续成功续期。
-- 现有文件备份任务最近执行成功，已发现本地备份清单；尚未做完整恢复演练，不能等同于备份完整性验证。
+- 2026-09-04 已使用最新OSS回读密文完成首次隔离恢复演练：PostgreSQL完整恢复、SQLite完整性、附件及配置检查均通过；此后由月度计时器持续执行，最近35天无成功报告会触发每日安全巡检失败。
 
 ## 源数据基线（迁移前复查，不是冻结快照）
 

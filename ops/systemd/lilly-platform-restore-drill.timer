@@ -1,0 +1,10 @@
+[Unit]
+Description=Monthly isolated restore drill for the Lilly platform
+
+[Timer]
+OnCalendar=Sun *-*-01..07 05:30:00 Asia/Shanghai
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

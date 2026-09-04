@@ -15,13 +15,18 @@
     <script src="assets/vendor/jszip.min.js" defer></script>
     <script src="assets/vendor/supabase.js" defer></script>
     <script>
-      window.APP_CONFIG = {
-        mode: "production",
-        supabaseUrl: "https://139.196.97.236/supabase",
-        supabaseAnonKey: "sb_publishable_MA_eCckkqSFZuH4ulZTMzw_K5vOaSHh",
-        eventSlug: "hema-sem-2026",
-        documentApiBase: "https://139.196.97.236",
-      };
+      (() => {
+        const productionOrigin = /^https?:$/.test(window.location.protocol)
+          ? window.location.origin
+          : "https://139.196.97.236";
+        window.APP_CONFIG = {
+          mode: "production",
+          supabaseUrl: `${productionOrigin}/supabase`,
+          supabaseAnonKey: "sb_publishable_MA_eCckkqSFZuH4ulZTMzw_K5vOaSHh",
+          eventSlug: "hema-sem-2026",
+          documentApiBase: productionOrigin,
+        };
+      })();
     </script>
     <script src="luggage-integration.js?v=20260903-luggage-labels-02" defer></script>
     <script src="travel-fields.js?v=20260902-explicit-transport-01" defer></script>

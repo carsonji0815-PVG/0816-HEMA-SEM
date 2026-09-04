@@ -9,13 +9,19 @@ for service in nginx docker lilly-meetings fail2ban lilly-platform-backup.timer;
   if systemctl is-active --quiet "$service"; then pass "service:$service"; else fail "service:$service"; fi
 done
 
-if curl --fail --silent --show-error --insecure --max-time 15 https://127.0.0.1/meeting/ -H 'Host: 139.196.97.236' >/dev/null; then
+canonical_host=139.196.97.236
+if [[ -s /etc/lilly-meetings/canonical-domain ]]; then
+  canonical_host=$(tr -d '[:space:]' </etc/lilly-meetings/canonical-domain)
+fi
+
+if curl --fail --silent --show-error --insecure --max-time 15 \
+  --resolve "${canonical_host}:443:127.0.0.1" "https://${canonical_host}/meeting/" >/dev/null; then
   pass 'https:portal'
 else
   fail 'https:portal'
 fi
 
-certificate=/etc/letsencrypt/live/139.196.97.236/fullchain.pem
+certificate=/etc/letsencrypt/live/${canonical_host}/fullchain.pem
 if [[ -r "$certificate" ]] && openssl x509 -checkend 129600 -noout -in "$certificate" >/dev/null; then
   pass 'certificate:more-than-36-hours'
 else

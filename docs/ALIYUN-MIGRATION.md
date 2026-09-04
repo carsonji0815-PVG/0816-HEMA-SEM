@@ -5,6 +5,7 @@
 2026-08-31 22:38（北京时间）：经用户确认可切换，正式前后端已切到原阿里云服务器。
 
 - 正式入口：<https://139.196.97.236/meeting/>。
+- 长期正式域名采用 `lilly-meeting.xiaohuatec.com`。现有 `meeting.xiaohuatec.com` 已承载其他系统，不得覆盖。DNS A 记录生效前继续使用 IP 入口；生效后运行 `ops/domain/activate-domain.sh`，IP 入口仅保留跳转。域名切换脚本会先验证 DNS 指向 `139.196.97.236`，验证失败不会修改生产配置。
 - API：`https://139.196.97.236/supabase`；原文件服务仍在同一主机根路径。
 - 原账号及密码不变，新域名需要重新登录。旧 Supabase 保留只读，不得解除写入冻结或直接切回。
 - 原 `staging` 目录已成为生产环境，存在 `PRODUCTION_ACTIVE` 标记；禁止运行恢复演练、密钥重新生成或合成测试数据脚本。

@@ -892,6 +892,7 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
 .luggage-control-panel .switch input:focus-visible + span {outline:3px solid #d52b1e66;outline-offset:3px}
 
 [data-page="luggage"],#luggageMount {overflow-anchor:none}
+.mfa-dialog{width:min(460px,calc(100vw - 28px))}.mfa-enrollment{display:grid;gap:12px;margin:0 0 18px}.mfa-qr-code{width:210px;height:210px;margin:0 auto;padding:10px;border:1px solid var(--line);border-radius:14px;background:#fff}.mfa-enrollment label{display:grid;gap:7px;font-size:10px;font-weight:800}.mfa-enrollment input{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;letter-spacing:.05em}.mfa-dialog .button-secondary{margin-top:0}
 /* Verification cues apply to individual fields, never to an entire attendee row. */
 .field-grid .travel-problem-field { background:#fff1ed; border-left:4px solid #d52b1e; padding:10px; border-radius:8px; color:#8b2017; }
 .field-grid .travel-problem-field input, .field-grid .travel-problem-field select { border:2px solid #d52b1e; background:#fffaf8; color:var(--ink,#302627); }

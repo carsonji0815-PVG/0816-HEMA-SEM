@@ -567,7 +567,7 @@
       await validateAdminAccessLink().catch(()=>{});
       const { data } = offlineLuggageSession ? {data:{session:null}} : await backend.auth.getSession();
       if (data.session) {
-        try{await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();await requirePasswordChange();}
+        try{await requireManagementMfa();await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();await requirePasswordChange();}
         catch(error){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=error.message;$("#loginDialog").showModal();}
       }
       else if (!offlineLuggageSession && !["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
@@ -668,9 +668,48 @@
       const email=String(form.elements.email.value||"").trim().toLowerCase();
       const { error } = await backend.auth.signInWithPassword({ email, password: form.elements.password.value });
       if (error) { $("#loginError").textContent = "邮箱或密码不正确"; button.disabled=false; return; }
-      try{$("#loginError").textContent="";await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();await requirePasswordChange();toast(state.activeProjectId?`登录成功 · ${signedInAccessLabel()}`:"登录成功，请先新建项目");}
+      try{$("#loginError").textContent="";await requireManagementMfa();await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();await requirePasswordChange();toast(state.activeProjectId?`登录成功 · ${signedInAccessLabel()}`:"登录成功，请先新建项目");}
       catch(accessError){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=accessError.message||"当前邮箱未开放管理系统权限";}
       finally{button.disabled=false;}
+    });
+  }
+
+  async function requireManagementMfa() {
+    const assurance=await backend.auth.mfa.getAuthenticatorAssuranceLevel();
+    if(assurance.error)throw assurance.error;
+    if(assurance.data?.currentLevel==="aal2")return;
+    const listed=await backend.auth.mfa.listFactors();
+    if(listed.error)throw listed.error;
+    let factor=listed.data?.totp?.[0]||null;
+    let enrollment=null;
+    if(!factor){
+      for(const stale of listed.data?.all||[])if(stale.factor_type==="totp"&&stale.status!=="verified")await backend.auth.mfa.unenroll({factorId:stale.id});
+      const enrolled=await backend.auth.mfa.enroll({factorType:"totp",friendlyName:"礼来会议管理平台"});
+      if(enrolled.error)throw enrolled.error;
+      enrollment=enrolled.data;factor={id:enrollment.id};
+    }
+    const dialog=$("#mfaDialog"),form=$("#mfaForm"),enrollmentPanel=$("#mfaEnrollment");
+    $("#mfaError").textContent="";form.reset();
+    enrollmentPanel.classList.toggle("is-hidden",!enrollment);
+    $("#mfaDialogHint").textContent=enrollment?"首次登录需要先绑定身份验证器":"请输入身份验证器中的动态验证码";
+    if(enrollment){$("#mfaQrCode").src=enrollment.totp.qr_code;$("#mfaSecret").value=enrollment.totp.secret||"";}
+    dialog.showModal();
+    return await new Promise((resolve,reject)=>{
+      dialog.oncancel=event=>event.preventDefault();
+      $("#cancelMfa").onclick=async()=>{await backend.auth.signOut();dialog.close();reject(new Error("已退出登录"));};
+      form.onsubmit=async event=>{
+        event.preventDefault();const button=form.querySelector('button[type="submit"]'),code=String(form.elements.code.value||"").trim();
+        if(!/^\d{6}$/.test(code))return $("#mfaError").textContent="请输入6位动态验证码";
+        button.disabled=true;$("#mfaError").textContent="";
+        try{
+          const verified=await backend.auth.mfa.challengeAndVerify({factorId:factor.id,code});
+          if(verified.error)throw verified.error;
+          const next=await backend.auth.mfa.getAuthenticatorAssuranceLevel();
+          if(next.error||next.data?.currentLevel!=="aal2")throw next.error||new Error("双重验证状态未生效");
+          dialog.close();resolve();
+        }catch(error){$("#mfaError").textContent="验证码无效或已过期，请输入验证器当前显示的号码";}
+        finally{button.disabled=false;}
+      };
     });
   }
 

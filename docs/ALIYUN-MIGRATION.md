@@ -38,6 +38,7 @@
 - 主机启用 auditd，审计SSH、Nginx、systemd服务、应用密钥、数据库编排及账号权限配置的读取或修改；审计日志轮转上限约500 MiB。IPv4重定向、源路由、反向路径校验、core dump和内核地址信息已按Docker兼容模式加固，并纳入每日安全巡检。
 - Docker启用 `live-restore`，守护进程维护时业务容器继续运行；全局容器日志限制为单文件10 MiB、保留3份，各生产容器仍保留相同的Compose级限制。安全巡检要求6个核心容器全部运行且live-restore未被关闭。
 - systemd安全日志和服务日志保留90天（上限1 GiB），Nginx访问日志按日压缩保留90份，Fail2ban按周压缩保留26份；应用操作审计仍在数据库长期留存并进入每日加密异地备份。auditd、sysctl、Docker、日志及恢复演练配置也包含在灾备包内。
+- 管理端登录强制使用TOTP双重验证：首次登录扫码绑定，后续密码验证后必须达到AAL2才可登记管理会话；数据库 `is_allowed_staff()` 同步校验AAL2，不能只绕过前端。SMTP使用 `/usr/local/sbin/lilly-configure-smtp` 交互录入，授权码不进入命令历史、代码库或日志。
 - 备份目录 `/var/backups/lilly-platform`；每份 manifest 必须为 `encrypted-offsite-readback-verified` 才算异地回验成功。本机备份默认保留35天且不得低于30天，OSS加密异地副本不由该任务自动删除；每日巡检继续监控磁盘使用率。
 - 切换后已实际执行 systemd 备份服务，Result=success、ExecMainStatus=0；备份 `2026-08-31T14-39-35-383Z-ibh3YH`，加密包1,573,281字节，OSS下载、密文校验、解密校验均通过。
 - AES-256-GCM 恢复密钥独立保存于服务器 `/opt/lilly-migration/backup-encryption.key`，以及用户本机 `/Users/carson/Documents/礼来平台恢复资料/139.196.97.236-backup-encryption.key`（0600）；密钥不进备份包、不进Git。

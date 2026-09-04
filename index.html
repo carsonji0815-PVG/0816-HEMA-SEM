@@ -475,6 +475,20 @@
       </form>
       <p class="login-help">管理端仅向超级管理员预设的会务负责人邮箱开放；参会者无需管理端登录。</p>
     </dialog>
+    <dialog id="mfaDialog" class="login-dialog mfa-dialog">
+      <div class="login-brand"><span class="brand-mark">盾</span><div><strong>管理端双重验证</strong><small id="mfaDialogHint">使用身份验证器完成登录</small></div></div>
+      <div id="mfaEnrollment" class="mfa-enrollment is-hidden">
+        <p class="form-hint">首次使用请用 Microsoft Authenticator、Google Authenticator 或其他兼容TOTP的验证器扫描二维码。</p>
+        <img id="mfaQrCode" class="mfa-qr-code" alt="TOTP绑定二维码" />
+        <label>无法扫码时手动输入密钥<input id="mfaSecret" readonly autocomplete="off" /></label>
+      </div>
+      <form id="mfaForm" class="stack-form">
+        <label>6位动态验证码<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required /></label>
+        <p id="mfaError" class="login-error"></p>
+        <button class="button button-primary button-block" type="submit">验证并进入管理端</button>
+        <button class="button button-secondary button-block" id="cancelMfa" type="button">退出登录</button>
+      </form>
+    </dialog>
     <dialog id="staffAccountDialog" class="login-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">会</span><div><strong>创建内部会务成员登录账号</strong><small>仅用于季亮亮管理员及6位内部会务成员</small></div></div><form id="staffAccountForm" class="stack-form"><label>姓名<input name="displayName" readonly /></label><label>工作邮箱<input name="email" type="email" readonly /></label><label>临时密码<input name="password" type="password" autocomplete="new-password" minlength="12" required placeholder="至少12位，含大小写、数字和符号" /></label><label>确认临时密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></label><label class="check-row"><input name="assignProject" type="checkbox" checked /> 同时委任为「<span id="staffAccountProjectName">当前项目</span>」会务负责人</label><p class="form-hint">系统不会通过聊天或日志保存密码。请通过公司认可的安全渠道交给成员；成员首次登录后必须修改。</p><p id="staffAccountError" class="login-error"></p><button class="button button-primary button-block" type="submit">创建内部会务账号</button></form></dialog>
     <dialog id="clientAccountDialog" class="login-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">客</span><div><strong>创建客户会议负责人账号</strong><small id="clientAccountProjectName">仅授权访问当前会议项目</small></div></div><form id="clientAccountForm" class="stack-form"><label>客户负责人姓名<input name="displayName" maxlength="80" required /></label><label>客户工作邮箱<input name="email" type="email" autocomplete="off" maxlength="254" required /></label><label>临时密码<input name="password" type="password" autocomplete="new-password" minlength="12" required placeholder="至少12位，含大小写、数字和符号" /></label><label>确认临时密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></label><p class="form-hint">客户账号只进入当前项目，默认按项目权限查看；不会加入内部会务团队白名单。</p><p id="clientAccountError" class="login-error"></p><button class="button button-primary button-block" type="submit">创建客户会议负责人账号</button></form></dialog>
     <dialog id="changePasswordDialog" class="login-dialog"><div class="login-brand"><span class="brand-mark">密</span><div><strong>首次登录，请修改密码</strong><small>完成密码更新后才能继续使用管理端</small></div></div><form id="changePasswordForm" class="stack-form"><label>新密码<input name="password" type="password" autocomplete="new-password" minlength="12" required placeholder="至少12位，含大小写、数字和符号" /></label><label>确认新密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></label><p id="changePasswordError" class="login-error"></p><button class="button button-primary button-block" type="submit">保存新密码并继续</button></form></dialog>

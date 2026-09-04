@@ -1065,11 +1065,6 @@
   }
 
   function renderRegistrationOwner() {
-    const select = $("#registrationOwner");
-    const sales = state.users.filter(user => user.role === "sales");
-    const options = currentUser().role === "sales" ? [currentUser()] : sales.length ? sales : [currentUser()];
-    select.innerHTML = options.map(user => `<option value="${user.id}">${escapeHtml(user.name)} · ${escapeHtml(user.label)}</option>`).join("");
-    select.value = options.some(u => u.id === select.value) ? select.value : options[0]?.id;
     $("#adminTransferCollectionSection")?.classList.toggle("is-hidden",!state.settings.transferCollectionEnabled);
     applyMeetingTypeFields($("#registrationForm"),state.settings);
   }
@@ -1894,7 +1889,7 @@
 
   function submitRegistration(event) {
     event.preventDefault(); if(!canEditAttendeeData())return toast("当前账号仅有查看权限，请由原始填报人修改或开启管理员编辑权限","error");if (state.locks.master) return toast("全名单已锁定，不能新增报名", "error");
-    const data = Object.fromEntries(new FormData(event.currentTarget)); const customFields={};Object.keys(data).filter(key=>key.startsWith("custom__")).forEach(key=>{customFields[key.slice(8)]=data[key];delete data[key];});TravelFields.applyLegacy(data); data.arriveTransportType=data.departTransportType;data.returnArriveTransportType=data.returnDepartTransportType;data.phone = normalizePhone(data.phone); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");
+    const data = Object.fromEntries(new FormData(event.currentTarget)); const customFields={};Object.keys(data).filter(key=>key.startsWith("custom__")).forEach(key=>{customFields[key.slice(8)]=data[key];delete data[key];});TravelFields.applyLegacy(data); data.arriveTransportType=data.departTransportType;data.returnArriveTransportType=data.returnDepartTransportType;data.phone = normalizePhone(data.phone);data.contactName=String(data.contactName||"").trim();data.contactMobile=normalizePhone(data.contactMobile); if (data.phone.length !== 11) return toast("请输入正确的 11 位手机号", "error");if(!isInternalMeeting()&&(!data.contactName||data.contactMobile.length!==11))return toast("请填写销售联系人姓名和正确的11位联系电话","error");
     if(isInternalMeeting()){data.attendeeType="内部员工";["city","hospital","department","title","hcpId","mslContact"].forEach(key=>data[key]="");}
     if (state.attendees.some(a => a.phone === data.phone)) return toast("该手机号已存在报名记录", "error");
     data.id = backend ? crypto.randomUUID() : `a-${Date.now()}`; data.ownerId = currentUser().role === "sales" ? currentUser().id : (data.ownerId || state.users.find(u => u.role === "sales")?.id || currentUser().id); refreshTravelApprovals(data); data.privacyLetterStatus="pending"; data.ticketStatus="pending"; data.customFields={...customFields,_journeySegments:collectExtraJourneys(event.currentTarget)}; data.createdAt = new Date().toISOString(); data.transport = { pickup: { driver: "待分配", phone: "—", vehicle: "待分配", time:"", point:"", terminal:transportTerminal(data,"pickup") }, dropoff: { driver: "待分配", phone: "—", vehicle: "待分配", time: recommendedDropoffTime(data), point:"",terminal:transportTerminal(data,"dropoff"),timeSource:recommendedDropoffTime(data)?"rule":"" } };
@@ -1954,7 +1949,7 @@
     const aliases = { attendeeType:"attendeeType", name:"name", city:"city", hospital:"hospital", department:"department", title:"title", venue:"venue", sex:"sex", idNumber:"idNumber", phone:"phone", hcpId:"hcpId", accommodation:"accommodation", flight:"flight", region:"region", contactName:"contactName", contactMobile:"contactMobile", mslContact:"mslContact", remarks:"remarks", outNo:"outNo", outDeparture:"outDeparture", outArrival:"outArrival", returnDepartDate:"returnDepartDate", returnDepartCity:"returnDepartCity", returnDepartTransportType:"returnDepartTransportType", returnDepartStation:"returnDepartStation", returnArriveDate:"returnArriveDate", returnArriveCity:"returnArriveCity", returnArriveTransportType:"returnArriveTransportType", returnArriveStation:"returnArriveStation", returnDate:"returnDate", returnFrom:"returnFrom", returnTo:"returnTo", returnNo:"returnNo", returnDeparture:"returnDeparture", returnArrival:"returnArrival" };
     Object.entries(aliases).forEach(([field,key]) => { if (form.elements[field]) form.elements[field].value = attendee?.[key] ?? (field === "attendeeType" ? "HCP" : ""); });
     ["outboundTransferOrigin","outboundTransferTime","outboundTransferNotes","returnTransferDestination","returnTransferTime","returnTransferNotes"].forEach(field=>{if(form.elements[field])form.elements[field].value=attendee?.[field]||"";});
-    form.elements.region.value = publicAuthSession.region; form.elements.contactName.value = publicAuthSession.name; form.elements.contactMobile.value = attendee?.contactMobile||"";
+    form.elements.region.value = publicAuthSession.region; form.elements.contactName.value = attendee?.contactName||""; form.elements.contactMobile.value = attendee?.contactMobile||"";
     applyPublicTemplate(publicProjectConfig?.registrationTemplate, publicProjectConfig?.templateName, attendee?.customFields||{});
     applyPublicFieldConfig(publicProjectConfig?.fieldConfig || {});
     ["businessUnit","internalPosition","employeeNo","clothingSize"].forEach(key=>{const input=form.elements[`custom__${key}`];if(input)input.value=attendee?.customFields?.[key]||"";});
@@ -2030,7 +2025,7 @@
     const form = event.currentTarget; const result = $("#publicFullRegistrationResult"); const submit = form.querySelector('button[type="submit"]');
     const details = Object.fromEntries(new FormData(form)); TravelFields.applyLegacy(details);details.arriveTransportType=details.departTransportType;details.returnArriveTransportType=details.returnDepartTransportType;details.journeySegments=collectExtraJourneys(form);
     details.customFields={}; Object.keys(details).filter(key=>key.startsWith("custom__")).forEach(key=>{ details.customFields[key.slice(8)]=details[key]; delete details[key]; });
-    details.phone = normalizePhone(details.phone); details.region=publicAuthSession.region; details.contactName=publicAuthSession.name;details.contactMobile=normalizePhone(details.contactMobile);
+    details.phone = normalizePhone(details.phone); details.region=publicAuthSession.region; details.contactName=String(details.contactName||"").trim();details.contactMobile=normalizePhone(details.contactMobile);
     if (details.phone.length !== 11) { result.innerHTML = `<div class="lookup-error">请输入正确的参会人员手机号。</div>`; return; }
     submit.disabled = true; submit.textContent = "正在保存…";
     try {
@@ -2374,8 +2369,8 @@
     const segmentLabels={normal:"无需审批",pending:"待审批",approved:"已审批",rejected:"已退回"};
     const rows=visibleAttendees().map((a,i)=>[...exportColumns.map(column=>{
       if(column.key==="sequence") return i+1;
-      if(column.key==="contactName") return a.contactName||userName(a.ownerId);
-      if(column.key==="contactMobile") return a.contactMobile||state.users.find(u=>u.id===a.ownerId)?.phone||"";
+      if(column.key==="contactName") return a.contactName||"";
+      if(column.key==="contactMobile") return a.contactMobile||"";
       if(/TransportType$/.test(column.key))return TravelFields.TYPES[a[column.key]]||a[column.key]||"";
       if(/Station$/.test(column.key))return TravelFields.officialStation(a[column.key],a[column.key.replace("Station","TransportType")],stationDictionary())||"";
       return column.custom ? a.customFields?.[column.key]||"" : a[column.key]||"";

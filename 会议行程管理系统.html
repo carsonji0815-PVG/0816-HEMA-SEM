@@ -29,7 +29,7 @@
     <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-panel.js?v=20260903-verification-queue-01" defer></script>
     <script src="rooming-engine.js?v=20260903-room-counting-01" defer></script>
-    <script src="app.js?v=20260904-template-optional-01" defer></script>
+    <script src="app.js?v=20260904-template-optional-sales-contact-01" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -106,8 +106,8 @@
                   <label data-template-field="accommodation" data-config-field="accommodation">住宿安排<select name="accommodation"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
                   <label data-template-field="flight" data-config-field="flight">是否航空<select name="flight"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
                   <label data-template-field="region">大区<input name="region" readonly required /></label>
-                  <label data-template-field="contactName" data-external-field>销售联系人姓名<input name="contactName" readonly required /></label>
-                  <label data-template-field="contactMobile" data-external-field>销售联系人手机<input name="contactMobile" inputmode="numeric" maxlength="11" required /></label>
+                  <label data-template-field="contactName" data-external-field>销售联系人姓名<input name="contactName" autocomplete="off" required /></label>
+                  <label data-template-field="contactMobile" data-external-field>销售联系人联系电话<input name="contactMobile" inputmode="numeric" maxlength="11" autocomplete="tel" required /></label>
                   <label data-template-field="mslContact" data-config-field="mslContact" data-external-field>MSL 医学部联系人<input name="mslContact" /></label>
                   <label class="is-hidden" data-clothing-field>衣服尺寸<input name="custom__clothingSize" placeholder="例如：M / XL" /></label>
                   <label class="span-2" data-template-field="remarks" data-config-field="remarks">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>
@@ -266,7 +266,8 @@
                     <label>住宿安排<select name="accommodation"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
                     <label>是否航空<select name="flight"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
                     <label>大区<input name="region" /></label>
-                    <label data-external-field>销售联系人<select name="ownerId" id="registrationOwner"></select></label>
+                    <label data-external-field>销售联系人姓名 *<input name="contactName" autocomplete="off" required /></label>
+                    <label data-external-field>销售联系人联系电话 *<input name="contactMobile" inputmode="numeric" maxlength="11" autocomplete="tel" required /></label>
                     <label data-external-field>MSL 医学部联系人<input name="mslContact" /></label>
                     <label class="is-hidden" data-clothing-field>衣服尺寸<input name="custom__clothingSize" placeholder="例如：M / XL" /></label>
                     <label class="span-2">备注<textarea name="remarks" rows="2" placeholder="本地客户 / VIP 异地用车备注"></textarea></label>

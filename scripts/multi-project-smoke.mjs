@@ -19,5 +19,16 @@ await page.waitForFunction(() => [...document.querySelectorAll("#projectSelect o
 if (!await page.locator("#projectGrid").innerText().then(text=>text.includes("新会议项目"))) throw new Error("New project card missing");
 const qrLink=await page.locator(".qr-direct-link").getAttribute("href");
 if (!qrLink?.includes("event=meeting-ht-new-2026")) throw new Error("Public project link has no auto-generated event slug");
-console.log(JSON.stringify({projectSelector:"pass",createProject:"pass",projectPublicUrl:"pass",errors},null,2));
+const activeSlug=new URL(qrLink).searchParams.get("event");
+if (!activeSlug?.startsWith("meeting-ht-new-2026")) throw new Error("Created project slug is invalid");
+if (new URL(page.url()).searchParams.get("event")!==activeSlug) throw new Error(`Active project was not written to the management URL: ${page.url()}`);
+const activePublicLinks=await page.locator("[data-current-public-link]").evaluateAll(links=>links.map(link=>link.href));
+if (!activePublicLinks.length||activePublicLinks.some(link=>new URL(link).searchParams.get("event")!==activeSlug||!link.endsWith("#portal"))) throw new Error("Current-project portal links are inconsistent");
+const projectPortalLinks=await page.locator('#projectGrid a', {hasText:"打开报名界面"}).evaluateAll(links=>links.map(link=>link.href));
+if (projectPortalLinks.length<2||!projectPortalLinks.some(link=>link.includes("event=hema-sem-2026"))||!projectPortalLinks.some(link=>new URL(link).searchParams.get("event")===activeSlug)) throw new Error("Project cards do not link to their own registration portals");
+await page.selectOption("#projectSelect","demo-hema");
+await page.waitForFunction(()=>new URL(location.href).searchParams.get("event")==="hema-sem-2026");
+const switchedLink=await page.locator(".qr-direct-link").getAttribute("href");
+if (!switchedLink?.includes("event=hema-sem-2026")) throw new Error("Portal link did not follow the selected project");
+console.log(JSON.stringify({projectSelector:"pass",createProject:"pass",projectPublicUrl:"pass",projectQuerySync:"pass",projectCardPortals:"pass",errors},null,2));
 await browser.close(); if(errors.length)process.exitCode=1;

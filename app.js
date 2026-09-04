@@ -200,13 +200,19 @@
     return columns;
   }
   const currentEventSlug = () => new URLSearchParams(location.search).get("event") || window.APP_CONFIG?.eventSlug || state.settings.slug || "";
-  const publicProjectUrl = (hash = "portal") => {
-    const url = new URL(location.href);
+  const projectPublicUrl = (project=currentProject(),hash="portal") => {
+    const url = location.protocol==="file:" ? new URL("https://139.196.97.236/meeting/") : new URL(location.href);
     url.searchParams.delete("preview");
-    url.searchParams.set("event", currentProject().slug || state.settings.slug || currentEventSlug());
+    url.searchParams.set("event", project?.slug || state.settings.slug || currentEventSlug());
     url.hash = hash;
     return url.toString();
   };
+  const publicProjectUrl = (hash = "portal") => projectPublicUrl(currentProject(),hash);
+  function syncActiveProjectQuery(){
+    const slug=currentProject().slug||state.settings.slug;if(!slug)return;
+    const url=new URL(location.href);if(url.searchParams.get("event")!==slug){url.searchParams.set("event",slug);history.replaceState(null,"",url);}
+    publicProjectConfig=null;publicProjectLoadedAt=0;publicAuthSession=null;publicRegistrantAttendees=[];publicEditingAttendeeId=null;
+  }
   const projectVisual = project => {
     const icons = ["✦","◈","✚","◎","⌁","◇","✺","⬡"];
     const colors = ["#D52B1E","#7b4f70","#df6555","#b07a2b","#397a73","#a8435b","#526d88","#667080"];
@@ -623,7 +629,7 @@
         state.settings = { ...state.settings, luggageEnabled:!!project.luggageEnabled, luggageUsed:!!project.luggageUsed, eventName:project.name, slug:project.slug, activityType:project.activityType||"external", identifier:project.identifier||project.slug, activityOwner:project.activityOwner||"", activityDate:project.activityDate||project.startDate||"", clientName:project.clientName||"", startDate:project.startDate||"", endDate:project.endDate||"", brandColor:project.brandColor||"#5267d9" };
         persistStateLocally();
       }
-      populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast(`已切换至${state.settings.eventName}`);
+      syncActiveProjectQuery();populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast(`已切换至${state.settings.eventName}`);
     } catch (error) { toast(`项目切换失败：${error.message}`, "error"); populateProjects(); }
   }
 
@@ -649,6 +655,7 @@
         state.activeProjectId = projectId; state.settings = { ...initialState().settings, ...(source ? state.settings : {}), eventName:name, slug, activityType, identifier, activityOwner, activityDate, luggageEnabled:false, luggageUsed:false };
         state.attendees = []; state.notifications = []; state.locks = {master:false,columns:[],rows:[]}; persistStateLocally();
       }
+      syncActiveProjectQuery();
       if (backend) await syncDocumentProject().catch(error => toast(`项目建档初始化失败：${error.message}`, "error"));
       await loadProjectArchiveStates(); form.reset(); $("#projectDialog").close(); populateUsers(); populateProjects(); renderAll(); location.hash = editId?"projects":"settings"; toast(editId?"项目资料已更新":"项目已创建，可继续配置会议或上传可选建档文件");
     } catch (error) { $("#projectFormError").textContent = error.message.includes("duplicate") ? "项目编号已存在，请更换" : error.message; }
@@ -764,6 +771,7 @@
       const signedInUser=state.users.find(user=>user.id===authData.user.id);signedInUser.role=accountRole;signedInUser.label=signedInAccessLabel();
     }
     persistStateLocally();
+    syncActiveProjectQuery();
     await loadProjectArchiveStates();
     await loadStaffDirectory();
     await loadProjectClientAccounts();
@@ -981,7 +989,7 @@
   function renderProjects() {
     $("#projectGrid").innerHTML = state.projects.map(project => {
       const active = project.id === state.activeProjectId; const role = project.ownerUserId===state.currentUserId?"我的项目":isSystemAdmin()?"管理员可管理":"项目负责人"; const visual=projectVisual(project); const archive=projectArchiveStates[project.id]||{files:[]};
-      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前会议" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><div class="project-archive-state ready"><b>${project.registrationOpen?"报名开关已开启":"报名开关已关闭"}</b><span>项目建档文件为可选附件，不影响报名及后续业务流程${archive.fileCount?` · 已归档 ${archive.fileCount} 个文件`:""}</span></div><label class="project-registration-switch"><span><strong>报名开放</strong><small>${project.templateImported?"使用当前报名模板":"无需模板，使用系统默认报名字段"}</small></span><span class="switch"><input type="checkbox" data-project-registration-open="${project.id}" ${project.registrationOpen?"checked":""}/><span></span></span></label><div class="project-actions"><button class="button button-primary" data-project-settings="${project.id}">会议详情 / 设置</button><button class="button button-secondary" data-project-documents="${project.id}">项目建档文件</button><button class="text-button" data-edit-project="${project.id}">编辑基础信息</button><button class="text-button danger" data-delete-project="${project.id}">删除</button><button class="text-button" data-copy-project="${project.id}">复制</button><button class="text-button" data-copy-project-link="${project.id}">复制报名入口</button></div></article>`;
+      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前会议" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><div class="project-archive-state ready"><b>${project.registrationOpen?"报名开关已开启":"报名开关已关闭"}</b><span>项目建档文件为可选附件，不影响报名及后续业务流程${archive.fileCount?` · 已归档 ${archive.fileCount} 个文件`:""}</span></div><label class="project-registration-switch"><span><strong>报名开放</strong><small>${project.templateImported?"使用当前报名模板":"无需模板，使用系统默认报名字段"}</small></span><span class="switch"><input type="checkbox" data-project-registration-open="${project.id}" ${project.registrationOpen?"checked":""}/><span></span></span></label><div class="project-actions"><button class="button button-primary" data-project-settings="${project.id}">会议详情 / 设置</button><a class="button button-secondary" href="${escapeHtml(projectPublicUrl(project))}" target="_blank" rel="noopener">打开报名界面 ↗</a><button class="button button-secondary" data-project-documents="${project.id}">项目建档文件</button><button class="text-button" data-edit-project="${project.id}">编辑基础信息</button><button class="text-button danger" data-delete-project="${project.id}">删除</button><button class="text-button" data-copy-project="${project.id}">复制</button><button class="text-button" data-copy-project-link="${project.id}">复制报名入口</button></div></article>`;
     }).join("");
     $$('[data-switch-project]').forEach(button => button.onclick = () => switchProject(button.dataset.switchProject));
     $$('[data-project-settings]').forEach(button=>button.onclick=async()=>{if(button.dataset.projectSettings!==state.activeProjectId)await switchProject(button.dataset.projectSettings);location.hash="settings";});
@@ -989,7 +997,7 @@
     $$('[data-edit-project]').forEach(button=>button.onclick=()=>openProjectDialog(state.projects.find(item=>item.id===button.dataset.editProject),"edit"));
     $$('[data-delete-project]').forEach(button=>button.onclick=()=>deleteProject(button.dataset.deleteProject));
     $$('[data-copy-project]').forEach(button => button.onclick = () => openProjectDialog(state.projects.find(item=>item.id===button.dataset.copyProject),"copy"));
-    $$('[data-copy-project-link]').forEach(button => button.onclick = () => { const project=state.projects.find(item=>item.id===button.dataset.copyProjectLink); const url=new URL(location.href); url.searchParams.set("event",project.slug); url.hash="portal"; navigator.clipboard?.writeText(url.toString()).then(()=>toast("项目入口已复制")).catch(()=>toast(url.toString())); });
+    $$('[data-copy-project-link]').forEach(button => button.onclick = () => { const project=state.projects.find(item=>item.id===button.dataset.copyProjectLink); const url=projectPublicUrl(project); navigator.clipboard?.writeText(url).then(()=>toast("项目入口已复制")).catch(()=>toast(url)); });
     $$('[data-project-registration-open]').forEach(input=>input.onchange=()=>toggleProjectRegistration(input.dataset.projectRegistrationOpen,input.checked,input));
   }
 
@@ -2211,7 +2219,7 @@
   }
 
   function copyRegistrationLink() { const url = publicProjectUrl(); navigator.clipboard?.writeText(url).then(() => toast("参会服务链接已复制")).catch(() => toast(url)); }
-  function renderQr() { const box = $("#qrCanvas"); if (!box) return; const url = publicProjectUrl(); box.innerHTML = ""; if (window.QRCode) new QRCode(box, { text:url, width:256, height:256, colorDark:"#000000", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.M }); else box.innerHTML = `<button class="text-button" type="button">复制参会服务链接</button>`; box.querySelector("button")?.addEventListener("click",copyRegistrationLink); const direct=$(".qr-direct-link"); if (direct) direct.href=url; }
+  function renderQr() { const box = $("#qrCanvas"); if (!box) return; const url = publicProjectUrl(); box.innerHTML = ""; if (window.QRCode) new QRCode(box, { text:url, width:256, height:256, colorDark:"#000000", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.M }); else box.innerHTML = `<button class="text-button" type="button">复制参会服务链接</button>`; box.querySelector("button")?.addEventListener("click",copyRegistrationLink); $$("[data-current-public-link]").forEach(link=>link.href=url); }
   function downloadQr() {
     const source = $("#qrCanvas canvas") || $("#qrCanvas img");
     if (!source) return copyRegistrationLink();

@@ -198,7 +198,7 @@
           <div class="nav-group system-nav-group is-hidden" id="systemSettingsNav"><p>系统管理</p><a href="#system" data-route="system"><span>⚙</span>系统设置</a></div>
         </nav>
         <div class="sidebar-footer">
-          <a href="#lookup"><span>↗</span> 打开参会者查询端</a>
+          <a href="#portal" data-current-public-link target="_blank" rel="noopener"><span>↗</span> 打开当前项目报名界面</a>
           <div class="demo-badge">演示数据 · 浏览器本地保存</div>
         </div>
       </aside>
@@ -225,7 +225,7 @@
           <section class="page" data-page="dashboard">
             <div class="page-heading heading-with-action">
               <div><span class="eyebrow">MEETING OPERATIONS</span><h1><span id="greetingText">您好</span>，<span id="greetingName">林悦</span></h1><p>这里是 HEMA SEM 的最新报名与行程动态。</p></div>
-              <div class="heading-actions"><button class="button button-secondary" id="copyRegistrationLink">复制报名链接</button><a class="button button-primary" href="#registration">＋ 新增报名</a></div>
+              <div class="heading-actions"><a class="button button-secondary" href="#portal" data-current-public-link target="_blank" rel="noopener">打开报名界面 ↗</a><button class="button button-secondary" id="copyRegistrationLink">复制报名链接</button><a class="button button-primary" href="#registration">＋ 后台新增报名</a></div>
             </div>
             <div class="metric-grid" id="metricGrid"></div>
             <div class="dashboard-grid">
@@ -241,7 +241,7 @@
                 <div id="qrCanvas" aria-label="报名二维码"></div>
                 <p>销售扫码后自动关联本人名下</p>
                 <button class="text-button" id="downloadQr">下载二维码</button>
-                <a class="text-link qr-direct-link" href="#portal" target="_blank" rel="noopener">扫码无反应？点此打开参会服务</a>
+                <a class="text-link qr-direct-link" data-current-public-link href="#portal" target="_blank" rel="noopener">扫码无反应？打开当前项目报名界面</a>
               </article>
               <article class="panel span-8">
                 <div class="panel-heading"><div><span class="kicker">ATTENTION</span><h2>需要处理</h2></div><a href="#approvals">进入审批 →</a></div>
@@ -352,7 +352,7 @@
           </section>
 
           <section class="page" data-page="transport">
-            <div class="page-heading heading-with-action"><div><span class="eyebrow">GROUND TRANSPORT</span><h1>接送机 / 送站管理</h1><p>接送场站取自参会人的实际行程；工作人员安排可批量处理，独立司机逐人维护。</p></div><div class="heading-actions"><button class="button button-secondary auto-arrange-button" id="autoArrangeTransport">⚡ 生成参考安排</button><button class="button button-secondary batch-pickup-button" id="newPickupBatch">＋ 批量工作人员接机</button><button class="button button-primary" id="newDropoffBatch">＋ 批量工作人员送机</button><button class="button button-secondary" id="exportTransportPlan">导出接送表</button><a class="button button-secondary" href="#lookup">预览参会服务</a></div></div>
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">GROUND TRANSPORT</span><h1>接送机 / 送站管理</h1><p>接送场站取自参会人的实际行程；工作人员安排可批量处理，独立司机逐人维护。</p></div><div class="heading-actions"><button class="button button-secondary auto-arrange-button" id="autoArrangeTransport">⚡ 生成参考安排</button><button class="button button-secondary batch-pickup-button" id="newPickupBatch">＋ 批量工作人员接机</button><button class="button button-primary" id="newDropoffBatch">＋ 批量工作人员送机</button><button class="button button-secondary" id="exportTransportPlan">导出接送表</button><a class="button button-secondary" href="#portal" data-current-public-link target="_blank" rel="noopener">打开当前项目报名界面 ↗</a></div></div>
             <div class="transport-batch-list" id="transportBatchList"></div>
             <div class="panel table-panel"><div class="table-toolbar"><div class="segmented"><button class="active" data-transport-filter="all">全部</button><button data-transport-filter="pickup">接机</button><button data-transport-filter="dropoff">送机</button></div><div class="search-box">⌕ <input id="transportSearch" placeholder="搜索姓名、航班或批次" /></div></div><div class="transport-grid" id="transportGrid"></div></div>
           </section>

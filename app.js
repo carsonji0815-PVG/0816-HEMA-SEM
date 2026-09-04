@@ -161,6 +161,7 @@
   const escapeHtml = (value = "") => String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const normalizePhone = value => String(value || "").replace(/\D/g, "").slice(-11);
   const maskPhone = value => {const phone=normalizePhone(value);return phone.length===11?`${phone.slice(0,3)}****${phone.slice(-4)}`:String(value||"");};
+  const maskIdentifier = value => {const text=String(value||"").trim();return text.length>7?`${text.slice(0,3)}${"*".repeat(Math.min(12,text.length-7))}${text.slice(-4)}`:text?`${text.slice(0,1)}***${text.slice(-1)}`:"";};
   const normalizeVenueLabel = value => String(value || "").trim().replace(/会场$/u, "").trim();
   const dbDate = value => /^20\d{2}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(String(value||"")) ? value : null;
   const dbTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||"")) ? value : null;
@@ -214,6 +215,13 @@
   };
 
   function loadState() {
+    // Production data is authoritative in PostgreSQL.  Never hydrate a full
+    // attendee roster from browser storage: shared or lost workstations must
+    // not retain names, phone numbers, ID documents or travel details.
+    if (window.APP_CONFIG?.mode === "production") {
+      localStorage.removeItem(STORAGE_KEY);
+      return initialState();
+    }
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
       if (!saved?.attendees) { const fresh=initialState();fresh.attendees=fresh.attendees.map(item=>TravelFields.applyLegacy(item));return fresh; }
@@ -221,8 +229,15 @@
       return { ...defaults, ...saved, attendees:saved.attendees.map(item=>TravelFields.applyLegacy({...item,privacyLetterStatus:normalizePrivacyStatus(item.privacyLetterStatus)})), settings:{...defaults.settings,...saved.settings}, projects:saved.projects?.length ? saved.projects : defaults.projects, activeProjectId:saved.activeProjectId || defaults.activeProjectId };
     } catch { return initialState(); }
   }
-  function saveState() {
+  function persistStateLocally() {
+    if (window.APP_CONFIG?.mode === "production") {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+  function saveState() {
+    persistStateLocally();
     if (backend) {
       clearTimeout(syncTimer);
       syncTimer = setTimeout(() => syncBackend().catch(error => toast(`云端保存失败：${error.message}`, "error")), 250);
@@ -527,7 +542,7 @@
     luggageIntegration = window.createJourneyLuggage({
       current:luggageContext, canManage, isProduction:()=>window.APP_CONFIG?.mode === 'production', backend:()=>backend,
       authenticated:()=>staffAccess.allowed === true && !!backendMeetingId, attendees:()=>state.attendees, toast,
-      setEnabled(enabled) { state.settings.luggageEnabled=enabled; state.settings.luggageUsed=state.settings.luggageUsed||enabled; const project=currentProject(); if(project){project.luggageEnabled=enabled;project.luggageUsed=state.settings.luggageUsed;} localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); renderAll(); },
+      setEnabled(enabled) { state.settings.luggageEnabled=enabled; state.settings.luggageUsed=state.settings.luggageUsed||enabled; const project=currentProject(); if(project){project.luggageEnabled=enabled;project.luggageUsed=state.settings.luggageUsed;} persistStateLocally(); renderAll(); },
       markUsed() {state.settings.luggageUsed=true;const project=currentProject();if(project)project.luggageUsed=true;},
     });
     bindLogin();
@@ -606,7 +621,7 @@
         if (!project) return;
         state.activeProjectId = projectId;
         state.settings = { ...state.settings, luggageEnabled:!!project.luggageEnabled, luggageUsed:!!project.luggageUsed, eventName:project.name, slug:project.slug, activityType:project.activityType||"external", identifier:project.identifier||project.slug, activityOwner:project.activityOwner||"", activityDate:project.activityDate||project.startDate||"", clientName:project.clientName||"", startDate:project.startDate||"", endDate:project.endDate||"", brandColor:project.brandColor||"#5267d9" };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        persistStateLocally();
       }
       populateUsers(); populateProjects(); renderAll(); location.hash = "dashboard"; toast(`已切换至${state.settings.eventName}`);
     } catch (error) { toast(`项目切换失败：${error.message}`, "error"); populateProjects(); }
@@ -632,7 +647,7 @@
         const source = state.projects.find(project => project.id === data.sourceId);
         state.projects.push({ id:projectId, slug, name, activityType, identifier, activityOwner, activityDate, clientName:source?.clientName||"", role:"ops", attendeeCount:0, startDate:source?.startDate||activityDate, endDate:source?.endDate||activityDate, brandColor:source?.brandColor||"#5267d9" });
         state.activeProjectId = projectId; state.settings = { ...initialState().settings, ...(source ? state.settings : {}), eventName:name, slug, activityType, identifier, activityOwner, activityDate, luggageEnabled:false, luggageUsed:false };
-        state.attendees = []; state.notifications = []; state.locks = {master:false,columns:[],rows:[]}; localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+        state.attendees = []; state.notifications = []; state.locks = {master:false,columns:[],rows:[]}; persistStateLocally();
       }
       if (backend) await syncDocumentProject().catch(error => toast(`项目建档初始化失败：${error.message}`, "error"));
       await loadProjectArchiveStates(); form.reset(); $("#projectDialog").close(); populateUsers(); populateProjects(); renderAll(); location.hash = editId?"projects":"settings"; toast(editId?"项目资料已更新":"项目已创建，可继续配置会议或上传可选建档文件");
@@ -709,7 +724,7 @@
     } else {
       const signedInUser=state.users.find(user=>user.id===authData.user.id);signedInUser.role=accountRole;signedInUser.label=signedInAccessLabel();
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    persistStateLocally();
     await loadProjectArchiveStates();
     await loadStaffDirectory();
     await loadProjectClientAccounts();
@@ -760,7 +775,7 @@
     const {data,error}=await backend.rpc("update_meeting_settings",{p_meeting_id:backendMeetingId,p_expected_version:Number(state.settings.settingsVersion)||0,p_patch:patch});
     if(error)throw error;
     state.settings.settingsVersion=Number(data?.settingsVersion)||state.settings.settingsVersion+1;
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+    persistStateLocally();
   }
   function parseServiceTime(value) { if (!value || value === "待设置") return null; const normalized = value.replace(/[年/.]/g,"-").replace(/月/g,"-").replace(/日/g,""); const date = new Date(normalized); return Number.isNaN(date.getTime()) ? null : date.toISOString(); }
 
@@ -863,7 +878,7 @@
     ["dragenter","dragover"].forEach(type=>dropzone.addEventListener(type,event=>{event.preventDefault();dropzone.classList.add("dragging");}));
     ["dragleave","drop"].forEach(type=>dropzone.addEventListener(type,event=>{event.preventDefault();dropzone.classList.remove("dragging");}));
     dropzone.addEventListener("drop",event=>readRosterFile(event.dataTransfer.files[0]));
-    $("#markAllRead").addEventListener("click", async () => { state.notifications.forEach(n => n.read = true); localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); if (backend && backendMeetingId) await backend.from("notifications").update({read_at:new Date().toISOString()}).eq("meeting_id",backendMeetingId).is("read_at",null); renderNotifications(); renderCounts(); });
+    $("#markAllRead").addEventListener("click", async () => { state.notifications.forEach(n => n.read = true); persistStateLocally(); if (backend && backendMeetingId) await backend.from("notifications").update({read_at:new Date().toISOString()}).eq("meeting_id",backendMeetingId).is("read_at",null); renderNotifications(); renderCounts(); });
     $("#masterLock").addEventListener("change", async event => { if (!canManage()) return deny();const previous=state.locks.master;state.locks.master=event.target.checked;try{if(backend){const{error}=await backend.from("meetings").update({master_locked:state.locks.master}).eq("id",backendMeetingId);if(error)throw error;}addNotification("lock", `${currentUser().name}${event.target.checked ? "锁定" : "解锁"}了全部名单`);saveState();renderAll();}catch(error){state.locks.master=previous;renderAll();toast(`全体锁定保存失败：${error.message}`,"error");} });
     $("#copyRegistrationLink").addEventListener("click", copyRegistrationLink);
     $("#configureQuotas").addEventListener("click", openQuotaConfiguration);
@@ -1173,7 +1188,7 @@
   function renderQuotaRegionOptions(extra=[]) { $("#quotaRegionOptions").innerHTML=quotaRegionChoices(extra).map(region=>`<option value="${escapeHtml(region)}"></option>`).join(""); }
   function appendQuotaConfigRow(item={venue:normalizeVenueLabel(state.settings.venues?.[0])||normalizeVenueLabel(activeVisibleAttendees()[0]?.venue)||"",region:state.settings.quotaRegions?.[0]||normalizeQuotaRegion(activeVisibleAttendees()[0]?.region),role:"听众",quota:0}) { const row=document.createElement("div");row.className="quota-config-row";row.innerHTML=`<select name="quotaVenue" aria-label="会场">${quotaConfigOptions("venue",normalizeVenueLabel(item.venue))}</select><input name="quotaRegion" list="quotaRegionOptions" value="${escapeHtml(normalizeQuotaRegion(item.region))}" placeholder="选择或输入大区" aria-label="大区"/><select name="quotaRole" aria-label="角色">${quotaConfigOptions("role","听众")}</select><input name="quotaValue" type="number" min="0" step="1" value="${quotaNumber(item.quota)}" aria-label="分配名额"/><button type="button" class="quota-remove-row">删除</button>`;row.querySelector(".quota-remove-row").onclick=()=>row.remove();$("#quotaConfigRows").append(row); }
   function openQuotaConfiguration() { if(!canManage())return deny();if(state.settings.activityType==="internal")return toast("内部会议不启用会场、大区听众名额配置","error");$("#quotaRegionPresets").value=(state.settings.quotaRegions||[]).join("、");renderQuotaRegionOptions();$("#quotaConfigRows").innerHTML="";normalizedQuotaConfiguration().forEach(appendQuotaConfigRow);if(!$("#quotaConfigRows").children.length)appendQuotaConfigRow();$("#quotaFormError").textContent="";$("#quotaDialog").showModal(); }
-  async function saveQuotaConfiguration(event) { event.preventDefault();if(!canManage())return deny();const button=event.currentTarget.querySelector('button[type="submit"]');const rows=$$(".quota-config-row",event.currentTarget).map(row=>({venue:normalizeVenueLabel(row.querySelector('[name="quotaVenue"]').value),region:normalizeQuotaRegion(row.querySelector('[name="quotaRegion"]').value),role:normalizeQuotaRole(row.querySelector('[name="quotaRole"]').value),quota:quotaNumber(row.querySelector('[name="quotaValue"]').value)}));const seen=new Set();if(rows.some(row=>!row.venue||!row.region||!row.role))return $("#quotaFormError").textContent="请完整填写每一行名额配置";if(rows.some(row=>{const key=quotaKey(row.venue,row.region,row.role);if(seen.has(key))return true;seen.add(key);return false;}))return $("#quotaFormError").textContent="同一会场、大区和角色不能重复配置";const presets=parseQuotaRegions($("#quotaRegionPresets").value);const quotaRegions=[...new Set([...presets,...rows.map(row=>row.region)])];button.disabled=true;try{await persistMeetingSettings({field_config:{registrationQuotas:rows,quotaRegions}});state.settings.registrationQuotas=rows;state.settings.quotaRegions=quotaRegions;state.settings.fieldConfig={...state.settings.fieldConfig,registrationQuotas:rows,quotaRegions};addNotification("change",`${currentUser().name}更新了报名名额配置，共${rows.length}项、大区${quotaRegions.length}个`);localStorage.setItem(STORAGE_KEY,JSON.stringify(state));$("#quotaDialog").close();renderAll();toast("名额与大区配置已保存，报名进度已重新统计");}catch(error){if(settingsConflict(error)){await loadBackendState(backendMeetingId);renderAll();$("#quotaDialog").close();toast("名额配置已被其他页面更新，已加载最新内容","error");}else $("#quotaFormError").textContent=error.message||"名额保存失败";}finally{button.disabled=false;} }
+  async function saveQuotaConfiguration(event) { event.preventDefault();if(!canManage())return deny();const button=event.currentTarget.querySelector('button[type="submit"]');const rows=$$(".quota-config-row",event.currentTarget).map(row=>({venue:normalizeVenueLabel(row.querySelector('[name="quotaVenue"]').value),region:normalizeQuotaRegion(row.querySelector('[name="quotaRegion"]').value),role:normalizeQuotaRole(row.querySelector('[name="quotaRole"]').value),quota:quotaNumber(row.querySelector('[name="quotaValue"]').value)}));const seen=new Set();if(rows.some(row=>!row.venue||!row.region||!row.role))return $("#quotaFormError").textContent="请完整填写每一行名额配置";if(rows.some(row=>{const key=quotaKey(row.venue,row.region,row.role);if(seen.has(key))return true;seen.add(key);return false;}))return $("#quotaFormError").textContent="同一会场、大区和角色不能重复配置";const presets=parseQuotaRegions($("#quotaRegionPresets").value);const quotaRegions=[...new Set([...presets,...rows.map(row=>row.region)])];button.disabled=true;try{await persistMeetingSettings({field_config:{registrationQuotas:rows,quotaRegions}});state.settings.registrationQuotas=rows;state.settings.quotaRegions=quotaRegions;state.settings.fieldConfig={...state.settings.fieldConfig,registrationQuotas:rows,quotaRegions};addNotification("change",`${currentUser().name}更新了报名名额配置，共${rows.length}项、大区${quotaRegions.length}个`);persistStateLocally();$("#quotaDialog").close();renderAll();toast("名额与大区配置已保存，报名进度已重新统计");}catch(error){if(settingsConflict(error)){await loadBackendState(backendMeetingId);renderAll();$("#quotaDialog").close();toast("名额配置已被其他页面更新，已加载最新内容","error");}else $("#quotaFormError").textContent=error.message||"名额保存失败";}finally{button.disabled=false;} }
 
   function renderDashboard() {
     const list = activeVisibleAttendees(); const pending = list.filter(a => a.approval === "pending").length+list.filter(a=>roomingApprovalStatus(a)==="pending").length;
@@ -1220,7 +1235,7 @@
     const segmentBadge=(a,segment,label)=>{ const status=segmentApproval(a,segment); const text=status==="approved"?"已审批":status==="pending"?"待审批":status==="rejected"?"已退回":"无需审批"; return `<span class="segment-status ${status}">${label}·${text}</span>`; };
     const templateHeader=column=>escapeHtml(column.header||column.key||"未命名字段").replaceAll("\n","<br>");
     const templateValue=(attendee,column,index)=>{if(column.key==="sequence")return String(index+1);if(column.key==="contactName")return attendee.contactName||"";if(column.key==="contactMobile")return attendee.contactMobile||"";if(column.key==="venue")return normalizeVenueLabel(attendee.venue);if(/TransportType$/.test(column.key))return TravelFields.TYPES[attendee[column.key]]||attendee[column.key]||"";if(/Station$/.test(column.key))return TravelFields.displayStation(attendee[column.key],attendee[column.key.replace("Station","TransportType")],stationDictionary());return column.custom?attendee.customFields?.[column.key]??"":attendee[column.key]??"";};
-    const templateCell=(attendee,column,index)=>{const raw=templateValue(attendee,column,index);const empty=raw===null||raw===undefined||String(raw).trim()==="";const sensitive=["phone","contactMobile"].includes(column.key);const display=empty?"未填写":sensitive?maskPhone(raw):String(raw);const verified=TravelVerification.verifiedField(attendee,column.key);return `<td class="template-data-cell ${verified?"travel-verified-cell":""}" data-template-key="${escapeHtml(column.key||"")}" title="${escapeHtml(display)}"><span class="${empty?"template-empty":""}">${escapeHtml(display)}</span>${verified?'<small class="travel-verified-label">✓ 已核验</small>':""}</td>`;};
+    const templateCell=(attendee,column,index)=>{const raw=templateValue(attendee,column,index);const empty=raw===null||raw===undefined||String(raw).trim()==="";const phoneSensitive=["phone","contactMobile"].includes(column.key);const idSensitive=["idNumber","employeeNo"].includes(column.key);const display=empty?"未填写":phoneSensitive?maskPhone(raw):idSensitive?maskIdentifier(raw):String(raw);const verified=TravelVerification.verifiedField(attendee,column.key);return `<td class="template-data-cell ${verified?"travel-verified-cell":""}" data-template-key="${escapeHtml(column.key||"")}" title="${escapeHtml(display)}"><span class="${empty?"template-empty":""}">${escapeHtml(display)}</span>${verified?'<small class="travel-verified-label">✓ 已核验</small>':""}</td>`;};
     const selectable=list.filter(a=>a.businessStatus!=="cancelled"&&!isLocked(a)&&canEditAttendeeData()&&(currentUser().role!=="sales"||a.ownerId===currentUser().id));
     const allSelected=selectable.length>0&&selectable.every(a=>selectedAttendeeIds.has(a.id));
     $("#attendeeTableHead").innerHTML=`<th class="roster-check-cell"><input id="selectVisibleAttendees" type="checkbox" aria-label="全选当前名单" ${allSelected?"checked":""} ${selectable.length?"":"disabled"}></th>${templateColumns.map(column=>`<th data-template-key="${escapeHtml(column.key||"")}">${templateHeader(column)}</th>`).join("")}<th>新增多段行程</th><th>去程送站地点</th><th>预约送站时间</th><th>去程送站备注</th><th>返程接站目的地</th><th>预估接站时间</th><th>返程接站备注</th><th>报名状态</th><th>隐私沟通函</th><th>出票状态</th><th>负责人</th><th>行程审批</th><th>操作</th>`;
@@ -1438,7 +1453,7 @@
         if(current&&!options.edit)current.customFields=attendee.customFields;
       }
     }
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+    persistStateLocally();
   }
   const verificationSelectionKey=(attendeeId,segment)=>`${attendeeId}:${segment}`;
   async function verifyTravelAttendees(attendees,{allowPaid=false,selection=null,disabledPaid=disabledVerificationFlightSegments}={}) {
@@ -1553,7 +1568,7 @@
       await persistVerifiedAttendees(attendees);
       attendees.forEach(attendee=>{const current=state.attendees.find(item=>item.id===attendee.id);if(current)current.customFields=attendee.customFields;});
       addNotification("change",`${currentUser().name}完成${selection.size}段已选行程真实性核验；未触发审批`);
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+      persistStateLocally();
       selectedVerificationSegments.clear();renderAll();renderTravelVerificationResults();
       if(failure)toast(failure,"error");
     } catch(error) {toast(`核验结果尚未保存：${error.message}`,"error");}
@@ -1674,7 +1689,7 @@
     $("#notificationList").innerHTML = reminders.length ? reminders.map(n => `<button type="button" class="notification-item ${n.read?"":"unread"}" data-notification-detail="${escapeHtml(String(n.id))}"><span class="notice-icon">${icons[n.type]||"◌"}</span><p><strong>${escapeHtml(n.attendeeName||"报名端变更")}</strong>${escapeHtml(n.text)}</p><small>${new Date(n.time).toLocaleString("zh-CN",{hour12:false})}${n.changes?.length?` · ${n.changes.length}项变更`:""}</small></button>`).join("") : `<div class="empty-state">暂无报名端新增或自行修改提醒；管理员操作请在系统设置的全局操作日志中查询。</div>`;
     $$('[data-notification-detail]').forEach(button=>button.onclick=()=>openNotificationDetail(button.dataset.notificationDetail));
   }
-  function openNotificationDetail(id){const item=state.notifications.find(n=>String(n.id)===String(id));if(!item)return;item.read=true;const changes=item.changes||[];$("#notificationDetailContent").innerHTML=`<div class="detail-head"><span class="kicker">CHANGE LOG</span><h2>${escapeHtml(item.attendeeName||"变更详情")}</h2><p>${escapeHtml(item.actorName||"系统")} · ${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</p></div><div class="detail-body"><div class="change-detail-list">${changes.length?changes.map(change=>`<div class="change-detail-row"><strong>${escapeHtml(change.label||change.field||"字段")}</strong><span class="change-before"><small>修改前</small>${escapeHtml(String(change.before??"未填写"))}</span><b>→</b><span class="change-after"><small>修改后</small>${escapeHtml(String(change.after??"未填写"))}</span></div>`).join(""):`<div class="empty-state">该历史提醒仅保存了操作摘要：${escapeHtml(item.text)}</div>`}</div></div>`;localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderNotifications();renderCounts();$("#notificationDetailDialog").showModal();}
+  function openNotificationDetail(id){const item=state.notifications.find(n=>String(n.id)===String(id));if(!item)return;item.read=true;const changes=item.changes||[];$("#notificationDetailContent").innerHTML=`<div class="detail-head"><span class="kicker">CHANGE LOG</span><h2>${escapeHtml(item.attendeeName||"变更详情")}</h2><p>${escapeHtml(item.actorName||"系统")} · ${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</p></div><div class="detail-body"><div class="change-detail-list">${changes.length?changes.map(change=>`<div class="change-detail-row"><strong>${escapeHtml(change.label||change.field||"字段")}</strong><span class="change-before"><small>修改前</small>${escapeHtml(String(change.before??"未填写"))}</span><b>→</b><span class="change-after"><small>修改后</small>${escapeHtml(String(change.after??"未填写"))}</span></div>`).join(""):`<div class="empty-state">该历史提醒仅保存了操作摘要：${escapeHtml(item.text)}</div>`}</div></div>`;persistStateLocally();renderNotifications();renderCounts();$("#notificationDetailDialog").showModal();}
   function renderSettings() {
     const form = $("#settingsForm");
     if(!form.elements.fieldClothingSize){const grid=form.querySelector(".field-toggle-grid");const label=document.createElement("label");label.className="check-row";label.innerHTML='<input name="fieldClothingSize" type="checkbox" /> 收集衣服尺寸';grid?.append(label);}
@@ -1815,7 +1830,7 @@
         if(verification){await verifyTravelAttendees([draft],{allowPaid:allowPaidRecheck,selection:new Set(targetSegments.map(segment=>verificationSelectionKey(draft.id,segment))),disabledPaid:disabledVerificationFlightSegments});await persistVerifiedAttendees([draft]);}
         Object.assign(a,draft);
         if(changes.length)addNotification("change",`${currentUser().name}修改了${a.name}的行程，共${changes.length}个字段`,{attendeeName:a.name,changes});
-        localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+        persistStateLocally();
         renderAll();renderTravelVerificationResults();
         const remaining=targetSegments.flatMap(segment=>TravelVerification.currentIssues(a,segment));
         if(verification&&remaining.length){showTripEditor(a,{verification:true,segments:targetSegments});toast("已保存并重新核验，请继续修改标色字段","error");}
@@ -2149,7 +2164,7 @@
           transportStationRules:state.settings.transportStationRules||[]
         }
       });
-      addNotification("change", `${currentUser().name}更新了当前项目的行程审批与分房规则`);localStorage.setItem(STORAGE_KEY,JSON.stringify(state));populateProjects();renderAll();toast("项目设置已保存；如需应用新分房规则，请在分房管理重新执行自动分房");
+      addNotification("change", `${currentUser().name}更新了当前项目的行程审批与分房规则`);persistStateLocally();populateProjects();renderAll();toast("项目设置已保存；如需应用新分房规则，请在分房管理重新执行自动分房");
     }catch(error){
       if(settingsConflict(error)){await loadBackendState(backendMeetingId);populateProjects();renderAll();toast("会议设置已被其他页面或账号更新，已加载最新内容，请重新确认后保存","error");}
       else toast(`项目设置保存失败：${error.message||"未知错误"}`,"error");
@@ -2375,7 +2390,7 @@
         valid.forEach(({attendee})=>{const index=state.attendees.findIndex(item=>item.id===attendee.id);if(index>=0)state.attendees[index]=attendee;else state.attendees.unshift(attendee);});
       }
       const added=valid.filter(row=>row.status==="new").length; const updated=valid.length-added; addNotification("create",`${currentUser().name}导入线下名单：新增${added}人，更新${updated}人`);
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); pendingImportRows=[]; $("#importDialog").close(); renderAll(); toast(backend?`已保存到云端：新增${added}人，更新${updated}人`:`已导入：新增${added}人，更新${updated}人`);
+      persistStateLocally(); pendingImportRows=[]; $("#importDialog").close(); renderAll(); toast(backend?`已保存到云端：新增${added}人，更新${updated}人`:`已导入：新增${added}人，更新${updated}人`);
     } catch(error) {
       const message=error?.message||"云端保存失败"; button.disabled=false; button.textContent=originalLabel;
       $("#importPreview").insertAdjacentHTML("afterbegin",`<div class="lookup-error import-save-error">名单尚未保存，请勿刷新：${escapeHtml(message)}</div>`); toast(`导入失败：${message}`,"error");
@@ -2393,15 +2408,15 @@
       if(backend){const{error}=await backend.from("system_configuration").upsert({singleton:true,settings:preferences,updated_by:state.currentUserId,updated_at:new Date().toISOString()});if(error)throw error;}
       localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(preferences));
       addNotification("change",`${currentUser().name}${enabled?"开启":"关闭"}了飞常准全局查询`,{read:true,auditOnly:true});
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();renderVerificationPage();toast(`飞常准全局查询已${enabled?"开启":"关闭"}`);
+      persistStateLocally();renderSystemSettings();renderVerificationPage();toast(`飞常准全局查询已${enabled?"开启":"关闭"}`);
     }catch(error){renderVerificationPage();toast(`全局查询设置保存失败：${error.message}`,"error");}
   }
-  async function saveSystemPreferences(){if(!isSystemAdmin())return deny();const split=value=>[...new Set(String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean))];let stationDictionary,cityAliases;try{stationDictionary=TravelFields.parseDictionary($("#dictionaryStations").value);cityAliases=String($("#dictionaryCityAliases")?.value||"").split(/\r?\n/).filter(line=>line.trim()).map((line,index)=>{const[alias,city]=line.split("|").map(TravelFields.clean);if(!alias||!city)throw new Error(`城市别名第 ${index+1} 行格式错误`);return{alias,city:TravelFields.normalizeCity(city)};});}catch(error){return toast(error.message,"error");}const variflightDailyLimit=Math.max(1,Math.min(10000,Math.trunc(Number($("#variflightDailyLimit").value)||5)));const preferences={...loadSystemPreferences(),theme:$("#systemTheme").value,brandColor:$("#systemBrandColor").value,density:$("#tableDensity").value,backupInterval:Number($("#backupInterval").value)||0,variflightDailyLimit,variflightUnlimited:$("#variflightUnlimited").checked,variflightGlobalEnabled:$("#variflightGlobalEnabled").checked,maxConcurrentDevices:Math.max(1,Math.min(20,Math.trunc(Number($("#maxConcurrentDevices").value)||2))),tourismCities:split($("#dictionaryTourismCities").value),titles:split($("#dictionaryTitles").value),stationDictionary,cityAliases,savedAt:new Date().toISOString()};if(backend){const{error}=await backend.from("system_configuration").upsert({singleton:true,settings:preferences,updated_by:state.currentUserId,updated_at:new Date().toISOString()});if(error)return toast(`系统设置云端保存失败：${error.message}`,"error");const dictionaryRows=TravelFields.dictionary(stationDictionary).map(item=>({city:item.city,type:item.type,name:item.name,short_name:item.shortName||TravelFields.displayStation(item.name,item.type)}));const dictionarySave=await backend.rpc("replace_station_dictionary",{p_items:dictionaryRows});if(dictionarySave.error)return toast("场站字典云端保存失败："+dictionarySave.error.message,"error");const aliasSave=await backend.rpc("replace_city_aliases",{p_items:cityAliases});if(aliasSave.error)return toast("城市别名云端保存失败："+aliasSave.error.message,"error");}localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(preferences));applySystemAppearance(preferences);bindJourneyForm($("#registrationForm"));addNotification("change",`${currentUser().name}更新了系统设置与业务字典`,{read:true,auditOnly:true});localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();renderVerificationPage();toast("系统设置已保存");}
+  async function saveSystemPreferences(){if(!isSystemAdmin())return deny();const split=value=>[...new Set(String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean))];let stationDictionary,cityAliases;try{stationDictionary=TravelFields.parseDictionary($("#dictionaryStations").value);cityAliases=String($("#dictionaryCityAliases")?.value||"").split(/\r?\n/).filter(line=>line.trim()).map((line,index)=>{const[alias,city]=line.split("|").map(TravelFields.clean);if(!alias||!city)throw new Error(`城市别名第 ${index+1} 行格式错误`);return{alias,city:TravelFields.normalizeCity(city)};});}catch(error){return toast(error.message,"error");}const variflightDailyLimit=Math.max(1,Math.min(10000,Math.trunc(Number($("#variflightDailyLimit").value)||5)));const preferences={...loadSystemPreferences(),theme:$("#systemTheme").value,brandColor:$("#systemBrandColor").value,density:$("#tableDensity").value,backupInterval:Number($("#backupInterval").value)||0,variflightDailyLimit,variflightUnlimited:$("#variflightUnlimited").checked,variflightGlobalEnabled:$("#variflightGlobalEnabled").checked,maxConcurrentDevices:Math.max(1,Math.min(20,Math.trunc(Number($("#maxConcurrentDevices").value)||2))),tourismCities:split($("#dictionaryTourismCities").value),titles:split($("#dictionaryTitles").value),stationDictionary,cityAliases,savedAt:new Date().toISOString()};if(backend){const{error}=await backend.from("system_configuration").upsert({singleton:true,settings:preferences,updated_by:state.currentUserId,updated_at:new Date().toISOString()});if(error)return toast(`系统设置云端保存失败：${error.message}`,"error");const dictionaryRows=TravelFields.dictionary(stationDictionary).map(item=>({city:item.city,type:item.type,name:item.name,short_name:item.shortName||TravelFields.displayStation(item.name,item.type)}));const dictionarySave=await backend.rpc("replace_station_dictionary",{p_items:dictionaryRows});if(dictionarySave.error)return toast("场站字典云端保存失败："+dictionarySave.error.message,"error");const aliasSave=await backend.rpc("replace_city_aliases",{p_items:cityAliases});if(aliasSave.error)return toast("城市别名云端保存失败："+aliasSave.error.message,"error");}localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(preferences));applySystemAppearance(preferences);bindJourneyForm($("#registrationForm"));addNotification("change",`${currentUser().name}更新了系统设置与业务字典`,{read:true,auditOnly:true});persistStateLocally();renderSystemSettings();renderVerificationPage();toast("系统设置已保存");}
   function renderSystemSettings(){if(!$("#globalLogList"))return;const preferences=loadSystemPreferences();applySystemAppearance(preferences);if(!isSystemAdmin())return;$("#systemTheme").value=preferences.theme;$("#systemBrandColor").value=preferences.brandColor;$("#tableDensity").value=preferences.density;$("#backupInterval").value=String(preferences.backupInterval);$("#variflightDailyLimit").value=String(preferences.variflightDailyLimit||5);$("#variflightUnlimited").checked=preferences.variflightUnlimited===true;$("#variflightDailyLimit").disabled=preferences.variflightUnlimited===true;$("#variflightQuotaStatus").textContent=preferences.variflightUnlimited===true?"无限制（可能收费）":`每日 ${preferences.variflightDailyLimit||5} 次`;$("#variflightQuotaStatus").className=`status ${preferences.variflightUnlimited===true?"status-alert":"status-pending"}`;$("#maxConcurrentDevices").value=String(preferences.maxConcurrentDevices||2);$("#mailDeliveryStatus").textContent=preferences.mailDeliveryConfigured?"邮件发送已启用":"待配置 SMTP";$("#mailDeliveryStatus").className=`status ${preferences.mailDeliveryConfigured?"status-normal":"status-pending"}`;$("#dictionaryTourismCities").value=(preferences.tourismCities||DEFAULT_TOURISM_CITIES).join("、");$("#dictionaryTitles").value=(preferences.titles||[]).join("、");const lastBackup=localStorage.getItem("lilly-meeting-last-backup");$("#backupStatus").textContent=`自动备份：${preferences.backupInterval?`每${preferences.backupInterval}天一次（浏览器本地快照）`:"已关闭"}；最近备份：${lastBackup?new Date(lastBackup).toLocaleString("zh-CN",{hour12:false}):"暂无"}`;const query=$("#globalLogSearch").value.trim().toLowerCase();const logs=(state.notifications||[]).filter(item=>!query||[item.text,item.actorName,item.attendeeName,...(item.changes||[]).flatMap(change=>[change.label,change.before,change.after])].join(" ").toLowerCase().includes(query));$("#globalLogList").innerHTML=logs.slice(0,100).map(item=>`<button type="button" data-notification-detail="${item.id}" class="global-log-row"><span>${escapeHtml(item.actorName||"系统")}</span><strong>${escapeHtml(item.text)}</strong><small>${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</small></button>`).join("")||`<div class="empty-state">没有匹配的操作日志</div>`;$$('[data-notification-detail]',$("#globalLogList")).forEach(button=>button.onclick=()=>openNotificationDetail(button.dataset.notificationDetail));const people=staffDirectory.length?staffDirectory:state.users;$("#systemPermissionOverview").innerHTML=people.map(person=>`<div class="permission-row"><span class="avatar tiny">${escapeHtml((person.display_name||person.name||"管").slice(0,1))}</span><div><strong>${escapeHtml(person.display_name||person.name||"未命名账号")}</strong><small>${escapeHtml(person.email||person.label||person.system_role||person.role||"会务负责人")}</small></div><b>${person.system_role==="super_admin"||person.id===state.currentUserId&&isSystemAdmin()?(person.project_enabled?"超级管理员 / 会务负责人":"超级管理员"):person.system_role==="readonly"?"只读查看":"会务负责人"}</b></div>`).join("");}
 
   async function createAdminAccessLink(){if(!backend||!isSystemAdmin())return deny();const button=$("#createAdminAccessLink");button.disabled=true;try{const minutes=Math.max(5,Math.min(1440,Math.trunc(Number($("#adminAccessLinkMinutes").value)||60)));const email=$("#adminAccessLinkEmail").value.trim().toLowerCase()||null;const{data,error}=await backend.rpc("create_admin_access_link",{p_minutes:minutes,p_target_email:email});if(error)throw error;const row=Array.isArray(data)?data[0]:data;const url=new URL(location.origin+location.pathname);url.searchParams.set("admin_access",row.token);url.hash="dashboard";await navigator.clipboard.writeText(url.toString());$("#adminAccessLinkResult").textContent=`临时链接已复制，有效至 ${new Date(row.expires_at).toLocaleString("zh-CN",{hour12:false})}。`;toast("临时登录链接已复制");}catch(error){$("#adminAccessLinkResult").textContent=`生成失败：${error.message}`;toast("临时链接生成失败","error");}finally{button.disabled=false;}}
-  function downloadSystemBackup(){if(!isSystemAdmin())return deny();const snapshot={version:1,createdAt:new Date().toISOString(),state,systemPreferences:loadSystemPreferences()};const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot,null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download=`lilly-meeting-backup-${new Date().toISOString().slice(0,10)}.json`;link.click();URL.revokeObjectURL(url);localStorage.setItem("lilly-meeting-last-backup",snapshot.createdAt);addNotification("backup",`${currentUser().name}下载了系统完整数据快照`,{read:true,auditOnly:true});localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderSystemSettings();toast("数据快照已下载");}
-  async function restoreSystemBackup(file){if(!isSystemAdmin()||!file)return deny();try{const snapshot=JSON.parse(await file.text());if(!snapshot?.state?.attendees||!snapshot?.state?.projects)throw new Error("备份文件结构不正确");if(!confirm("高风险操作：恢复将覆盖当前浏览器中的会议、名单和设置。是否继续？"))return;const phrase=prompt("二次确认：请输入“确认恢复”后执行");if(phrase!=="确认恢复")return toast("已取消数据恢复","error");state=snapshot.state;localStorage.setItem(STORAGE_KEY,JSON.stringify(state));if(snapshot.systemPreferences)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(snapshot.systemPreferences));populateUsers();populateProjects();renderAll();toast("备份已恢复；云端项目数据未被覆盖");}catch(error){toast(`恢复失败：${error.message}`,"error");}finally{$("#restoreBackupFile").value="";}}
+  function downloadSystemBackup(){if(!isSystemAdmin())return deny();const snapshot={version:1,createdAt:new Date().toISOString(),state,systemPreferences:loadSystemPreferences()};const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot,null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download=`lilly-meeting-backup-${new Date().toISOString().slice(0,10)}.json`;link.click();URL.revokeObjectURL(url);localStorage.setItem("lilly-meeting-last-backup",snapshot.createdAt);addNotification("backup",`${currentUser().name}下载了系统完整数据快照`,{read:true,auditOnly:true});persistStateLocally();renderSystemSettings();toast("数据快照已下载");}
+  async function restoreSystemBackup(file){if(!isSystemAdmin()||!file)return deny();try{const snapshot=JSON.parse(await file.text());if(!snapshot?.state?.attendees||!snapshot?.state?.projects)throw new Error("备份文件结构不正确");if(!confirm("高风险操作：恢复将覆盖当前浏览器中的会议、名单和设置。是否继续？"))return;const phrase=prompt("二次确认：请输入“确认恢复”后执行");if(phrase!=="确认恢复")return toast("已取消数据恢复","error");state=snapshot.state;persistStateLocally();if(snapshot.systemPreferences)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify(snapshot.systemPreferences));populateUsers();populateProjects();renderAll();toast("备份已恢复；云端项目数据未被覆盖");}catch(error){toast(`恢复失败：${error.message}`,"error");}finally{$("#restoreBackupFile").value="";}}
 
   function exportExcel() {
     if(isReadOnlyStaff()||!isSystemAdmin()&&!['ops','client','sales'].includes(currentUser().role))return toast("只读账号没有敏感数据导出权限","error");

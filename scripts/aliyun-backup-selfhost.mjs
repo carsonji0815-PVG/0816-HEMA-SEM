@@ -1,6 +1,6 @@
-// Root-only combined PostgreSQL/config/file-service backup. No retention deletes.
+// Root-only combined PostgreSQL/config/file-service backup with >=30-day local retention.
 // Offsite objects are AES-256-GCM encrypted before they leave the server.
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, openSync, closeSync, cpSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, openSync, closeSync, cpSync, statSync, readdirSync, rmSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
 const dir = '/opt/lilly-migration/staging', root = '/var/backups/lilly-platform';
@@ -83,4 +83,19 @@ if (createHash('sha256').update(restored).digest('hex') !== metadata.archiveSha2
 metadata.status = 'encrypted-offsite-readback-verified';
 metadata.encryptedOffsite = true; metadata.readbackVerified = true; metadata.object = object;
 writeFileSync(manifestPath, JSON.stringify(metadata, null, 2), { mode: 0o600 });
+// Keep at least 30 days locally. OSS remains the durable encrypted offsite copy
+// and is intentionally not deleted by this job.
+const localRetentionDays = Number(process.env.LOCAL_BACKUP_RETENTION_DAYS || 35);
+if (!Number.isInteger(localRetentionDays) || localRetentionDays < 30 || localRetentionDays > 365) {
+  throw new Error('LOCAL_BACKUP_RETENTION_DAYS must be an integer between 30 and 365.');
+}
+const cutoff = Date.now() - localRetentionDays * 24 * 60 * 60 * 1000;
+for (const entry of readdirSync(root, { withFileTypes: true })) {
+  if (!entry.isDirectory() || entry.name === 'security') continue;
+  const candidate = `${root}/${entry.name}`;
+  if (candidate === destination) continue;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(entry.name) && statSync(candidate).mtimeMs < cutoff) {
+    rmSync(candidate, { recursive: true, force: false });
+  }
+}
 console.log(JSON.stringify({ backup: destination, status: metadata.status, bytes: metadata.bytes, object }, null, 2));

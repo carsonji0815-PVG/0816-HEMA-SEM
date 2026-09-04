@@ -436,12 +436,46 @@
       return `<div class="system-staff-row">
         <span class="system-staff-avatar ${isAdmin ? "admin" : ""}">${escapeHtml((staff.display_name || "人").slice(0,1))}</span>
         <div class="system-staff-main"><strong>${escapeHtml(staff.display_name)}</strong><small>${escapeHtml(staff.email)}</small></div>
-        <div class="system-staff-badges"><span class="status ${staff.account_created ? "status-normal" : "status-locked"}">${accountState}</span>${isAdmin ? `<span class="status status-ok">超级管理员 · 最高权限</span>` : `<label>系统角色<select data-system-staff-role="${escapeHtml(staff.email)}"><option value="ops" ${isReadonly?"":"selected"}>会务负责人</option><option value="readonly" ${isReadonly?"selected":""}>只读查看</option></select></label>`}</div>
+        <div class="system-staff-badges"><span class="status ${staff.account_created ? "status-normal" : "status-locked"}">${accountState}</span>${!staff.account_created?`<button class="button button-secondary" type="button" data-create-staff-account="${escapeHtml(staff.email)}">创建登录账号</button>`:""}${isAdmin ? `<span class="status status-ok">超级管理员 · 最高权限</span>` : `<label>系统角色<select data-system-staff-role="${escapeHtml(staff.email)}"><option value="ops" ${isReadonly?"":"selected"}>会务负责人</option><option value="readonly" ${isReadonly?"selected":""}>只读查看</option></select></label>`}</div>
         <label class="permission-switch system-staff-switch"><span><strong>${enabled ? (isAdmin ? "兼任当前项目会务负责人" : "已授权当前项目") : (isAdmin ? "未兼任当前项目会务负责人" : "未授权当前项目")}</strong><small>${staff.account_created ? (isAdmin ? "不影响超级管理员的全局最高权限" : "可随时开放或回收") : (enabled ? "已预先委任，登录账号创建后自动生效" : "可先委任，登录账号创建后自动生效")}</small></span><span class="switch"><input type="checkbox" data-system-staff-email="${escapeHtml(staff.email)}" ${enabled ? "checked" : ""}/><span></span></span></label>
       </div>`;
     }).join("") || `<div class="empty-state">暂无可分配的会务负责人账号</div>`;
     $$('[data-system-staff-email]', list).forEach(input => input.addEventListener("change", () => toggleProjectStaff(input.dataset.systemStaffEmail, input.checked, input)));
     $$('[data-system-staff-role]', list).forEach(select=>select.addEventListener("change",()=>setSystemStaffRole(select.dataset.systemStaffRole,select.value,select)));
+    $$('[data-create-staff-account]',list).forEach(button=>button.addEventListener("click",()=>openStaffAccountDialog(button.dataset.createStaffAccount)));
+  }
+
+  function openStaffAccountDialog(email){
+    if(!isSystemAdmin())return deny();
+    const staff=staffDirectory.find(item=>item.email===email);if(!staff)return;
+    const form=$("#staffAccountForm");form.reset();form.elements.email.value=staff.email;form.elements.displayName.value=staff.display_name;
+    form.elements.assignProject.checked=!!backendMeetingId;$("#staffAccountProjectName").textContent=state.settings.eventName||"当前项目";$("#staffAccountError").textContent="";$("#staffAccountDialog").showModal();
+  }
+
+  async function createStaffAccount(event){
+    event.preventDefault();if(!backend||!backendMeetingId||!isSystemAdmin())return deny();
+    const form=event.currentTarget,password=form.elements.password.value,confirmation=form.elements.confirmPassword.value;
+    if(password.length<12||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/[0-9]/.test(password)||!(/[^A-Za-z0-9]/.test(password)))return $("#staffAccountError").textContent="临时密码至少12位，并包含大小写字母、数字和特殊字符";
+    if(password!==confirmation)return $("#staffAccountError").textContent="两次输入的临时密码不一致";
+    const button=form.querySelector('button[type="submit"]');button.disabled=true;
+    try{
+      const {data:{session}}=await backend.auth.getSession();if(!session)throw new Error("登录会话已过期");
+      const response=await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/staff-account-admin`,{method:"POST",headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey,"Authorization":`Bearer ${session.access_token}`},body:JSON.stringify({email:form.elements.email.value,displayName:form.elements.displayName.value,password,meetingId:backendMeetingId,assignProject:form.elements.assignProject.checked})});
+      const payload=await response.json();if(!response.ok)throw new Error(payload.error||"账号创建失败");
+      form.reset();$("#staffAccountDialog").close();await loadStaffDirectory();renderSystemStaffDirectory();renderSystemSettings();toast("登录账号已创建并完成项目权限设置");
+    }catch(error){$("#staffAccountError").textContent=error.message||"账号创建失败";}finally{button.disabled=false;}
+  }
+
+  async function requirePasswordChange(){
+    if(!backend)return;const{data}=await backend.auth.getUser();if(data.user?.user_metadata?.must_change_password){$("#changePasswordError").textContent="";$("#changePasswordDialog").showModal();}
+  }
+
+  async function changeOwnPassword(event){
+    event.preventDefault();const form=event.currentTarget,password=form.elements.password.value,confirmation=form.elements.confirmPassword.value;
+    if(password.length<12||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/[0-9]/.test(password)||!(/[^A-Za-z0-9]/.test(password)))return $("#changePasswordError").textContent="新密码至少12位，并包含大小写字母、数字和特殊字符";
+    if(password!==confirmation)return $("#changePasswordError").textContent="两次输入的新密码不一致";
+    const button=form.querySelector('button[type="submit"]');button.disabled=true;const{error}=await backend.auth.updateUser({password,data:{must_change_password:false}});button.disabled=false;
+    if(error)return $("#changePasswordError").textContent=error.message||"密码更新失败";form.reset();$("#changePasswordDialog").close();toast("登录密码已更新");
   }
 
   async function setSystemStaffRole(email,role,select){if(!backend||!isSystemAdmin())return deny();select.disabled=true;try{const{error}=await backend.rpc("set_system_staff_role",{p_email:email,p_role:role});if(error)throw error;await loadStaffDirectory();renderSystemStaffDirectory();renderSystemSettings();toast("系统角色已更新");}catch(error){toast(`角色更新失败：${error.message}`,"error");await loadStaffDirectory();renderSystemStaffDirectory();}}
@@ -496,7 +530,7 @@
       await validateAdminAccessLink().catch(()=>{});
       const { data } = offlineLuggageSession ? {data:{session:null}} : await backend.auth.getSession();
       if (data.session) {
-        try{await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();}
+        try{await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();await requirePasswordChange();}
         catch(error){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=error.message;$("#loginDialog").showModal();}
       }
       else if (!offlineLuggageSession && !["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
@@ -584,6 +618,9 @@
   }
 
   function bindLogin() {
+    $("#staffAccountForm").addEventListener("submit",createStaffAccount);
+    $("#changePasswordForm").addEventListener("submit",changeOwnPassword);
+    $("#changePasswordDialog").addEventListener("cancel",event=>event.preventDefault());
     $("#loginForm").addEventListener("submit", async event => {
       event.preventDefault();
       if (!backend) return;
@@ -592,7 +629,7 @@
       const email=String(form.elements.email.value||"").trim().toLowerCase();
       const { error } = await backend.auth.signInWithPassword({ email, password: form.elements.password.value });
       if (error) { $("#loginError").textContent = "邮箱或密码不正确"; button.disabled=false; return; }
-      try{$("#loginError").textContent="";await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();toast(state.activeProjectId?`登录成功 · ${isSystemAdmin()?"超级管理员":isReadOnlyStaff()?"只读查看":"会务负责人"}`:"登录成功，请先新建项目");}
+      try{$("#loginError").textContent="";await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();await requirePasswordChange();toast(state.activeProjectId?`登录成功 · ${isSystemAdmin()?"超级管理员":isReadOnlyStaff()?"只读查看":"会务负责人"}`:"登录成功，请先新建项目");}
       catch(accessError){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=accessError.message||"当前邮箱未开放管理系统权限";}
       finally{button.disabled=false;}
     });

@@ -13,5 +13,8 @@ assert.match(sql,/project_staff_access_changed/);
 assert.match(sql,/meeting_staff_assignments/);
 assert.match(sql,/登录账号创建后自动生效|register_staff_session/);
 assert.match(app,/可先委任，登录账号创建后自动生效/);
+assert.match(sql,/registrationTemplateReferenced/);
+assert.match(sql,/template_imported_at/);
+assert.match(sql,/sourceAttachmentCopied',false/);
 
 console.log("super-admin dual-role smoke passed");

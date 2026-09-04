@@ -29,7 +29,7 @@
     <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-panel.js?v=20260903-verification-queue-01" defer></script>
     <script src="rooming-engine.js?v=20260903-room-counting-01" defer></script>
-    <script src="app.js?v=20260903-room-counting-01" defer></script>
+    <script src="app.js?v=20260904-staff-account-01" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -468,6 +468,8 @@
       </form>
       <p class="login-help">管理端仅向超级管理员预设的会务负责人邮箱开放；参会者无需管理端登录。</p>
     </dialog>
+    <dialog id="staffAccountDialog" class="login-dialog"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="关闭">×</button></form><div class="login-brand"><span class="brand-mark">账</span><div><strong>创建会议负责人登录账号</strong><small>账号创建后可登录管理端，并按当前项目授权访问</small></div></div><form id="staffAccountForm" class="stack-form"><label>姓名<input name="displayName" readonly /></label><label>工作邮箱<input name="email" type="email" readonly /></label><label>临时密码<input name="password" type="password" autocomplete="new-password" minlength="12" required placeholder="至少12位，含大小写、数字和符号" /></label><label>确认临时密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></label><label class="check-row"><input name="assignProject" type="checkbox" checked /> 同时委任为「<span id="staffAccountProjectName">当前项目</span>」会务负责人</label><p class="form-hint">系统不会通过聊天或日志保存密码。请通过公司认可的安全渠道交给成员；成员首次登录后必须修改。</p><p id="staffAccountError" class="login-error"></p><button class="button button-primary button-block" type="submit">创建登录账号</button></form></dialog>
+    <dialog id="changePasswordDialog" class="login-dialog"><div class="login-brand"><span class="brand-mark">密</span><div><strong>首次登录，请修改密码</strong><small>完成密码更新后才能继续使用管理端</small></div></div><form id="changePasswordForm" class="stack-form"><label>新密码<input name="password" type="password" autocomplete="new-password" minlength="12" required placeholder="至少12位，含大小写、数字和符号" /></label><label>确认新密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></label><p id="changePasswordError" class="login-error"></p><button class="button button-primary button-block" type="submit">保存新密码并继续</button></form></dialog>
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <div class="mobile-overlay" id="mobileOverlay"></div>
   </body>

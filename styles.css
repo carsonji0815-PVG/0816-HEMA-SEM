@@ -199,6 +199,9 @@ tbody tr { transition: background .15s; } tbody tr:hover { background: #fafbf8; 
 .roster-template-table td { min-width:112px; max-width:230px; line-height:1.5; white-space:normal; overflow-wrap:anywhere; }
 .roster-template-table td[data-template-key="sequence"] { min-width:68px; text-align:center; }
 .roster-template-table td[data-template-key="remarks"] { min-width:220px; }
+.roster-template-table td.identity-invalid-cell { background:#fff0ec; box-shadow:inset 3px 0 #d52b1e; }
+.identity-invalid-cell > span { color:#a6241a; font-weight:700; }
+.identity-invalid-label { display:block; margin-top:4px; color:#c22b20; font-size:8px; font-weight:700; }
 .template-data-cell span { display:block; }
 .template-empty { color:#b0a8a5; font-style:italic; }
 .roster-check-cell { min-width:48px!important; width:48px; text-align:center; }

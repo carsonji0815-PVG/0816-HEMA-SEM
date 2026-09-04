@@ -193,7 +193,7 @@
   const isInternalMeeting = (settings=state.settings) => (settings?.activityType || settings?.meetingType || "external").toString().toLowerCase() === "internal";
   function meetingTemplateColumns(settings=state.settings) {
     const internal=isInternalMeeting(settings);
-    let columns=internal ? INTERNAL_BASE_COLUMNS.map(column=>({...column})) : [...(settings.registrationTemplate?.columns?.length?settings.registrationTemplate:standardTemplate()).columns];
+    let columns=internal ? INTERNAL_BASE_COLUMNS.map(column=>({...column})) : repairRegistrationTemplate(settings.registrationTemplate?.columns?.length?settings.registrationTemplate:standardTemplate()).columns;
     const clothingEnabled=settings.fieldConfig?.clothingSize===true;
     columns=columns.filter(column=>column.key!=="clothingSize");
     if(clothingEnabled)columns.push({header:"衣服尺寸",key:"clothingSize",custom:true});
@@ -2056,7 +2056,7 @@
 
   function applyPublicTemplate(template,name,customValues={}) {
     const form=$("#publicFullRegistrationForm"); if (!form) return;
-    const columns=template?.columns?.length ? template.columns : standardTemplate().columns;
+    const columns=repairRegistrationTemplate(template?.columns?.length ? template : standardTemplate()).columns;
     const included=new Map(columns.filter(column=>!column.custom).map(column=>[column.key,column]));
     CORE_AUTH_FIELDS.forEach(key=>{ if(!included.has(key)) included.set(key,{key,required:true}); });
     JOURNEY_FORM_COLUMNS.forEach(column=>{if(!included.has(column.key))included.set(column.key,{...column,required:true});});
@@ -2249,8 +2249,10 @@
     if (/^(no|序号)$/.test(text)) return "sequence";
     const transferDirect=[[/去程送站出发地点|接送出发地点|outboundtransferorigin/,"outboundTransferOrigin"],[/预约送站时间|outboundtransfertime/,"outboundTransferTime"],[/去程送站备注|outboundtransfernotes/,"outboundTransferNotes"],[/返程接站送达目的地|送达目的地|returntransferdestination/,"returnTransferDestination"],[/预估接站时间|returntransfertime/,"returnTransferTime"],[/返程接站备注|returntransfernotes/,"returnTransferNotes"]];for(const[pattern,key]of transferDirect)if(pattern.test(text))return key;
     const journeyDirect=[
-      [/返程出发日期|returndepartdate/,"returnDepartDate"],[/返程出发城市|returndepartcity/,"returnDepartCity"],[/返程出发出行方式|返程出发方式|returndeparttransporttype/,"returnDepartTransportType"],[/返程出发场站|returndepartstation/,"returnDepartStation"],
+      [/返程出发日期|returndepartdate/,"returnDepartDate"],[/返程出发城市|returndepartcity/,"returnDepartCity"],[/返程出发出行方式|返程出行方式|返程出发方式|returndeparttransporttype/,"returnDepartTransportType"],[/返程出发场站|returndepartstation/,"returnDepartStation"],
       [/返程抵达日期|returnarrivedate/,"returnArriveDate"],[/返程抵达城市|returnarrivecity/,"returnArriveCity"],[/返程抵达出行方式|返程抵达方式|returnarrivetransporttype/,"returnArriveTransportType"],[/返程抵达场站|returnarrivestation/,"returnArriveStation"],
+      [/去程出发日期/,"departDate"],[/去程出发城市/,"departCity"],[/去程出行方式|去程出发方式/,"departTransportType"],[/去程出发场站/,"departStation"],
+      [/去程抵达日期/,"arriveDate"],[/去程抵达城市/,"arriveCity"],[/去程抵达方式|去程抵达出行方式/,"arriveTransportType"],[/去程抵达场站/,"arriveStation"],
       [/^出发日期$|departdate/,"departDate"],[/^出发城市$|departcity/,"departCity"],[/^出发出行方式$|departtransporttype/,"departTransportType"],[/^出发场站$|departstation/,"departStation"],
       [/^抵达日期$|arrivedate/,"arriveDate"],[/^抵达城市$|arrivecity/,"arriveCity"],[/^抵达出行方式$|arrivetransporttype/,"arriveTransportType"],[/^抵达场站$|arrivestation/,"arriveStation"],
     ];
@@ -2270,16 +2272,26 @@
     return "";
   }
   function templateFromHeaders(headers) {
-    const standardLike=headers.length>=30 && headers.some(value=>normalizeHeader(value).includes("客户姓名")) && headers.some(value=>normalizeHeader(value).includes("销售联系人手机"));
     const used=new Set();
     return {version:1,columns:headers.map((raw,index)=>{
       const header=cleanCell(raw)||`未命名字段 ${index+1}`;
-      let key=standardLike && index<STANDARD_TEMPLATE_KEYS.length ? STANDARD_TEMPLATE_KEYS[index] : inferTemplateKey(header,index,headers.length);
+      let key=inferTemplateKey(header,index,headers.length);
       if (key && key!=="sequence" && used.has(key)) key="";
       if (key) used.add(key);
       const custom=!key; if (custom) key=`custom_${index}_${normalizeHeader(header).slice(0,18)||"field"}`;
       return {header,key,required:/\*/.test(header),custom};
     })};
+  }
+  function repairRegistrationTemplate(template={}) {
+    const source=Array.isArray(template?.columns)?template.columns:[];
+    if(!source.length)return{...(template||{}),version:template?.version||1,columns:[]};
+    const inferred=templateFromHeaders(source.map(column=>column?.header||""));
+    const columns=source.map((column,index)=>{
+      const repaired=inferred.columns[index];
+      const preserveExisting=repaired.custom===true&&String(column?.key||"").trim()!=="";
+      return{...column,key:preserveExisting?column.key:repaired.key,custom:preserveExisting?column.custom===true:repaired.custom,required:column?.required===true||repaired.required===true};
+    });
+    return{...(template||{}),version:template?.version||1,columns};
   }
   const excelColumnIndex = letters => [...String(letters||"").toUpperCase()].reduce((total,char)=>total*26+char.charCodeAt(0)-64,0)-1;
   async function templateValidationOptions(buffer,sheetName) {

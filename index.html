@@ -84,11 +84,12 @@
           </div>
           <div class="portal-panel" data-portal-panel="register">
             <div id="publicAuthStep">
-            <div class="lookup-card-head"><span class="icon-badge">1</span><div><h2>确认填报人身份</h2><p>三项信息匹配后进入当前项目报名表</p></div></div>
+            <div class="lookup-card-head"><span class="icon-badge">1</span><div><h2>确认填报人身份</h2><p data-registration-identity-hint>按当前项目设置验证后进入报名表</p></div></div>
             <form id="publicRegistrationForm" class="stack-form">
-              <label>大区<select name="region" required><option value="">正在读取当前会议大区…</option></select></label>
-              <label>姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入填报人姓名" required /></label>
-              <label>员工编号<input name="employeeNo" maxlength="50" autocomplete="username" placeholder="请输入员工编号" required /></label>
+              <label data-registrant-identity-field="region">大区<select name="region"><option value="">正在读取当前会议大区…</option></select></label>
+              <label data-registrant-identity-field="name">姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入填报人姓名" /></label>
+              <label data-registrant-identity-field="employeeNo">员工编号<input name="employeeNo" maxlength="50" autocomplete="username" placeholder="请输入员工编号" /></label>
+              <label data-registrant-identity-field="phone">手机号<input name="registrantPhone" inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="请输入11位手机号" /></label>
               <button class="button button-primary button-block" type="submit">进入报名填报页面 <span>→</span></button>
             </form>
             <p class="form-hint">登录会话仅对当前项目有效；全部新增记录自动绑定到本次填报人身份。</p>
@@ -159,9 +160,10 @@
           <div class="portal-panel is-hidden" data-portal-panel="manage">
             <div class="lookup-card-head"><span class="icon-badge">✎</span><div><h2>更改已报名</h2><p>仅显示并允许修改您本人提交的参会人员</p></div></div>
             <form id="publicManageForm" class="stack-form">
-              <label>大区<select name="region" required><option value="">正在读取当前会议大区…</option></select></label>
-              <label>姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入填报人姓名" required /></label>
-              <label>员工编号<input name="employeeNo" maxlength="50" autocomplete="username" placeholder="请输入员工编号" required /></label>
+              <label data-registrant-identity-field="region">大区<select name="region"><option value="">正在读取当前会议大区…</option></select></label>
+              <label data-registrant-identity-field="name">姓名<input name="name" maxlength="50" autocomplete="name" placeholder="请输入填报人姓名" /></label>
+              <label data-registrant-identity-field="employeeNo">员工编号<input name="employeeNo" maxlength="50" autocomplete="username" placeholder="请输入员工编号" /></label>
+              <label data-registrant-identity-field="phone">手机号<input name="registrantPhone" inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="请输入11位手机号" /></label>
               <button class="button button-primary button-block" type="submit">查看我提交的报名 <span>→</span></button>
             </form>
             <p class="form-hint">没有提交记录时，系统不会展示其他填报人的数据。</p>
@@ -386,6 +388,7 @@
             <div class="page-heading heading-with-action"><div><span class="eyebrow">MEETING PROJECT DETAIL</span><h1>会议项目详情</h1><p>基础信息、报名、行程、住宿、现场服务和权限统一在此配置，仅作用于当前会议。</p></div><div class="heading-actions"><a class="button button-secondary" href="#projects">← 返回会议列表</a><button class="button button-secondary" id="openProjectDocuments" type="button">项目建档文件</button></div></div>
             <form id="settingsForm" class="settings-grid">
               <article class="panel registration-region-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION REGIONS</span><h2>报名大区列表</h2><p>已配置大区时，报名端只能从列表中选择；尚未确认大区时，报名端可自行填写或暂时留空。</p></div></div><label>大区名称 <small>使用顿号、逗号或换行分隔；内外部会议均适用</small><textarea name="registrationRegions" rows="3" placeholder="例如：华北大区、华南大区、沪苏皖"></textarea></label></article>
+              <article class="panel registration-identity-panel"><div class="panel-heading"><div><span class="kicker">REGISTRANT IDENTITY</span><h2>填报人身份确认</h2><p>按项目选择报名入口需要填写的信息；大区可随项目去除，员工编号也可改用手机号。</p></div><span class="status status-normal">项目独立</span></div><fieldset class="identity-field-options"><legend>报名端显示并校验</legend><label><input type="checkbox" name="registrationIdentityField" value="region" /> 大区</label><label><input type="checkbox" name="registrationIdentityField" value="name" /> 姓名</label><label><input type="checkbox" name="registrationIdentityField" value="employeeNo" /> 员工编号</label><label><input type="checkbox" name="registrationIdentityField" value="phone" /> 手机号</label></fieldset><p class="form-hint identity-config-hint">员工编号和手机号至少选择一项，用于识别填报人并找回本人已提交的报名。</p></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>会议总名额 <small>用于校验各分组名额合计</small><input name="capacity" type="number" min="1" /></label><label>会务联系电话<input name="servicePhone" /></label></div></article>
               <article class="panel luggage-control-panel"><div class="panel-heading"><div><span class="kicker">ON-SITE SERVICES</span><h2>行李寄存</h2><p>大型内部会议、外部会议均可按需开启；每场会议独立配置库位与打印模板。</p></div><span class="status" id="luggageFeatureStatus">未启用</span></div><label class="permission-switch"><span><strong>启用本场会议行李寄存</strong><small id="luggageFeatureHint">关闭时不加载扫码、打印模块，不启动后台同步。</small></span><span class="switch"><input id="luggageSwitch" type="checkbox" role="switch" aria-label="启用本场会议行李寄存" /><span></span></span></label><div class="luggage-feature-capabilities"><span>自动库位</span><span>胸卡二维码</span><span>双联标签</span><span>离线寄取</span><span>审计台账</span></div><p class="luggage-feature-note">开关立即保存，只作用于当前会议。有未领取或未同步行李时不能关闭；关闭前请让所有终端联网同步。</p><a id="luggageSettingsEntry" class="button button-secondary is-hidden" href="#luggage">配置库位 / 打印模板 →</a></article>
               <article class="panel transfer-collection-panel"><div class="panel-heading"><div><span class="kicker">OPTIONAL TRANSFER COLLECTION</span><h2>接送机 / 接送站信息收集设置</h2><p>内外部会议均可独立开启；所有接送字段均为选填，不参与行程核验。</p></div><span class="status" id="transferCollectionStatus">未启用</span></div><label class="permission-switch"><span><strong>开启报名端接送信息收集</strong><small>关闭后只隐藏表单，历史接送数据永久保留。</small></span><span class="switch"><input name="transferCollectionEnabled" id="transferCollectionSwitch" type="checkbox" role="switch" /><span></span></span></label><fieldset class="role-option-group"><legend>允许填写的参会角色（可多选）</legend><label><input type="checkbox" name="transferCollectionRole" value="角色嘉宾" /> 角色嘉宾</label><label><input type="checkbox" name="transferCollectionRole" value="听众" /> 普通听众</label><label><input type="checkbox" name="transferCollectionRole" value="赞助商" /> 赞助商</label></fieldset><p class="form-hint">角色嘉宾包含主席、主持、讲者、讨论嘉宾（组长）；配置保存后立即生效。</p></article>

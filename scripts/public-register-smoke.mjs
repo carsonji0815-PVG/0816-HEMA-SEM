@@ -10,24 +10,23 @@ page.on("pageerror", error => errors.push(error.message));
 const requests = [];
 await page.route("**/functions/v1/public-trip-query", async route => {
   const body = route.request().postDataJSON(); requests.push(body);
-  const project={name:"测试项目",clientName:"测试客户",startDate:"2026-09-04",endDate:"2026-09-06",deadline:"2026-08-26T18:00:00+08:00",venues:["上海会场"],servicePhone:"400-001",registrationOpen:true,newRegistrationAllowed:true,fieldConfig:{hcpId:false,remarks:false,quotaRegions:["华东大区"]}};
-  const response = body.action === "project-info" ? {project} : body.action === "registrant-login" ? {authenticated:true,sessionToken:"test-session",registrant:{id:"r1",name:body.name,region:body.region,employeeNo:body.employeeNo},attendees:[],project} : {saved:true,needsApproval:false,attendee:{id:"test-attendee",name:body.details.name,phone:body.details.phone,hospital:body.details.hospital,venue:body.details.venue,region:"华东大区",contactName:"测试人员",contactMobile:body.details.contactMobile,approval:"normal",rowLocked:false}};
+  const project={name:"测试项目",clientName:"测试客户",startDate:"2026-09-04",endDate:"2026-09-06",deadline:"2026-08-26T18:00:00+08:00",venues:["上海会场"],servicePhone:"400-001",registrationOpen:true,newRegistrationAllowed:true,fieldConfig:{hcpId:false,remarks:false,quotaRegions:["华东大区"],registrationIdentityFields:["name","phone"]}};
+  const response = body.action === "project-info" ? {project} : body.action === "registrant-login" ? {authenticated:true,sessionToken:"test-session",registrant:{id:"r1",name:body.name,phone:body.registrantPhone},attendees:[],project} : {saved:true,needsApproval:false,attendee:{id:"test-attendee",name:body.details.name,phone:body.details.phone,hospital:body.details.hospital,venue:body.details.venue,region:"华东大区",contactName:"测试人员",contactMobile:body.details.contactMobile,approval:"normal",rowLocked:false}};
   await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(response)});
 });
 await page.goto("http://127.0.0.1:4173/#portal", { waitUntil: "domcontentloaded" });
 await page.waitForSelector("#publicPortalView:not(.is-hidden)");
-const fields = await page.locator("#publicRegistrationForm input,#publicRegistrationForm select").evaluateAll(nodes => nodes.map(node => node.name));
+const fields = await page.locator("#publicRegistrationForm input:not(:disabled),#publicRegistrationForm select:not(:disabled)").evaluateAll(nodes => nodes.map(node => node.name));
 const loginOpen = await page.locator("#loginDialog").evaluate(node => node.open);
 if (loginOpen) throw new Error("Public registration unexpectedly requires login");
-if (fields.join(",") !== "region,name,employeeNo") throw new Error(`Unexpected public fields: ${fields.join(",")}`);
+if (fields.join(",") !== "name,registrantPhone") throw new Error(`Unexpected configurable public fields: ${fields.join(",")}`);
 if (await page.locator('[data-portal-tab]').count() !== 3) throw new Error("Unified portal tabs missing");
 await page.click('[data-portal-tab="lookup"]');
 await page.waitForSelector('[data-portal-panel="lookup"]:not(.is-hidden)');
 await page.click('[data-portal-tab="register"]');
 await page.waitForSelector('[data-portal-panel="register"]:not(.is-hidden)');
-await page.selectOption('#publicRegistrationForm [name="region"]', "华东大区");
 await page.fill('#publicRegistrationForm [name="name"]', "测试人员");
-await page.fill('#publicRegistrationForm [name="employeeNo"]', "E1001");
+await page.fill('#publicRegistrationForm [name="registrantPhone"]', "13800001001");
 await page.click('#publicRegistrationForm button[type="submit"]');
 await page.waitForSelector("#publicFullRegistrationStep:not(.is-hidden)");
 if (!await page.locator("#publicProjectName").innerText().then(text => text.includes("测试项目"))) throw new Error("Project identity was not displayed");
@@ -36,7 +35,7 @@ if (await page.locator('#publicFullRegistrationForm input[name="name"]').getAttr
 if (!await page.locator('[data-config-field="hcpId"]').evaluate(node => node.classList.contains("is-hidden"))) throw new Error("Project field configuration was not applied");
 if (await page.locator('#publicFullRegistrationForm [name="hcpId"]').getAttribute("required") !== null) throw new Error("Hidden project field remains required");
 const full = page.locator("#publicFullRegistrationForm");
-const values = {name:"测试参会者",phone:"13900001111",city:"上海",hospital:"测试医院",department:"血液科",venue:"上海",sex:"女",idNumber:"TEST-ID-001",departDate:"2026-09-04",departCity:"上海",arriveDate:"2026-09-04",arriveCity:"大连",outNo:"MU1001",outDeparture:"08:00",outArrival:"10:00",returnDepartDate:"2026-09-06",returnDepartCity:"大连",returnArriveDate:"2026-09-06",returnArriveCity:"上海",returnNo:"MU1002",returnDeparture:"18:00",returnArrival:"20:00"};
+const values = {name:"测试参会者",phone:"13900001111",region:"华东大区",city:"上海",hospital:"测试医院",department:"血液科",venue:"上海",sex:"女",idNumber:"TEST-ID-001",departDate:"2026-09-04",departCity:"上海",arriveDate:"2026-09-04",arriveCity:"大连",outNo:"MU1001",outDeparture:"08:00",outArrival:"10:00",returnDepartDate:"2026-09-06",returnDepartCity:"大连",returnArriveDate:"2026-09-06",returnArriveCity:"上海",returnNo:"MU1002",returnDeparture:"18:00",returnArrival:"20:00"};
 for (const [name,value] of Object.entries(values)) { const field = full.locator(`[name="${name}"]`); if (["venue","sex"].includes(name)) await field.selectOption(value); else await field.fill(value); }
 await full.locator('[name="departTransportType"]').selectOption("LOCAL_ATTEND");
 await full.locator('[name="returnDepartTransportType"]').selectOption("LOCAL_ATTEND");

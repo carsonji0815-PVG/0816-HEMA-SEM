@@ -274,6 +274,41 @@ tbody tr { transition: background .15s; } tbody tr:hover { background: #fafbf8; 
 }
 @media (max-width: 440px) { .metric-grid { grid-template-columns: 1fr; }.topbar-event { font-size: 9px; }.avatar { display:none; }.user-switcher { padding-left: 8px; }.public-header .text-link { font-size:8px; } }
 
+/* Project card and settings layout polish */
+.project-grid { align-items:stretch; gap:20px; }
+.project-card { display:flex; min-width:0; min-height:560px; flex-direction:column; padding:26px; }
+.project-card h2 { overflow-wrap:anywhere; line-height:1.25; }
+.project-card p { line-height:1.55; }
+.project-registration-switch { margin-top:16px; }
+.project-actions { display:grid; gap:12px; margin-top:auto; padding-top:20px; border-top:1px solid var(--line); }
+.project-primary-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+.project-primary-actions .button { display:flex; min-width:0; min-height:46px; align-items:center; justify-content:center; padding:10px 9px; text-align:center; line-height:1.35; white-space:normal; writing-mode:horizontal-tb; word-break:keep-all; }
+.project-utility-actions { display:flex; min-width:0; flex-wrap:wrap; align-items:center; gap:6px 14px; }
+.project-utility-actions .text-button { min-height:30px; padding:5px 0; white-space:nowrap; }
+.project-utility-actions .danger { margin-left:auto; }
+.settings-grid > *, .heading-with-action > *, .panel-heading > * { min-width:0; }
+.heading-with-action,.panel-heading { flex-wrap:wrap; }
+.identity-field-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:16px 0 0; padding:0; border:0; }
+.identity-field-options legend { grid-column:1/-1; margin-bottom:2px; color:var(--ink-soft); font-size:9px; font-weight:700; }
+.identity-field-options label { display:flex; min-height:42px; align-items:center; gap:8px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#fbfaf9; font-size:9px; font-weight:700; }
+.identity-field-options input { width:auto; margin:0; accent-color:var(--lilly-red); }
+.identity-config-hint { margin:12px 0 0; text-align:left; line-height:1.65; }
+@media (max-width: 1280px) {
+  .project-primary-actions { grid-template-columns:1fr; }
+  .project-card { min-height:600px; }
+}
+@media (max-width: 1050px) {
+  .project-primary-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .project-card { min-height:560px; }
+}
+@media (max-width: 760px) {
+  .project-card { min-height:0; padding:22px; }
+  .project-primary-actions { grid-template-columns:1fr; }
+  .project-utility-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .project-utility-actions .text-button,.project-utility-actions .danger { width:100%; margin:0; text-align:center; }
+  .identity-field-options { grid-template-columns:1fr; }
+}
+
 /* Lilly brand refresh · 2026-08-29 */
 :root {
   --ink: #2d2526;

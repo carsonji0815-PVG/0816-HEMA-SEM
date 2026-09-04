@@ -68,6 +68,11 @@ const registrationRegions = (meeting:Record<string,unknown>) => {
   const values=Array.isArray(fieldConfig.quotaRegions)?fieldConfig.quotaRegions:[];
   return [...new Set(values.map(value=>clean(value,50)).filter(value=>value&&value!=="未填写大区"))];
 };
+const registrantIdentityFields=(meeting:Record<string,unknown>)=>{
+  const config=(meeting.field_config||{}) as Record<string,unknown>,allowed=["region","name","employeeNo","phone"];
+  const configured=Array.isArray(config.registrationIdentityFields)?config.registrationIdentityFields.map(String).filter(field=>allowed.includes(field)):[];
+  return configured.length&&configured.some(field=>field==="employeeNo"||field==="phone")?[...new Set(configured)]:["region","name","employeeNo"];
+};
 
 export default {
 fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
@@ -115,31 +120,37 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   if (action === "register") return reply({ error:"报名页面已更新，请刷新后重新填写" }, 426);
 
   if (action === "registrant-login") {
+    const identityFields=registrantIdentityFields(meeting);
     const name = clean(payload.name, 50);
     const regionInput = clean(payload.region, 50);
     const employeeNo = clean(payload.employeeNo, 50);
     const employeeNoNorm = normalized(employeeNo, 50);
+    const phone=clean(payload.registrantPhone,20).replace(/\D/g,"").slice(-11);
     const mode = clean(payload.mode, 20) === "manage" ? "manage" : "register";
-    if (!name || !employeeNoNorm) return reply({ error:"请填写姓名和员工编号" }, 400);
+    const values:Record<string,string>={region:regionInput,name,employeeNo:employeeNoNorm,phone};
     const regions=registrationRegions(meeting);
+    const missing=identityFields.filter(field=>!(field==="region"&&!regions.length)&&!values[field]);
+    if(missing.length)return reply({error:`请填写${missing.map(field=>({region:"大区",name:"姓名",employeeNo:"员工编号",phone:"手机号"} as Record<string,string>)[field]).join("、")}`},400);
+    if(identityFields.includes("phone")&&!/^1\d{10}$/.test(phone))return reply({error:"请填写正确的11位手机号"},400);
     const configuredRegion=regions.find(value=>normalized(value,50)===normalized(regionInput,50));
-    if(regions.length&&!regionInput)return reply({error:"请选择当前会议配置的大区"},400);
-    if(regions.length&&!configuredRegion)return reply({error:"请选择当前会议配置的大区"},400);
-    const requestedRegion=regions.length?configuredRegion||"":regionInput;
-    if(!await enforceRateLimit(`registrant-login:${meeting.id}:${employeeNoNorm}`,30))return reply({error:"身份进入尝试过于频繁，请10分钟后重试"},429);
-    let { data:registrant, error:registrantError } = await db.from("registrants").select("*").eq("meeting_id",meeting.id).eq("employee_no_norm",employeeNoNorm).maybeSingle();
+    if(identityFields.includes("region")&&regions.length&&!configuredRegion)return reply({error:"请选择当前会议配置的大区"},400);
+    const requestedRegion=identityFields.includes("region")?(regions.length?configuredRegion||"":regionInput):"";
+    const identityColumn=identityFields.includes("employeeNo")?"employee_no_norm":"phone_norm",identityValue=identityColumn==="employee_no_norm"?employeeNoNorm:phone;
+    if(!await enforceRateLimit(`registrant-login:${meeting.id}:${identityValue}`,30))return reply({error:"身份进入尝试过于频繁，请10分钟后重试"},429);
+    let { data:registrant, error:registrantError } = await db.from("registrants").select("*").eq("meeting_id",meeting.id).eq(identityColumn,identityValue).maybeSingle();
     if (registrantError) return reply({ error:"身份校验暂不可用，请稍后重试" },500);
     if (registrant) {
-      if (normalized(registrant.display_name,50)!==normalized(name,50)) return reply({ error:"姓名或员工编号不匹配，请核对后重试" },403);
-      if(requestedRegion&&registrant.region&&normalized(registrant.region,50)!==normalized(requestedRegion,50))return reply({error:"大区、姓名或员工编号不匹配，请核对后重试"},403);
+      if(identityFields.includes("name")&&normalized(registrant.display_name,50)!==normalized(name,50)) return reply({ error:"填报人身份信息不匹配，请核对后重试" },403);
+      if(identityFields.includes("phone")&&registrant.phone_norm&&registrant.phone_norm!==phone)return reply({error:"填报人身份信息不匹配，请核对后重试"},403);
+      if(requestedRegion&&registrant.region&&normalized(registrant.region,50)!==normalized(requestedRegion,50))return reply({error:"填报人身份信息不匹配，请核对后重试"},403);
       if (!registrant.active) return reply({ error:"该填报人账号已停用，请联系会务负责人" },403);
-      if(requestedRegion&&!registrant.region){const updated=await db.from("registrants").update({region:requestedRegion}).eq("id",registrant.id).select("*").single();if(updated.error||!updated.data)return reply({error:"大区信息保存失败，请稍后重试"},500);registrant=updated.data;}
+      const additions:Record<string,string>={};if(requestedRegion&&!registrant.region)additions.region=requestedRegion;if(identityFields.includes("phone")&&!registrant.phone_norm){additions.phone=phone;additions.phone_norm=phone;}if(Object.keys(additions).length){const updated=await db.from("registrants").update(additions).eq("id",registrant.id).select("*").single();if(updated.error||!updated.data)return reply({error:"填报人信息保存失败，请稍后重试"},500);registrant=updated.data;}
     } else {
-      const createResult=await db.from("registrants").insert({meeting_id:meeting.id,region:requestedRegion,display_name:name,employee_no:employeeNo,employee_no_norm:employeeNoNorm}).select("*").single();
+      const createResult=await db.from("registrants").insert({meeting_id:meeting.id,region:requestedRegion,display_name:name,employee_no:employeeNo,employee_no_norm:employeeNoNorm,phone:identityFields.includes("phone")?phone:null,phone_norm:identityFields.includes("phone")?phone:null}).select("*").single();
       if (createResult.error || !createResult.data) return reply({ error:"填报人身份建立失败，请稍后重试" },500);
       registrant=createResult.data;
     }
-    await db.from("operation_audit_logs").insert({ meeting_id:meeting.id, actor_label:`${name}（${employeeNo}）`, action:"registrant_login", target_type:"registrant", metadata:{ region:registrant.region||"", name, employeeNo, mode, ipHash } });
+    await db.from("operation_audit_logs").insert({ meeting_id:meeting.id, actor_label:[name,employeeNo||phone].filter(Boolean).join("（")+(name&&(employeeNo||phone)?"）":""), action:"registrant_login", target_type:"registrant", metadata:{ region:registrant.region||"", name, employeeNo, phone, identityFields, mode, ipHash } });
     const tokenBytes=crypto.getRandomValues(new Uint8Array(32));
     const sessionToken=[...tokenBytes].map(byte=>byte.toString(16).padStart(2,"0")).join("");
     const tokenHash=await hash(sessionToken);
@@ -149,7 +160,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const { data: attendees, error } = await db.from("attendees").select("*")
       .eq("meeting_id", meeting.id).eq("registrant_id",registrant.id).order("created_at", { ascending:false });
     if (error) return reply({ error:"读取报名名单失败，请稍后重试" }, 500);
-    return reply({ authenticated:true, sessionToken, expiresAt, mode, project:viewProject(meeting), registrant:{id:registrant.id,region:registrant.region,name:registrant.display_name,employeeNo:registrant.employee_no}, attendees:(attendees || []).map(row => ({ id:row.id, rowLocked:!!row.row_locked, approval:row.approval || "normal", ticketStatus:row.ticket_status || "pending", businessStatus:row.business_status||"active", ...registrationView(row) })) });
+    return reply({ authenticated:true, sessionToken, expiresAt, mode, project:viewProject(meeting), registrant:{id:registrant.id,region:registrant.region,name:registrant.display_name,employeeNo:registrant.employee_no,phone:registrant.phone||""}, attendees:(attendees || []).map(row => ({ id:row.id, rowLocked:!!row.row_locked, approval:row.approval || "normal", ticketStatus:row.ticket_status || "pending", businessStatus:row.business_status||"active", ...registrationView(row) })) });
   }
 
   if (action === "save-attendee") {

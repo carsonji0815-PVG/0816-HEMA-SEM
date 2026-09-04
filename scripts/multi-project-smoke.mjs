@@ -8,6 +8,8 @@ await page.goto("http://127.0.0.1:4173/#projects",{waitUntil:"domcontentloaded"}
 await page.locator("#loginDialog").evaluate(dialog=>{if(dialog.open)dialog.close();});
 await page.waitForSelector('[data-page="projects"].active');
 if (await page.locator("#projectSelect option").count()<1) throw new Error("Project selector is empty");
+const actionLayout=await page.locator(".project-primary-actions .button").first().evaluate(node=>{const rect=node.getBoundingClientRect(),style=getComputedStyle(node);return{width:rect.width,height:rect.height,writingMode:style.writingMode}});
+if(actionLayout.width<120||actionLayout.height>70||actionLayout.writingMode!=="horizontal-tb")throw new Error(`Project actions are cramped or vertical: ${JSON.stringify(actionLayout)}`);
 await page.click("#newProjectButton");
 await page.selectOption('#projectForm [name="activityType"]',"internal");
 await page.fill('#projectForm [name="identifier"]',"HT-NEW-2026");
@@ -30,5 +32,5 @@ await page.selectOption("#projectSelect","demo-hema");
 await page.waitForFunction(()=>new URL(location.href).searchParams.get("event")==="hema-sem-2026");
 const switchedLink=await page.locator(".qr-direct-link").getAttribute("href");
 if (!switchedLink?.includes("event=hema-sem-2026")) throw new Error("Portal link did not follow the selected project");
-console.log(JSON.stringify({projectSelector:"pass",createProject:"pass",projectPublicUrl:"pass",projectQuerySync:"pass",projectCardPortals:"pass",errors},null,2));
+console.log(JSON.stringify({projectSelector:"pass",projectCardLayout:"pass",createProject:"pass",projectPublicUrl:"pass",projectQuerySync:"pass",projectCardPortals:"pass",errors},null,2));
 await browser.close(); if(errors.length)process.exitCode=1;

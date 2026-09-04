@@ -34,6 +34,11 @@ for(const [name,expected] of Object.entries(manifest.staticHashes)){
 }
 const candidate=fs.readFileSync(path.join(bundle,'public-trip-query.ts'));
 check('Edge bundle hash',hash(candidate)===manifest.edgeHash);
+const migration=fs.readFileSync(path.join(bundle,'migration.sql'),'utf8');
+check('migration bundle hash',hash(Buffer.from(migration))===manifest.migrationHash);
+run('docker',['exec','-i','lilly-stage-db','psql','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],{input:`begin;\n${migration}\nrollback;\n`,stdio:['pipe','pipe','pipe']});
+run('docker',['exec','-i','lilly-stage-db','psql','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],{input:`begin;\n${migration}\ncommit;\n`,stdio:['pipe','pipe','pipe']});
+check('registrant phone identity columns',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from information_schema.columns where table_schema='public' and table_name='registrants' and column_name in ('phone','phone_norm')"]).trim()==='2');
 try{
   const next=`${edge}.notifications-next`;
   fs.writeFileSync(next,candidate,{mode:0o644});
@@ -56,6 +61,7 @@ try{
   const api=await fetch('https://139.196.97.236/supabase/functions/v1/public-trip-query',{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:'{"action":"list-projects"}',signal:AbortSignal.timeout(20000)});
   const body=await api.json();
   check('public registration API',api.ok&&Array.isArray(body.projects));
+  check('configurable registration identity frontend',fs.readFileSync(path.join(site,'index.html'),'utf8').includes('registrationIdentityField')&&fs.readFileSync(path.join(site,'app.js'),'utf8').includes('configuredRegistrantIdentityFields'));
   const liveEdge=fs.readFileSync(edge);
   check('in-app notifications only',hash(liveEdge)===manifest.edgeHash&&!liveEdge.includes(Buffer.from('notification_email_outbox").insert')));
   fs.writeFileSync(path.join(releaseRoot,'ACTIVE'),new Date().toISOString(),{mode:0o600});

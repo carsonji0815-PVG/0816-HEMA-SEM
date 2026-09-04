@@ -144,6 +144,7 @@
   let projectArchiveStates = {};
   let staffAccess = { allowed:false, email:"", displayName:"", systemRole:"" };
   let staffDirectory = [];
+  let projectClientAccounts = [];
   let adminAccessGrant = null;
   let adminIdleTimer = null;
   const ADMIN_DEVICE_KEY="lilly-admin-device-id-v1";
@@ -421,6 +422,12 @@
     staffDirectory = Array.isArray(data) ? data : [];
   }
 
+  async function loadProjectClientAccounts(){
+    projectClientAccounts=[];if(!backend||!backendMeetingId||!isSystemAdmin())return;
+    const{data,error}=await backend.rpc("list_project_client_accounts",{p_meeting_id:backendMeetingId});
+    if(error)throw new Error(`客户会议负责人账号读取失败：${error.message}`);projectClientAccounts=Array.isArray(data)?data:[];
+  }
+
   function renderSystemStaffDirectory() {
     const panel = $("#systemStaffPanel");
     const list = $("#systemStaffList");
@@ -436,7 +443,7 @@
       return `<div class="system-staff-row">
         <span class="system-staff-avatar ${isAdmin ? "admin" : ""}">${escapeHtml((staff.display_name || "人").slice(0,1))}</span>
         <div class="system-staff-main"><strong>${escapeHtml(staff.display_name)}</strong><small>${escapeHtml(staff.email)}</small></div>
-        <div class="system-staff-badges"><span class="status ${staff.account_created ? "status-normal" : "status-locked"}">${accountState}</span>${!staff.account_created?`<button class="button button-secondary" type="button" data-create-staff-account="${escapeHtml(staff.email)}">创建登录账号</button>`:""}${isAdmin ? `<span class="status status-ok">超级管理员 · 最高权限</span>` : `<label>系统角色<select data-system-staff-role="${escapeHtml(staff.email)}"><option value="ops" ${isReadonly?"":"selected"}>会务负责人</option><option value="readonly" ${isReadonly?"selected":""}>只读查看</option></select></label>`}</div>
+        <div class="system-staff-badges"><span class="status ${staff.account_created ? "status-normal" : "status-locked"}">${accountState}</span>${!staff.account_created?`<button class="button button-secondary" type="button" data-create-staff-account="${escapeHtml(staff.email)}">创建登录账号</button>`:`<button class="button button-secondary" type="button" disabled title="该邮箱的登录账号已经存在">创建登录账号（已完成）</button>`}${isAdmin ? `<span class="status status-ok">超级管理员 · 可兼任会务负责人</span>` : `<label>系统角色<select data-system-staff-role="${escapeHtml(staff.email)}"><option value="ops" ${isReadonly?"":"selected"}>会务负责人</option><option value="readonly" ${isReadonly?"selected":""}>只读查看</option></select></label>`}</div>
         <label class="permission-switch system-staff-switch"><span><strong>${enabled ? (isAdmin ? "兼任当前项目会务负责人" : "已授权当前项目") : (isAdmin ? "未兼任当前项目会务负责人" : "未授权当前项目")}</strong><small>${staff.account_created ? (isAdmin ? "不影响超级管理员的全局最高权限" : "可随时开放或回收") : (enabled ? "已预先委任，登录账号创建后自动生效" : "可先委任，登录账号创建后自动生效")}</small></span><span class="switch"><input type="checkbox" data-system-staff-email="${escapeHtml(staff.email)}" ${enabled ? "checked" : ""}/><span></span></span></label>
       </div>`;
     }).join("") || `<div class="empty-state">暂无可分配的会务负责人账号</div>`;
@@ -444,6 +451,21 @@
     $$('[data-system-staff-role]', list).forEach(select=>select.addEventListener("change",()=>setSystemStaffRole(select.dataset.systemStaffRole,select.value,select)));
     $$('[data-create-staff-account]',list).forEach(button=>button.addEventListener("click",()=>openStaffAccountDialog(button.dataset.createStaffAccount)));
   }
+
+  function renderProjectClientAccounts(){
+    const panel=$("#clientAccountPanel"),list=$("#clientAccountList");if(!panel||!list)return;
+    const visible=!!backendMeetingId&&isSystemAdmin();panel.classList.toggle("is-hidden",!visible);if(!visible){list.innerHTML="";return;}
+    list.innerHTML=projectClientAccounts.length?projectClientAccounts.map(account=>`<div class="system-staff-row"><span class="system-staff-avatar">${escapeHtml((account.display_name||"客").slice(0,1))}</span><div class="system-staff-main"><strong>${escapeHtml(account.display_name)}</strong><small>${escapeHtml(account.email)}</small></div><div class="system-staff-badges"><span class="status ${account.active?"status-normal":"status-locked"}">${account.active?"当前项目已授权":"已停用"}</span><span class="status status-ok">客户会议负责人</span></div><button class="button button-secondary" type="button" data-revoke-client-account="${escapeHtml(account.email)}" ${account.active?"":"disabled"}>移出当前项目</button></div>`).join(""):`<div class="empty-state">当前项目尚未创建客户会议负责人账号</div>`;
+    $$('[data-revoke-client-account]',list).forEach(button=>button.onclick=()=>revokeProjectClientAccount(button.dataset.revokeClientAccount,button));
+  }
+
+  function openClientAccountDialog(){if(!backendMeetingId||!isSystemAdmin())return deny();const form=$("#clientAccountForm");form.reset();$("#clientAccountProjectName").textContent=`仅授权访问：${state.settings.eventName||"当前会议"}`;$("#clientAccountError").textContent="";$("#clientAccountDialog").showModal();}
+
+  async function createClientAccount(event){event.preventDefault();const form=event.currentTarget,password=form.elements.password.value,confirmation=form.elements.confirmPassword.value;if(password.length<12||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/[0-9]/.test(password)||!(/[^A-Za-z0-9]/.test(password)))return $("#clientAccountError").textContent="临时密码至少12位，并包含大小写字母、数字和特殊字符";if(password!==confirmation)return $("#clientAccountError").textContent="两次输入的临时密码不一致";const button=form.querySelector('button[type="submit"]');button.disabled=true;try{const{data:{session}}=await backend.auth.getSession();if(!session)throw new Error("登录会话已过期");const response=await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/staff-account-admin`,{method:"POST",headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey,"Authorization":`Bearer ${session.access_token}`},body:JSON.stringify({accountType:"client",email:form.elements.email.value.trim().toLowerCase(),displayName:form.elements.displayName.value.trim(),password,meetingId:backendMeetingId})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"客户账号创建失败");form.reset();$("#clientAccountDialog").close();await loadProjectClientAccounts();renderProjectClientAccounts();toast("客户会议负责人账号已创建，仅授权当前项目");}catch(error){$("#clientAccountError").textContent=error.message||"客户账号创建失败";}finally{button.disabled=false;}}
+
+  async function revokeProjectClientAccount(email,button){if(!confirm(`确认将 ${email} 移出当前项目？账号在其他项目的权限不受影响。`))return;button.disabled=true;const{error}=await backend.rpc("set_project_client_account_active",{p_meeting_id:backendMeetingId,p_email:email,p_active:false});if(error){button.disabled=false;return toast(`移除失败：${error.message}`,"error");}await loadProjectClientAccounts();renderProjectClientAccounts();toast("客户会议负责人已移出当前项目");}
+
+  function signedInAccessLabel(){return isSystemAdmin()?"超级管理员":isReadOnlyStaff()?"只读查看":staffAccess.systemRole==="client"?"客户会议负责人":"会务负责人";}
 
   function openStaffAccountDialog(email){
     if(!isSystemAdmin())return deny();
@@ -460,7 +482,7 @@
     const button=form.querySelector('button[type="submit"]');button.disabled=true;
     try{
       const {data:{session}}=await backend.auth.getSession();if(!session)throw new Error("登录会话已过期");
-      const response=await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/staff-account-admin`,{method:"POST",headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey,"Authorization":`Bearer ${session.access_token}`},body:JSON.stringify({email:form.elements.email.value,displayName:form.elements.displayName.value,password,meetingId:backendMeetingId,assignProject:form.elements.assignProject.checked})});
+      const response=await fetch(`${window.APP_CONFIG.supabaseUrl}/functions/v1/staff-account-admin`,{method:"POST",headers:{"Content-Type":"application/json","apikey":window.APP_CONFIG.supabaseAnonKey,"Authorization":`Bearer ${session.access_token}`},body:JSON.stringify({accountType:"staff",email:form.elements.email.value,displayName:form.elements.displayName.value,password,meetingId:backendMeetingId,assignProject:form.elements.assignProject.checked})});
       const payload=await response.json();if(!response.ok)throw new Error(payload.error||"账号创建失败");
       form.reset();$("#staffAccountDialog").close();await loadStaffDirectory();renderSystemStaffDirectory();renderSystemSettings();toast("登录账号已创建并完成项目权限设置");
     }catch(error){$("#staffAccountError").textContent=error.message||"账号创建失败";}finally{button.disabled=false;}
@@ -619,6 +641,8 @@
 
   function bindLogin() {
     $("#staffAccountForm").addEventListener("submit",createStaffAccount);
+    $("#clientAccountForm").addEventListener("submit",createClientAccount);
+    $("#openClientAccountDialog").addEventListener("click",openClientAccountDialog);
     $("#changePasswordForm").addEventListener("submit",changeOwnPassword);
     $("#changePasswordDialog").addEventListener("cancel",event=>event.preventDefault());
     $("#loginForm").addEventListener("submit", async event => {
@@ -629,7 +653,7 @@
       const email=String(form.elements.email.value||"").trim().toLowerCase();
       const { error } = await backend.auth.signInWithPassword({ email, password: form.elements.password.value });
       if (error) { $("#loginError").textContent = "邮箱或密码不正确"; button.disabled=false; return; }
-      try{$("#loginError").textContent="";await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();await requirePasswordChange();toast(state.activeProjectId?`登录成功 · ${isSystemAdmin()?"超级管理员":isReadOnlyStaff()?"只读查看":"会务负责人"}`:"登录成功，请先新建项目");}
+      try{$("#loginError").textContent="";await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();await requirePasswordChange();toast(state.activeProjectId?`登录成功 · ${signedInAccessLabel()}`:"登录成功，请先新建项目");}
       catch(accessError){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=accessError.message||"当前邮箱未开放管理系统权限";}
       finally{button.disabled=false;}
     });
@@ -640,10 +664,10 @@
     if (!authData.user) throw new Error("登录已过期");
     const [profileRes,projectsRes]=await Promise.all([backend.from("profiles").select("display_name,phone,role").eq("user_id",authData.user.id).maybeSingle(),backend.from("meetings").select("*").is("archived_at",null).order("created_at",{ascending:false})]);
     if(profileRes.error||!profileRes.data)throw new Error("当前账号尚未建立人员资料"); if(projectsRes.error)throw new Error("请先运行项目权限数据库升级脚本");
-    const manageableProjects=projectsRes.data||[]; const accountRole=isReadOnlyStaff()?"sales":profileRes.data.role;projectMemberships=manageableProjects.map(meeting=>({meeting_id:meeting.id,role:accountRole,display_name:profileRes.data.display_name,phone:profileRes.data.phone,meetings:meeting}));
+    const manageableProjects=projectsRes.data||[]; const accountRole=isReadOnlyStaff()?"sales":staffAccess.systemRole==="client"?"client":profileRes.data.role;projectMemberships=manageableProjects.map(meeting=>({meeting_id:meeting.id,role:accountRole,display_name:profileRes.data.display_name,phone:profileRes.data.phone,meetings:meeting}));
     if (!manageableProjects.length) {
       const blank = initialState(); backendMeetingId = null;
-      state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:accountRole,label:isSystemAdmin()?"超级管理员":isReadOnlyStaff()?"只读查看":"会务负责人",phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
+      state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:accountRole,label:signedInAccessLabel(),phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
       localStorage.removeItem("journey-desk-active-project"); return;
     }
     const savedProjectId = localStorage.getItem("journey-desk-active-project");
@@ -681,13 +705,14 @@
     state.settings.roomingRules={...initialState().settings.roomingRules,...(meeting.field_config?.roomingRules||{})};
     if (!state.users.some(user => user.id === authData.user.id)) {
       const profileName=profileRes.data.display_name?.trim();
-      state.users.push({id:authData.user.id,name:profileName,role:"ops",label:isSystemAdmin()?"超级管理员":"会务负责人",phone:profileRes.data.phone||""});
+      state.users.push({id:authData.user.id,name:profileName,role:accountRole,label:signedInAccessLabel(),phone:profileRes.data.phone||""});
     } else {
-      const signedInUser=state.users.find(user=>user.id===authData.user.id);signedInUser.role="ops";signedInUser.label=isSystemAdmin()?"超级管理员":"会务负责人";
+      const signedInUser=state.users.find(user=>user.id===authData.user.id);signedInUser.role=accountRole;signedInUser.label=signedInAccessLabel();
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     await loadProjectArchiveStates();
     await loadStaffDirectory();
+    await loadProjectClientAccounts();
     const systemConfig=await backend.from("system_configuration").select("settings").eq("singleton",true).maybeSingle();
     if(!systemConfig.error&&systemConfig.data?.settings)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify({...loadSystemPreferences(),...systemConfig.data.settings}));
     const [stationRows,aliasRows]=await Promise.all([
@@ -898,7 +923,7 @@
   function renderProjects() {
     $("#projectGrid").innerHTML = state.projects.map(project => {
       const active = project.id === state.activeProjectId; const role = project.ownerUserId===state.currentUserId?"我的项目":isSystemAdmin()?"管理员可管理":"项目负责人"; const visual=projectVisual(project); const archive=projectArchiveStates[project.id]||{files:[]};
-      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前会议" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><div class="project-archive-state ready"><b>${project.registrationOpen?"报名开关已开启":"报名开关已关闭"}</b><span>项目建档文件为可选附件，不影响报名及后续业务流程${archive.fileCount?` · 已归档 ${archive.fileCount} 个文件`:""}</span></div><label class="project-registration-switch"><span><strong>报名开放</strong><small>${project.templateImported?"人工控制新增报名":"请先导入报名模板"}</small></span><span class="switch"><input type="checkbox" data-project-registration-open="${project.id}" ${project.registrationOpen?"checked":""} ${!project.templateImported&&!project.registrationOpen?"disabled":""}/><span></span></span></label><div class="project-actions"><button class="button button-primary" data-project-settings="${project.id}">会议详情 / 设置</button><button class="button button-secondary" data-project-documents="${project.id}">项目建档文件</button><button class="text-button" data-edit-project="${project.id}">编辑基础信息</button><button class="text-button danger" data-delete-project="${project.id}">删除</button><button class="text-button" data-copy-project="${project.id}">复制</button><button class="text-button" data-copy-project-link="${project.id}">复制报名入口</button></div></article>`;
+      return `<article class="panel project-card ${active ? "active" : ""}" style="--project-color:${visual.color}"><div class="project-card-top"><span class="project-card-icon">${visual.icon}</span><span class="status ${active ? "status-normal" : ""}">${active ? "当前会议" : escapeHtml(role)}</span></div><h2>${escapeHtml(project.name)}</h2><p>${project.activityType === "internal" ? "内部活动 · 合同编号" : "外部活动 · 会议编码"}：${escapeHtml(project.identifier||project.slug)}</p><p>${escapeHtml(project.activityOwner||"负责人待补充")} · ${escapeHtml(project.activityDate||project.startDate||"日期待定")}</p><div class="project-archive-state ready"><b>${project.registrationOpen?"报名开关已开启":"报名开关已关闭"}</b><span>项目建档文件为可选附件，不影响报名及后续业务流程${archive.fileCount?` · 已归档 ${archive.fileCount} 个文件`:""}</span></div><label class="project-registration-switch"><span><strong>报名开放</strong><small>${project.templateImported?"无需预先导入参会名单":"请配置或引用报名模板"}</small></span><span class="switch"><input type="checkbox" data-project-registration-open="${project.id}" ${project.registrationOpen?"checked":""} ${!project.templateImported&&!project.registrationOpen?"disabled":""}/><span></span></span></label><div class="project-actions"><button class="button button-primary" data-project-settings="${project.id}">会议详情 / 设置</button><button class="button button-secondary" data-project-documents="${project.id}">项目建档文件</button><button class="text-button" data-edit-project="${project.id}">编辑基础信息</button><button class="text-button danger" data-delete-project="${project.id}">删除</button><button class="text-button" data-copy-project="${project.id}">复制</button><button class="text-button" data-copy-project-link="${project.id}">复制报名入口</button></div></article>`;
     }).join("");
     $$('[data-switch-project]').forEach(button => button.onclick = () => switchProject(button.dataset.switchProject));
     $$('[data-project-settings]').forEach(button=>button.onclick=async()=>{if(button.dataset.projectSettings!==state.activeProjectId)await switchProject(button.dataset.projectSettings);location.hash="settings";});
@@ -1660,7 +1685,7 @@
     $("#transferCollectionSwitch").checked=!!state.settings.transferCollectionEnabled;const allowedTransferRoles=new Set(state.settings.transferCollectionRoles||[]);$$('[name="transferCollectionRole"]',form).forEach(input=>input.checked=allowedTransferRoles.has(input.value));$("#transferCollectionStatus").textContent=state.settings.transferCollectionEnabled?"已启用":"未启用";$("#transferCollectionStatus").className=`status ${state.settings.transferCollectionEnabled?"status-ok":"status-locked"}`;
     const template=state.settings.registrationTemplate?.columns?.length ? state.settings.registrationTemplate : {columns:[]};
     const customCount=template.columns.filter(column=>column.custom).length;
-    $("#templateStatus").innerHTML=state.settings.templateImported?`<span class="template-type-badge ${state.settings.templateIsSystemDefault?"default":"custom"}">${state.settings.templateIsSystemDefault?"系统内置默认模板":"自定义模板"}</span><strong>${escapeHtml(state.settings.templateName||"报名字段配置已保留")}</strong><small>${template.columns.filter(column=>column.key!=="sequence").length} 个报名字段${customCount?` · ${customCount} 个自定义字段`:""}${!state.settings.templateName&&!state.settings.templateIsSystemDefault?" · 原始附件已删除":""}</small>`:`<strong>尚未导入报名模板</strong><small>导入后才能开启项目报名</small>`;
+    $("#templateStatus").innerHTML=state.settings.templateImported?`<span class="template-type-badge ${state.settings.templateIsSystemDefault?"default":"custom"}">${state.settings.templateIsSystemDefault?"系统内置默认模板":"自定义模板"}</span><strong>${escapeHtml(state.settings.templateName||"报名字段配置已保留")}</strong><small>${template.columns.filter(column=>column.key!=="sequence").length} 个报名字段${customCount?` · ${customCount} 个自定义字段`:""}${!state.settings.templateName&&!state.settings.templateIsSystemDefault?" · 原始附件已删除":""}</small>`:`<strong>尚未配置报名模板</strong><small>可上传模板，或在新建/复制项目时引用其他会议设置；无需导入参会名单</small>`;
     $("#templateColumns").innerHTML=template.columns.length?template.columns.filter(column=>column.key!=="sequence").map(column=>`<span class="${column.custom?"custom":""}">${escapeHtml(column.header.replace(/\s+/g," "))}${column.required?" *":""}</span>`).join(""):`<span>等待导入 Excel / CSV 模板</span>`;
     $$('input,textarea,select,button[type="submit"]', form).forEach(input => input.disabled = !canManage() && input.id !== "resetDemo");
     const roomPanel=form.querySelector(".rooming-rules-panel"), internal=isInternalMeeting();
@@ -1671,12 +1696,13 @@
     const templateDelete=$("#resetProjectTemplate");templateDelete.classList.toggle("is-hidden",!canManage());templateDelete.disabled=!state.settings.templateImported||state.settings.templateIsSystemDefault||state.settings.registrationOpen;templateDelete.title=state.settings.templateIsSystemDefault?"系统内置默认模板不允许删除":state.settings.registrationOpen?"请先关闭报名开关":"删除当前自定义模板及字段配置";
     $("#registrationOpenSwitch").checked=!!state.settings.registrationOpen;$("#registrationOpenSwitch").disabled=!canManage()||(!state.settings.templateImported&&!state.settings.registrationOpen);
     $("#registrationOpenStatus").textContent=state.settings.registrationOpen?"报名开放":"报名关闭";$("#registrationOpenStatus").className=`status ${state.settings.registrationOpen?"status-ok":"status-locked"}`;
-    $("#registrationOpenHint").textContent=state.settings.templateImported?(state.settings.registrationOpen?"当前允许公开端新增报名":"关闭后仍可更改已报名和查询参会信息"):"必须先导入报名表模板";
+    $("#registrationOpenHint").textContent=state.settings.templateImported?(state.settings.registrationOpen?"当前允许公开端新增报名；无需预先导入参会名单":"关闭后仍可更改已报名和查询参会信息"):"只需配置报名模板，无需预先导入参会名单";
     $("#managerEditSwitch").checked=!!state.settings.managerEditEnabled;$("#managerEditSwitch").disabled=!(isSystemAdmin()||currentProject()?.ownerUserId===state.currentUserId);
     $$(".quota-settings-panel").forEach(panel=>panel.classList.toggle("is-hidden",state.settings.activityType==="internal"));
     renderTransportStationRules();
     renderSettingsQuotaSummary();
     renderSystemStaffDirectory();
+    renderProjectClientAccounts();
     $("#resetDemo").classList.toggle("is-hidden", !!backend);
   }
 

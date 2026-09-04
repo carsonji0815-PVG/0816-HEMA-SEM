@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>礼来会务文件中心</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="loginView" class="login-shell">
+    <section class="login-brand">
+      <div class="brand-mark">L</div>
+      <p class="eyebrow">LILLY · MEETING OPERATIONS</p>
+      <h1>每一场会议，<br>都有据可循。</h1>
+      <p class="brand-copy">集中收集报价、会务确认单与 PO，让文件归档清晰、权限边界明确。</p>
+      <div class="brand-points">
+        <span>成员独立空间</span><span>统一命名规范</span><span>管理员全局管理</span>
+      </div>
+    </section>
+    <section class="login-panel">
+      <form id="loginForm" class="login-card">
+        <div class="mobile-logo"><span class="brand-mark small">L</span> 礼来会务文件中心</div>
+        <p class="eyebrow coral">SECURE ACCESS</p>
+        <h2>欢迎回来</h2>
+        <p class="muted">请选择姓名并输入密码</p>
+        <label>姓名
+          <select id="loginName" required>
+            <option>季亮亮</option><option>占慧</option><option>沈祥雨</option><option>朱冰焰</option><option>陈艳</option><option>易敏丽</option><option>朱宸玥</option>
+          </select>
+        </label>
+        <label>密码
+          <div class="password-wrap"><input id="loginPassword" type="password" required autocomplete="current-password"><button class="ghost icon-button" type="button" data-toggle-password>显示</button></div>
+        </label>
+        <button class="primary full" type="submit">登录系统 <span>→</span></button>
+        <p class="login-help">首次登录请向部门负责人获取初始密码</p>
+        <p id="loginError" class="form-error" aria-live="polite"></p>
+      </form>
+    </section>
+  </div>
+
+  <div id="appView" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="logo-row"><span class="brand-mark small">L</span><div><b>礼来会务</b><small>文件收集中心</small></div></div>
+      <nav>
+        <button class="nav-item active"><span>⌂</span> 文件工作台</button>
+      </nav>
+      <div id="adminSpaces" class="spaces hidden">
+        <p class="sidebar-label">成员空间</p>
+        <div id="memberNav"></div>
+      </div>
+      <div class="sidebar-bottom">
+        <button id="changePasswordButton" class="nav-item"><span>⌘</span> 修改密码</button>
+        <button id="logoutButton" class="nav-item"><span>↗</span> 退出登录</button>
+        <div class="user-chip"><span id="userAvatar" class="avatar"></span><div><b id="userName"></b><small id="userRole"></small></div></div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button id="menuButton" class="menu-button">☰</button>
+        <div><p class="breadcrumb">文件工作台 / <span id="currentSpaceLabel"></span></p><h1 id="pageTitle">我的会议文件</h1></div>
+        <button id="newFolderButton" class="primary">＋ 新建项目</button>
+      </header>
+      <section class="content">
+        <div class="stats-grid">
+          <article><span class="stat-icon blue">▰</span><div><small>活动项目</small><strong id="folderCount">0</strong></div></article>
+          <article><span class="stat-icon amber">¥</span><div><small>报价文件</small><strong id="quotationCount">0</strong></div></article>
+          <article><span class="stat-icon green">✓</span><div><small>会务确认单</small><strong id="confirmationCount">0</strong></div></article>
+          <article><span class="stat-icon purple">P</span><div><small>PO 文件</small><strong id="poCount">0</strong></div></article>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-box">⌕ <input id="searchInput" placeholder="搜索活动名称、编号、负责人或日期"></div>
+          <select id="typeFilter"><option value="all">全部活动</option><option value="external">外部活动</option><option value="internal">内部活动</option></select>
+        </div>
+
+        <div id="folderList" class="folder-list"></div>
+        <div id="emptyState" class="empty-state hidden">
+          <div class="empty-illustration"><span>▱</span></div>
+          <h3>还没有活动项目</h3>
+          <p>创建活动项目后，管理员在上传最终材料时选择对应场景。</p>
+          <button class="secondary" data-open-new>新建第一个项目</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop hidden">
+    <section id="newFolderModal" class="modal hidden">
+      <button class="modal-close" data-close-modal>×</button>
+      <p class="eyebrow coral">NEW ACTIVITY</p><h2>新建活动项目</h2>
+      <p class="muted">系统会自动按“会议编码/合同编号_负责人_日期”生成归档名称。</p>
+      <form id="newFolderForm">
+        <label>活动类型<select id="meetingTypeSelect" required><option value="external">外部活动</option><option value="internal">内部活动</option></select></label>
+        <label><span id="identifierLabel">会议编码</span><input id="identifierInput" required placeholder="例如：EL2026-0820"></label>
+        <label>活动名称<input id="activityNameInput" required placeholder="请输入活动名称"></label>
+        <div class="form-row"><label>活动负责人<input id="ownerInput" required placeholder="请输入姓名"></label><label>活动日期<input id="dateInput" type="date" required></label></div>
+        <div class="name-preview"><small>文件夹名称预览</small><strong id="namePreview">会议编码_负责人_会议日期</strong></div>
+        <p id="folderError" class="form-error"></p>
+        <div class="modal-actions"><button type="button" class="ghost" data-close-modal>取消</button><button type="submit" class="primary">创建项目</button></div>
+      </form>
+    </section>
+
+    <section id="uploadModal" class="modal hidden">
+      <button class="modal-close" data-close-modal>×</button>
+      <p class="eyebrow coral">UPLOAD DOCUMENT</p><h2>上传文件</h2>
+      <p id="uploadFolderName" class="muted truncate"></p>
+      <form id="uploadForm">
+        <p id="uploadRoleHint" class="role-hint"></p>
+        <label id="uploadScenarioField" class="hidden">项目场景<select id="uploadScenario"><option value="">请选择场景</option><option value="po_email">场景一：PO＋供应商PO确认邮件</option><option value="signed_confirmation">场景二：PO＋已签署会务确认单</option></select></label>
+        <label>文件类型<select id="uploadType"></select></label>
+        <label id="confirmationStatusField" class="hidden">确认单状态<select id="confirmationStatus"><option value="pending">待签署</option><option value="signed">已签署完成</option></select></label>
+        <label id="dropZone" class="drop-zone"><input id="fileInput" type="file" required><span class="upload-symbol">⇧</span><strong>点击选择文件</strong><small>单个文件最大 50MB</small><em id="selectedFileName"></em></label>
+        <div id="uploadProgress" class="progress hidden"><span></span></div>
+        <p id="uploadError" class="form-error"></p>
+        <div class="modal-actions"><button type="button" class="ghost" data-close-modal>取消</button><button type="submit" class="primary">开始上传</button></div>
+      </form>
+    </section>
+
+    <section id="passwordModal" class="modal small-modal hidden">
+      <button class="modal-close" data-close-modal>×</button><h2>修改登录密码</h2>
+      <p class="muted">新密码至少 8 位，并同时包含字母和数字。</p>
+      <form id="passwordForm"><label>当前密码<input id="currentPassword" type="password" required></label><label>新密码<input id="newPassword" type="password" required></label><p id="passwordError" class="form-error"></p><div class="modal-actions"><button type="button" class="ghost" data-close-modal>取消</button><button type="submit" class="primary">保存新密码</button></div></form>
+    </section>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

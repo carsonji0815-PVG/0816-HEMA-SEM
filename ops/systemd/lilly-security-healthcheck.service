@@ -1,0 +1,14 @@
+[Unit]
+Description=Lilly platform daily security healthcheck
+After=network-online.target docker.service nginx.service lilly-meetings.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lilly-security-healthcheck
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+UMask=0077

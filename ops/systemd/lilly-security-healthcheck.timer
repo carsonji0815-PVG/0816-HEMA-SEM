@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Lilly platform security healthcheck daily
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

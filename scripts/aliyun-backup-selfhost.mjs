@@ -50,6 +50,14 @@ for (const [source, name] of [
   ['/etc/systemd/system/lilly-meetings.service.d', 'lilly-meetings.service.d'],
   ['/etc/systemd/system/lilly-platform-backup.service', 'lilly-platform-backup.service'],
   ['/etc/systemd/system/lilly-platform-backup.timer', 'lilly-platform-backup.timer'],
+  ['/etc/systemd/system/lilly-platform-restore-drill.service', 'lilly-platform-restore-drill.service'],
+  ['/etc/systemd/system/lilly-platform-restore-drill.timer', 'lilly-platform-restore-drill.timer'],
+  ['/etc/audit', 'audit'],
+  ['/etc/sysctl.d/99-lilly-platform-hardening.conf', '99-lilly-platform-hardening.conf'],
+  ['/etc/docker/daemon.json', 'docker-daemon.json'],
+  ['/etc/systemd/journald.conf.d/90-lilly-retention.conf', 'journald-retention.conf'],
+  ['/etc/logrotate.d/nginx', 'nginx-logrotate'],
+  ['/etc/logrotate.d/fail2ban', 'fail2ban-logrotate'],
   [`${dir}/PRODUCTION_ACTIVE`, 'PRODUCTION_ACTIVE'],
 ]) if (existsSync(source)) cpSync(source, `${payload}/host-config/${name}`, { recursive: true });
 const archive = `${destination}/platform.tar.gz`;

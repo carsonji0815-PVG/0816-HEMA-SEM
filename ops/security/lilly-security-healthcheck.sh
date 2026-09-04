@@ -5,7 +5,7 @@ failures=()
 pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures+=("$1"); }
 
-for service in nginx docker lilly-meetings fail2ban lilly-platform-backup.timer lilly-platform-restore-drill.timer; do
+for service in nginx docker lilly-meetings fail2ban auditd lilly-platform-backup.timer lilly-platform-restore-drill.timer; do
   if systemctl is-active --quiet "$service"; then pass "service:$service"; else fail "service:$service"; fi
 done
 
@@ -64,6 +64,24 @@ if [[ -z "$unexpected_ports" ]]; then pass 'network:no-unexpected-public-tcp-por
 
 if grep -Eq '^ENABLED=yes$' /etc/ufw/ufw.conf && iptables -S ufw-user-input >/dev/null 2>&1; then pass 'firewall:active'; else fail 'firewall:inactive'; fi
 
+audit_status=$(auditctl -s 2>/dev/null || true)
+if [[ $(sysctl -n net.ipv4.conf.all.send_redirects) == '0' ]] \
+  && [[ $(sysctl -n net.ipv4.conf.all.rp_filter) == '2' ]] \
+  && [[ $(sysctl -n fs.suid_dumpable) == '0' ]] \
+  && grep -q 'enabled 1' <<<"$audit_status" \
+  && grep -q 'lost 0' <<<"$audit_status" \
+  && auditctl -l 2>/dev/null | grep -q 'lilly_backup_key'; then
+  pass 'host:kernel-and-audit-hardening'
+else
+  fail 'host:kernel-or-audit-hardening-regressed'
+fi
+
+if [[ ! -e /var/run/reboot-required ]]; then
+  pass 'host:no-reboot-required'
+else
+  fail 'host:reboot-required'
+fi
+
 sshd_effective=$(sshd -T 2>/dev/null)
 if grep -q '^passwordauthentication no$' <<<"$sshd_effective" && grep -q '^kbdinteractiveauthentication no$' <<<"$sshd_effective" && grep -Eq '^permitrootlogin (prohibit-password|without-password)$' <<<"$sshd_effective"; then
   pass 'ssh:key-only'
@@ -86,6 +104,22 @@ if [[ $(systemctl show lilly-meetings -p User --value) == 'lilly' ]] && [[ $(sys
   pass 'process:least-privilege-sandbox'
 else
   fail 'process:sandbox-regressed'
+fi
+
+if docker info --format '{{.LiveRestoreEnabled}}' 2>/dev/null | grep -qx 'true' \
+  && [[ $(docker ps --format '{{.Names}}' | grep -c '^lilly-stage-') == '6' ]]; then
+  pass 'containers:live-restore-and-all-services-running'
+else
+  fail 'containers:live-restore-disabled-or-services-missing'
+fi
+
+journal_retention=$(systemd-analyze cat-config systemd/journald.conf 2>/dev/null)
+if grep -q '^MaxRetentionSec=90day$' <<<"$journal_retention" \
+  && grep -q '^[[:space:]]*rotate 90$' /etc/logrotate.d/nginx \
+  && grep -q '^[[:space:]]*rotate 26$' /etc/logrotate.d/fail2ban; then
+  pass 'logs:security-retention-policy'
+else
+  fail 'logs:security-retention-policy-missing'
 fi
 
 if ((${#failures[@]})); then

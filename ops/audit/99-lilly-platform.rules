@@ -1,0 +1,21 @@
+## Security-sensitive configuration and key access.
+-w /etc/ssh/sshd_config -p wa -k lilly_identity_config
+-w /etc/ssh/sshd_config.d/ -p wa -k lilly_identity_config
+-w /etc/nginx/sites-available/lilly-meetings -p wa -k lilly_web_config
+-w /etc/lilly-meetings/ -p rwa -k lilly_app_secrets
+-w /opt/lilly-migration/backup-encryption.key -p rwa -k lilly_backup_key
+-w /opt/lilly-migration/staging/compose.functions.json -p wa -k lilly_platform_config
+-w /etc/systemd/system/lilly-meetings.service -p wa -k lilly_service_config
+-w /etc/systemd/system/lilly-meetings.service.d/ -p wa -k lilly_service_config
+-w /etc/systemd/system/lilly-platform.service -p wa -k lilly_service_config
+-w /etc/systemd/system/lilly-platform-backup.service -p wa -k lilly_service_config
+-w /etc/systemd/system/lilly-platform-backup.timer -p wa -k lilly_service_config
+-w /etc/systemd/system/lilly-platform-restore-drill.service -p wa -k lilly_service_config
+-w /etc/systemd/system/lilly-platform-restore-drill.timer -p wa -k lilly_service_config
+
+## Privilege and account changes.
+-w /etc/passwd -p wa -k lilly_identity_change
+-w /etc/group -p wa -k lilly_identity_change
+-w /etc/shadow -p wa -k lilly_identity_change
+-w /etc/sudoers -p wa -k lilly_privilege_change
+-w /etc/sudoers.d/ -p wa -k lilly_privilege_change

@@ -35,7 +35,10 @@
 - 每日03:45（上海时区，最多随机延迟3分钟）执行 `lilly-platform-backup.timer`，PostgreSQL、SQLite、附件、配置和前端一起加密备份至现有OSS。
 - 每月第一个星期日05:30执行 `lilly-platform-restore-drill.timer`：使用最新OSS回读密文，在无网络、无公网端口的临时PostgreSQL容器中完整解密恢复，同时检查SQLite、附件和配置；演练不连接、不停止、不写入生产数据库。每日安全巡检要求最近35天内至少有一次成功报告。
 - 后台管理RPC已撤销匿名角色的默认执行权限，匿名调用在数据库入口返回401；登录用户保留所需执行权，临时访问链接校验和公开报名函数保持可用。每日安全巡检持续检查关键管理RPC未重新暴露给匿名角色。
-- 备份目录 `/var/backups/lilly-platform`；每份 manifest 必须为 `encrypted-offsite-readback-verified` 才算异地回验成功。没有自动清理旧备份，应定期检查磁盘。
+- 主机启用 auditd，审计SSH、Nginx、systemd服务、应用密钥、数据库编排及账号权限配置的读取或修改；审计日志轮转上限约500 MiB。IPv4重定向、源路由、反向路径校验、core dump和内核地址信息已按Docker兼容模式加固，并纳入每日安全巡检。
+- Docker启用 `live-restore`，守护进程维护时业务容器继续运行；全局容器日志限制为单文件10 MiB、保留3份，各生产容器仍保留相同的Compose级限制。安全巡检要求6个核心容器全部运行且live-restore未被关闭。
+- systemd安全日志和服务日志保留90天（上限1 GiB），Nginx访问日志按日压缩保留90份，Fail2ban按周压缩保留26份；应用操作审计仍在数据库长期留存并进入每日加密异地备份。auditd、sysctl、Docker、日志及恢复演练配置也包含在灾备包内。
+- 备份目录 `/var/backups/lilly-platform`；每份 manifest 必须为 `encrypted-offsite-readback-verified` 才算异地回验成功。本机备份默认保留35天且不得低于30天，OSS加密异地副本不由该任务自动删除；每日巡检继续监控磁盘使用率。
 - 切换后已实际执行 systemd 备份服务，Result=success、ExecMainStatus=0；备份 `2026-08-31T14-39-35-383Z-ibh3YH`，加密包1,573,281字节，OSS下载、密文校验、解密校验均通过。
 - AES-256-GCM 恢复密钥独立保存于服务器 `/opt/lilly-migration/backup-encryption.key`，以及用户本机 `/Users/carson/Documents/礼来平台恢复资料/139.196.97.236-backup-encryption.key`（0600）；密钥不进备份包、不进Git。
 - 恢复文件格式：9字节 ASCII `LILLYBKP1` + 12字节IV + 16字节tag + ciphertext；AAD为 `lilly-platform-backup-v1`。恢复前验证密文及解密后的SHA256。

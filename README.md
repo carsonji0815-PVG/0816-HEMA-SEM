@@ -56,7 +56,7 @@ python3 -m http.server 4173
 2. 数据库升级按文件名顺序执行 `supabase/migrations/`；发布脚本必须先在回滚事务中验证迁移，再执行正式事务。
 3. 在 Authentication 仅为下列管理邮箱创建密码账号。其他邮箱即使拥有 Auth 账号，也会被数据库和前端同时拒绝进入管理端：
 
-   - `jll@grandchinamice.com`：季亮亮，超级管理员
+- `jll@grandchinamice.com`：季亮亮，超级管理员；可在具体项目中同时委任为会务负责人
    - `shenxy@grandchinamice.com`：沈祥雨，会务负责人
    - `chenyan@grandchinamice.com`：陈艳，会务负责人
    - `zhucy@grandchinamice.com`：朱宸玥，会务负责人

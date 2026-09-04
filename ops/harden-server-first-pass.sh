@@ -35,7 +35,8 @@ install -m 644 "$NGINX_SOURCE" /etc/nginx/sites-available/lilly-meetings
 nginx -t
 systemctl reload nginx
 
-if growpart -N /dev/vda 3 2>&1 | grep -q '^CHANGE:'; then
+growpart_dry_run=$(growpart -N /dev/vda 3 2>&1 || true)
+if grep -q '^CHANGE:' <<< "$growpart_dry_run"; then
   growpart /dev/vda 3
   resize2fs /dev/vda3
 fi

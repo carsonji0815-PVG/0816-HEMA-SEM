@@ -30,7 +30,7 @@ for(const value of ["男","310***********2345","138****0001","HCP-001","长沙",
 for(const key of ["sex","idNumber","phone"]){const cell=page.locator(`#attendeeTableBody tr`).nth(1).locator(`[data-template-key="${key}"]`);if(!await cell.evaluate(node=>node.classList.contains("identity-invalid-cell")))throw new Error(`Identity validation highlight missing: ${key}`);}
 const tableHeaders=await page.locator("#attendeeTableHead th").allTextContents();
 if(tableHeaders.includes("新增多段行程"))throw new Error("Empty extra-journey column should be hidden");
-for(const header of ["去程属地送站出发地点","去程属地预约送站时间","去程属地送站备注","返程属地接站送达目的地","返程属地预估接站时间","返程属地接站备注"])if(tableHeaders.filter(value=>value.trim()===header).length!==1)throw new Error(`Duplicate roster column: ${header}`);
+for(const header of ["去程属地送站出发地点","去程属地预约送站时间","去程属地送站备注","返程属地接站送达目的地","返程属地接站备注"])if(tableHeaders.filter(value=>value.trim()===header).length!==1)throw new Error(`Duplicate roster column: ${header}`);if(tableHeaders.includes("返程属地预估接站时间"))throw new Error("Manual return pickup time should be hidden");
 await page.evaluate(()=>{const createObjectURL=URL.createObjectURL.bind(URL);URL.createObjectURL=blob=>{blob.arrayBuffer().then(async buffer=>{const workbook=XLSX.read(buffer,{type:"array"}),zip=await JSZip.loadAsync(buffer),styles=await zip.file("xl/styles.xml").async("string");window.__alignmentExport={rows:XLSX.utils.sheet_to_json(workbook.Sheets["报名表"],{header:1,defval:""}),styles};});return createObjectURL(blob);};});
 await page.click("#exportExcel");
 await page.waitForFunction(()=>window.__alignmentExport?.rows?.length>0);
@@ -41,12 +41,12 @@ const exportHeaders=exported.rows[0],exportRow=exported.rows[1];
 if(exportHeaders.includes("新增多段行程明细")||exportHeaders.includes("新增多段行程核验"))throw new Error("Empty extra-journey columns should not be exported");
 for(const redundant of ["抵达出行方式","返程抵达方式"])if(exportHeaders.includes(redundant))throw new Error(`Redundant journey column exported: ${redundant}`);
 for(const [previous,next] of [["抵达城市","抵达场站"],["返程抵达城市","返程抵达场站"]]){const indexes=[previous,next].map(header=>exportHeaders.indexOf(header));if(indexes.some(index=>index<0)||indexes[0]>=indexes[1])throw new Error(`Journey export order mismatch: ${previous} / ${next}`);}
-for(const header of ["去程属地送站出发地点","去程属地预约送站时间","去程属地送站备注","返程属地接站送达目的地","返程属地预估接站时间","返程属地接站备注"])if(exportHeaders.filter(value=>value===header).length!==1)throw new Error(`Duplicate Excel column: ${header}`);
+for(const header of ["去程属地送站出发地点","去程属地预约送站时间","去程属地送站备注","返程属地接站送达目的地","返程属地接站备注"])if(exportHeaders.filter(value=>value===header).length!==1)throw new Error(`Duplicate Excel column: ${header}`);if(exportHeaders.includes("返程属地预估接站时间"))throw new Error("Manual return pickup time should not be exported");
 for(const [header,value] of [["性别","男"],["身份证号/护照号*","310123456789012345"],["手机号","13800000001"],["客户编号*","HCP-001"],["会场","长沙"],["大区","上海大区"]]){
   const index=exportHeaders.indexOf(header);if(index<0||exportRow[index]!==value)throw new Error(`Export mismatch for ${header}: ${exportRow[index]}`);
 }
 for(const [header,value] of [["报名人姓名","报名人甲"],["报名人大区","华东大区"],["报名人员工编号","EMP-009"],["报名人唯一标识","11111111-2222-3333-4444-555555555555"],["报名来源","报名端提交"]]){
   const index=exportHeaders.indexOf(header);if(index<0||exportRow[index]!==value)throw new Error(`Registrant export mismatch for ${header}: ${exportRow[index]}`);
 }
-console.log(JSON.stringify({rosterColumnAlignment:"pass",excelColumnAlignment:"pass",registrantTraceability:"pass",identityValidationHighlight:"pass",journeyColumnOrder:"pass",redundantArrivalModesRemoved:"pass",excelUnifiedStyle:"pass",emptyJourneyHidden:"pass",supplementalColumnsDeduplicated:"pass",errors},null,2));
+console.log(JSON.stringify({rosterColumnAlignment:"pass",excelColumnAlignment:"pass",registrantTraceability:"pass",identityValidationHighlight:"pass",automaticReturnPickupTime:"pass",journeyColumnOrder:"pass",redundantArrivalModesRemoved:"pass",excelUnifiedStyle:"pass",emptyJourneyHidden:"pass",supplementalColumnsDeduplicated:"pass",errors},null,2));
 await browser.close();if(errors.length)process.exitCode=1;

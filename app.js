@@ -10,6 +10,7 @@
   const STANDARD_TEMPLATE_KEYS = ["sequence","attendeeType","name","city","hospital","department","title","venue","sex","idNumber","phone","hcpId","accommodation","flight","outDate","outFrom","outTo","outNo","outDeparture","outArrival","returnDate","returnFrom","returnTo","returnNo","returnDeparture","returnArrival","region","contactName","contactMobile","mslContact","remarks","roomType"];
   const CORE_AUTH_FIELDS = new Set(["name","phone","region"]);
   const JOURNEY_FORM_COLUMNS = [{key:"departDate",header:"出发日期"},{key:"departCity",header:"出发城市"},{key:"departTransportType",header:"出发出行方式"},{key:"departStation",header:"出发场站"},{key:"arriveDate",header:"抵达日期"},{key:"arriveCity",header:"抵达城市"},{key:"arriveTransportType",header:"抵达出行方式"},{key:"arriveStation",header:"抵达场站"},{key:"returnDepartDate",header:"返程出发日期"},{key:"returnDepartCity",header:"返程出发城市"},{key:"returnDepartTransportType",header:"返程出发方式"},{key:"returnDepartStation",header:"返程出发场站"},{key:"returnArriveDate",header:"返程抵达日期"},{key:"returnArriveCity",header:"返程抵达城市"},{key:"returnArriveTransportType",header:"返程抵达方式"},{key:"returnArriveStation",header:"返程抵达场站"}];
+  const EXPORT_JOURNEY_FORM_COLUMNS = JOURNEY_FORM_COLUMNS.filter(column=>!["arriveTransportType","returnArriveTransportType"].includes(column.key));
   const FIELD_LABELS = {departDate:"出发日期",departCity:"出发城市",departTransportType:"出发出行方式",departStation:"出发场站",arriveDate:"抵达日期",arriveCity:"抵达城市",arriveTransportType:"抵达出行方式",arriveStation:"抵达场站",returnDepartDate:"返程出发日期",returnDepartCity:"返程出发城市",returnDepartTransportType:"返程出发方式",returnDepartStation:"返程出发场站",returnArriveDate:"返程抵达日期",returnArriveCity:"返程抵达城市",returnArriveTransportType:"返程抵达方式",returnArriveStation:"返程抵达场站",outDate:"去程日期",outFrom:"去程出发机场/车站",outTo:"去程抵达机场/车站",outNo:"去程航班/车次",outDeparture:"去程出发时间",outArrival:"去程抵达时间",returnDate:"返程日期",returnFrom:"返程出发机场/车站",returnTo:"返程抵达机场/车站",returnNo:"返程航班/车次",returnDeparture:"返程出发时间",returnArrival:"返程抵达时间",privacyLetterStatus:"隐私沟通函",ticketStatus:"出票状态",businessUnit:"所属 BU",internalPosition:"职位",employeeNo:"员工号",clothingSize:"衣服尺寸"};
   const DOCUMENT_API_BASE = String(window.APP_CONFIG?.documentApiBase || window.location.origin || "https://139.196.97.236").replace(/\/$/, "");
   const DOCUMENT_ADMIN_NAME = "季亮亮";
@@ -213,6 +214,18 @@
     columns=columns.filter(column=>column.key!=="clothingSize");
     if(clothingEnabled)columns.push({header:"衣服尺寸",key:"clothingSize",custom:true});
     return columns;
+  }
+  function columnsWithJourneyFields(columns){
+    const redundant=new Set(["arriveTransportType","returnArriveTransportType"]),ordered=(columns||[]).filter(column=>!redundant.has(column.key)).map(column=>({...column})),keys=()=>ordered.map(column=>column.key);
+    EXPORT_JOURNEY_FORM_COLUMNS.forEach((column,canonicalIndex)=>{
+      if(keys().includes(column.key))return;
+      let insertAt=-1;
+      for(let index=canonicalIndex-1;index>=0;index--){const found=keys().indexOf(EXPORT_JOURNEY_FORM_COLUMNS[index].key);if(found>=0){insertAt=found+1;break;}}
+      if(insertAt<0){for(let index=canonicalIndex+1;index<EXPORT_JOURNEY_FORM_COLUMNS.length;index++){const found=keys().indexOf(EXPORT_JOURNEY_FORM_COLUMNS[index].key);if(found>=0){insertAt=found;break;}}}
+      if(insertAt<0){const businessField=ordered.findIndex(item=>["region","contactName","contactMobile","mslContact","remarks","roomType","clothingSize"].includes(item.key));insertAt=businessField>=0?businessField:ordered.length;}
+      ordered.splice(insertAt,0,{...column});
+    });
+    return ordered;
   }
   const currentEventSlug = () => new URLSearchParams(location.search).get("event") || window.APP_CONFIG?.eventSlug || state.settings.slug || "";
   const projectPublicUrl = (project=currentProject(),hash="portal") => {
@@ -2379,7 +2392,7 @@
     }catch(error){toast(error.message||"模板附件删除失败","error");}
   }
   async function downloadProjectTemplate(){
-    const base=meetingTemplateColumns();const keys=new Set(base.map(column=>column.key));const columns=[...base,...JOURNEY_FORM_COLUMNS.filter(column=>!keys.has(column.key))];
+    const columns=columnsWithJourneyFields(meetingTemplateColumns());
     const headers=columns.map(column=>column.header);const example=columns.map(column=>/TransportType$/.test(column.key)?"飞机":"");
     if(window.XLSX){const ws=XLSX.utils.aoa_to_sheet([headers,example]);ws["!cols"]=headers.map(header=>({wch:Math.max(14,Math.min(28,String(header).length+4))}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"报名模板");try{await writeStyledWorkbook(wb,`${state.settings.slug||"会议"}-报名模板-含完整往返行程.xlsx`);toast("报名模板已按统一格式下载，已包含全部16个往返行程字段");}catch(error){toast(`模板下载失败：${error.message}`,"error");}}
   }
@@ -2510,8 +2523,7 @@
   async function exportExcel() {
     if(isReadOnlyStaff()||!isSystemAdmin()&&!['ops','client','sales'].includes(currentUser().role))return toast("只读账号没有敏感数据导出权限","error");
     const attendeeList=visibleAttendees();
-    const columns=meetingTemplateColumns();
-    const existingKeys=new Set(columns.map(column=>column.key));const journeyColumns=JOURNEY_FORM_COLUMNS.filter(column=>!existingKeys.has(column.key));const exportColumns=[...columns,...journeyColumns];
+    const exportColumns=columnsWithJourneyFields(meetingTemplateColumns());
     const supplementalColumns=rosterSupplementalColumns(attendeeList,exportColumns);
     const supplementalHeaders=supplementalColumns.flatMap(column=>column.key==="_journeySegments"?["新增多段行程明细","新增多段行程核验"]:[column.header]);
     const headers=[...exportColumns.map(column=>column.header),...supplementalHeaders,"报名状态","隐私沟通函状态","去程审批状态","返程审批状态","出票状态","去程计划时刻核验","返程计划时刻核验"];

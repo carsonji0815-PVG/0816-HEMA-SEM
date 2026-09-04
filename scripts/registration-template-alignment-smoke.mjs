@@ -38,9 +38,11 @@ if(!exported?.rows?.length)throw new Error("Excel export was not captured");
 for(const marker of ['name val="微软雅黑"','sz val="12"','horizontal="center"','vertical="center"','left style="thin"','right style="thin"','top style="thin"','bottom style="thin"'])if(!exported.styles.includes(marker))throw new Error(`Excel style missing: ${marker}`);
 const exportHeaders=exported.rows[0],exportRow=exported.rows[1];
 if(exportHeaders.includes("新增多段行程明细")||exportHeaders.includes("新增多段行程核验"))throw new Error("Empty extra-journey columns should not be exported");
+for(const redundant of ["抵达出行方式","返程抵达方式"])if(exportHeaders.includes(redundant))throw new Error(`Redundant journey column exported: ${redundant}`);
+for(const [previous,next] of [["抵达城市","抵达场站"],["返程抵达城市","返程抵达场站"]]){const indexes=[previous,next].map(header=>exportHeaders.indexOf(header));if(indexes.some(index=>index<0)||indexes[0]>=indexes[1])throw new Error(`Journey export order mismatch: ${previous} / ${next}`);}
 for(const header of ["去程属地送站出发地点","去程属地预约送站时间","去程属地送站备注","返程属地接站送达目的地","返程属地预估接站时间","返程属地接站备注"])if(exportHeaders.filter(value=>value===header).length!==1)throw new Error(`Duplicate Excel column: ${header}`);
 for(const [header,value] of [["性别","男"],["身份证号/护照号*","310123456789012345"],["手机号","13800000001"],["客户编号*","HCP-001"],["会场","长沙"],["大区","上海大区"]]){
   const index=exportHeaders.indexOf(header);if(index<0||exportRow[index]!==value)throw new Error(`Export mismatch for ${header}: ${exportRow[index]}`);
 }
-console.log(JSON.stringify({rosterColumnAlignment:"pass",excelColumnAlignment:"pass",excelUnifiedStyle:"pass",emptyJourneyHidden:"pass",supplementalColumnsDeduplicated:"pass",errors},null,2));
+console.log(JSON.stringify({rosterColumnAlignment:"pass",excelColumnAlignment:"pass",journeyColumnOrder:"pass",redundantArrivalModesRemoved:"pass",excelUnifiedStyle:"pass",emptyJourneyHidden:"pass",supplementalColumnsDeduplicated:"pass",errors},null,2));
 await browser.close();if(errors.length)process.exitCode=1;

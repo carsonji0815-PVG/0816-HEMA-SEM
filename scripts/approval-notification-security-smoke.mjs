@@ -9,7 +9,7 @@ const checks={
   roomException:sql.includes("requestedType','')='single'")&&app.includes('非副高及以上职称申请单间'),
   structuredNotice:edge.includes('publicChangeDetails')&&edge.includes('change_details:changes')&&sql.includes("source text not null default 'system'"),
   adminAuditOnly:sql.includes('User-visible reminders are intentionally created only')&&app.includes('item.auditOnly=true'),
-  emailOutbox:sql.includes('notification_email_outbox')&&html.includes('approvalEmailNotifications'),
+  inAppOnly:sql.includes('notification_email_outbox')&&!html.includes('approvalEmailNotifications')&&edge.includes('email_requested:false')&&!edge.includes('notification_email_outbox").insert'),
   softDelete:sql.includes("'soft_delete',true")&&app.includes('项目已归档；参会数据和附件均保留'),
   sessionTimeouts:edge.includes('Date.now()+60*60*1000')&&app.includes('30*60*1000'),
   uploadWhitelist:app.includes('禁止上传可执行文件'),

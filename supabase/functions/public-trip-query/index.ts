@@ -268,12 +268,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const changes=attendee?publicChangeDetails(attendee,saved):[];
     if(!attendee||changes.length){
       const message=!attendee?`【新报名提交】${saved.name}`:`${saved.name}发生报名信息变更（${changes.length}项）`;
-      const emailRequested=meetingConfig.approvalEmailNotifications===true;
-      const noticeResult=await db.from("notifications").insert({meeting_id:meeting.id,attendee_id:saved.id,recipient_id:null,type:attendee?"change":"create",message,actor_label:`${registrant.display_name}（报名端）`,source:"public_registration",change_details:changes,email_requested:emailRequested}).select("id").single();
-      if(emailRequested&&noticeResult.data){
-        const{data:recipients}=await db.from("meeting_members").select("user_id").eq("meeting_id",meeting.id).in("role",["ops","client"]);
-        if(recipients?.length)await db.from("notification_email_outbox").insert(recipients.map(item=>({meeting_id:meeting.id,notification_id:noticeResult.data.id,recipient_user_id:item.user_id})));
-      }
+      await db.from("notifications").insert({meeting_id:meeting.id,attendee_id:saved.id,recipient_id:null,type:attendee?"change":"create",message,actor_label:`${registrant.display_name}（报名端）`,source:"public_registration",change_details:changes,email_requested:false});
     }
     return reply({ saved:true, attendee:{id:saved.id,rowLocked:!!saved.row_locked,approval:saved.approval||"normal",ticketStatus:saved.ticket_status||"pending",businessStatus:saved.business_status||"active",...registrationView(saved)}, needsApproval:aggregateApproval==="pending", project:viewProject(meeting) });
   }

@@ -1,0 +1,25 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const root=fileURLToPath(new URL('../',import.meta.url));
+const hash=value=>createHash('sha256').update(value).digest('hex');
+execFileSync(process.execPath,['scripts/build-site.mjs'],{cwd:root,stdio:'inherit'});
+const stage=fs.mkdtempSync(path.join(os.tmpdir(),'in-app-notifications-'));
+const site=path.join(stage,'site');
+fs.cpSync(path.join(root,'.site-build'),site,{recursive:true});
+fs.copyFileSync(path.join(root,'supabase/functions/public-trip-query/index.ts'),path.join(stage,'public-trip-query.ts'));
+const staticHashes={};
+const walk=(dir,base='')=>{for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const name=path.posix.join(base,entry.name);if(entry.isDirectory())walk(path.join(dir,entry.name),name);else staticHashes[name]=hash(fs.readFileSync(path.join(dir,entry.name)));}};
+walk(site);
+const edgeHash=hash(fs.readFileSync(path.join(stage,'public-trip-query.ts')));
+const version=`in-app-notifications-20260904-${hash(JSON.stringify({staticHashes,edgeHash})).slice(0,12)}`;
+fs.writeFileSync(path.join(stage,'manifest.json'),JSON.stringify({version,staticHashes,edgeHash},null,2));
+fs.copyFileSync(path.join(root,'scripts/deploy-in-app-notifications-release.mjs'),path.join(stage,'deploy.mjs'));
+const out=path.join(root,'.tmp',`${version}.tar.gz`);
+fs.mkdirSync(path.dirname(out),{recursive:true});
+execFileSync('tar',['-czf',out,'-C',stage,'.']);
+console.log(JSON.stringify({version,file:out,sha256:hash(fs.readFileSync(out)),bytes:fs.statSync(out).size,files:Object.keys(staticHashes).length},null,2));

@@ -25,6 +25,9 @@ assert.match(app,/确认删除该报名模板？删除后模板文件不可恢�
 assert.match(html,/id="removeProjectTemplateAttachment"/);
 assert.match(app,/remove_project_registration_template_attachment/);
 assert.match(app,/报名字段和历史数据已保留/);
+assert.match(app,/const extension=\(file\.name\.match\(\/\\\.\(xlsx\|xls\|csv\)\$\/i\)\?\.\[0\]\|\|"\.xlsx"\)\.toLowerCase\(\)/);
+assert.match(app,/newStoragePath=`\$\{backendMeetingId\}\/\$\{crypto\.randomUUID\(\)\}\$\{extension\}`/);
+assert.doesNotMatch(app,/newStoragePath=`\$\{backendMeetingId\}\/\$\{crypto\.randomUUID\(\)\}-\$\{safeName\}`/);
 assert.match(attachmentSql,/template_name=null,template_storage_path=null/);
 assert.match(attachmentSql,/registrationTemplatePreserved/);
 assert.match(sql,/registration-template-files/);

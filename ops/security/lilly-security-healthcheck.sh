@@ -77,6 +77,9 @@ if [[ "$trigger_count" == '4' ]]; then pass 'database:audit-append-only-triggers
 dangerous_grants=$(docker exec -i lilly-stage-db psql -U postgres -d postgres -X -Atc "select count(*) from information_schema.role_table_grants where table_schema='public' and table_name in ('operation_audit_logs','luggage_audit_logs') and grantee in ('anon','authenticated','service_role') and privilege_type in ('DELETE','UPDATE','TRUNCATE');")
 if [[ "$dangerous_grants" == '0' ]]; then pass 'database:audit-mutation-grants-removed'; else fail "database:audit-dangerous-grants:$dangerous_grants"; fi
 
+anonymous_admin_rpcs=$(docker exec -i lilly-stage-db psql -U postgres -d postgres -X -Atc "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=any(array['create_admin_access_link','create_meeting_project','delete_meeting_project','list_system_staff','replace_station_dictionary','set_registration_open','set_system_staff_role','update_meeting_settings']) and has_function_privilege('anon',p.oid,'EXECUTE');")
+if [[ "$anonymous_admin_rpcs" == '0' ]]; then pass 'database:anonymous-admin-rpcs-revoked'; else fail "database:anonymous-admin-rpc-grants:$anonymous_admin_rpcs"; fi
+
 if [[ -z $(find /opt/lilly-meetings/data/files -type f -perm /077 -print -quit) ]]; then pass 'files:private-permissions'; else fail 'files:group-or-world-accessible'; fi
 
 if [[ $(systemctl show lilly-meetings -p User --value) == 'lilly' ]] && [[ $(systemctl show lilly-meetings -p NoNewPrivileges --value) == 'yes' ]] && [[ $(systemctl show lilly-meetings -p ProtectSystem --value) == 'strict' ]]; then

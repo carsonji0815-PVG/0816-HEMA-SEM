@@ -1,0 +1,63 @@
+begin;
+
+-- PostgreSQL grants EXECUTE on new functions to PUBLIC by default. Administrative
+-- RPCs already perform role checks, but they should not be callable by anon at all.
+revoke execute on function public.create_admin_access_link(integer,text) from public, anon;
+revoke execute on function public.create_meeting_project(text,text,text,text,text,date,uuid) from public, anon;
+revoke execute on function public.delete_meeting_project(uuid) from public, anon;
+revoke execute on function public.get_project_registration_template_delete_status(uuid) from public, anon;
+revoke execute on function public.get_staff_access() from public, anon;
+revoke execute on function public.list_project_client_accounts(uuid) from public, anon;
+revoke execute on function public.list_system_staff(uuid) from public, anon;
+revoke execute on function public.luggage_attendees(uuid) from public, anon;
+revoke execute on function public.luggage_config(uuid) from public, anon;
+revoke execute on function public.luggage_ledger_page(uuid,text) from public, anon;
+revoke execute on function public.register_staff_session(text,text) from public, anon;
+revoke execute on function public.remove_project_registration_template(uuid) from public, anon;
+revoke execute on function public.remove_project_registration_template_attachment(uuid) from public, anon;
+revoke execute on function public.replace_city_aliases(jsonb) from public, anon;
+revoke execute on function public.replace_station_dictionary(jsonb) from public, anon;
+revoke execute on function public.reset_meeting_luggage(uuid,text) from public, anon;
+revoke execute on function public.save_luggage_config(uuid,jsonb) from public, anon;
+revoke execute on function public.save_project_registration_template(uuid,text,jsonb,text) from public, anon;
+revoke execute on function public.set_manager_attendee_edit(uuid,boolean) from public, anon;
+revoke execute on function public.set_meeting_luggage_enabled(uuid,boolean) from public, anon;
+revoke execute on function public.set_project_client_account_active(uuid,text,boolean) from public, anon;
+revoke execute on function public.set_project_staff_member(uuid,text,boolean) from public, anon;
+revoke execute on function public.set_registration_open(uuid,boolean) from public, anon;
+revoke execute on function public.set_system_staff_role(text,text) from public, anon;
+revoke execute on function public.sync_luggage_record(uuid,jsonb) from public, anon;
+revoke execute on function public.transfer_registrant_attendees(uuid,uuid,uuid) from public, anon;
+revoke execute on function public.update_meeting_project(uuid,text,text,text,text,text,date) from public, anon;
+revoke execute on function public.update_meeting_settings(uuid,bigint,jsonb) from public, anon;
+
+grant execute on function public.create_admin_access_link(integer,text) to authenticated;
+grant execute on function public.create_meeting_project(text,text,text,text,text,date,uuid) to authenticated;
+grant execute on function public.delete_meeting_project(uuid) to authenticated;
+grant execute on function public.get_project_registration_template_delete_status(uuid) to authenticated;
+grant execute on function public.get_staff_access() to authenticated;
+grant execute on function public.list_project_client_accounts(uuid) to authenticated;
+grant execute on function public.list_system_staff(uuid) to authenticated;
+grant execute on function public.luggage_attendees(uuid) to authenticated;
+grant execute on function public.luggage_config(uuid) to authenticated;
+grant execute on function public.luggage_ledger_page(uuid,text) to authenticated;
+grant execute on function public.register_staff_session(text,text) to authenticated;
+grant execute on function public.remove_project_registration_template(uuid) to authenticated;
+grant execute on function public.remove_project_registration_template_attachment(uuid) to authenticated;
+grant execute on function public.replace_city_aliases(jsonb) to authenticated;
+grant execute on function public.replace_station_dictionary(jsonb) to authenticated;
+grant execute on function public.reset_meeting_luggage(uuid,text) to authenticated;
+grant execute on function public.save_luggage_config(uuid,jsonb) to authenticated;
+grant execute on function public.save_project_registration_template(uuid,text,jsonb,text) to authenticated;
+grant execute on function public.set_manager_attendee_edit(uuid,boolean) to authenticated;
+grant execute on function public.set_meeting_luggage_enabled(uuid,boolean) to authenticated;
+grant execute on function public.set_project_client_account_active(uuid,text,boolean) to authenticated;
+grant execute on function public.set_project_staff_member(uuid,text,boolean) to authenticated;
+grant execute on function public.set_registration_open(uuid,boolean) to authenticated;
+grant execute on function public.set_system_staff_role(text,text) to authenticated;
+grant execute on function public.sync_luggage_record(uuid,jsonb) to authenticated;
+grant execute on function public.transfer_registrant_attendees(uuid,uuid,uuid) to authenticated;
+grant execute on function public.update_meeting_project(uuid,text,text,text,text,text,date) to authenticated;
+grant execute on function public.update_meeting_settings(uuid,bigint,jsonb) to authenticated;
+
+commit;

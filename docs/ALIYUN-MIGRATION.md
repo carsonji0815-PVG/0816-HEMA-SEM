@@ -34,6 +34,7 @@
 - 文件服务新增 `/etc/lilly-meetings/supabase.env` 和 systemd drop-in，连接本机Auth；不得打印环境文件。
 - 每日03:45（上海时区，最多随机延迟3分钟）执行 `lilly-platform-backup.timer`，PostgreSQL、SQLite、附件、配置和前端一起加密备份至现有OSS。
 - 每月第一个星期日05:30执行 `lilly-platform-restore-drill.timer`：使用最新OSS回读密文，在无网络、无公网端口的临时PostgreSQL容器中完整解密恢复，同时检查SQLite、附件和配置；演练不连接、不停止、不写入生产数据库。每日安全巡检要求最近35天内至少有一次成功报告。
+- 后台管理RPC已撤销匿名角色的默认执行权限，匿名调用在数据库入口返回401；登录用户保留所需执行权，临时访问链接校验和公开报名函数保持可用。每日安全巡检持续检查关键管理RPC未重新暴露给匿名角色。
 - 备份目录 `/var/backups/lilly-platform`；每份 manifest 必须为 `encrypted-offsite-readback-verified` 才算异地回验成功。没有自动清理旧备份，应定期检查磁盘。
 - 切换后已实际执行 systemd 备份服务，Result=success、ExecMainStatus=0；备份 `2026-08-31T14-39-35-383Z-ibh3YH`，加密包1,573,281字节，OSS下载、密文校验、解密校验均通过。
 - AES-256-GCM 恢复密钥独立保存于服务器 `/opt/lilly-migration/backup-encryption.key`，以及用户本机 `/Users/carson/Documents/礼来平台恢复资料/139.196.97.236-backup-encryption.key`（0600）；密钥不进备份包、不进Git。

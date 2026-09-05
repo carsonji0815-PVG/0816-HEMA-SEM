@@ -10,8 +10,15 @@ const presets=[
 ]
 const local=ref(normalize(props.modelValue))
 function normalize(value){const order=Array.isArray(value?.fields)?value.fields.filter(id=>fields.some(field=>field[0]===id)):[];for(const [id] of fields)if(!order.includes(id))order.push(id);return {preset:value?.preset||'custom',paperWidth:Number(value?.paperWidth)||80,paperHeight:Number(value?.paperHeight)||120,margin:Number(value?.margin)||4,fontSize:Number(value?.fontSize)||12,fields:order}}
-watch(()=>props.modelValue,value=>{local.value=normalize(value)},{deep:true})
-watch(local,value=>emit('update:modelValue',structuredClone(value)),{deep:true})
+function signature(value){return JSON.stringify(normalize(value))}
+watch(()=>props.modelValue,value=>{
+  const next=normalize(value)
+  if(signature(local.value)!==JSON.stringify(next))local.value=next
+},{deep:true})
+watch(local,value=>{
+  const next=normalize(value)
+  if(signature(props.modelValue)!==JSON.stringify(next))emit('update:modelValue',structuredClone(next))
+},{deep:true})
 const ordered=computed(()=>local.value.fields.map(id=>fields.find(item=>item[0]===id)).filter(Boolean))
 function drop(event,target){const source=event.dataTransfer.getData('text/plain');const list=[...local.value.fields],from=list.indexOf(source),to=list.indexOf(target);if(from<0||to<0)return;list.splice(to,0,list.splice(from,1)[0]);local.value.fields=list}
 function applyPreset(preset){local.value=normalize({...preset,preset:preset.id})}

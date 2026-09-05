@@ -13,7 +13,10 @@ if (!host || !context()) {
   const app = createApp(App)
   app.provide('offline', offline)
   app.use(ElementPlus, { locale: zhCn, size: 'large' })
-  app.config.errorHandler = error => { console.error('[luggage]', error); ElMessage.error('操作未完成，请检查本地存储。不要清除浏览器数据。') }
+  app.config.errorHandler = (error, _instance, info) => {
+    console.error('[luggage ui]', info, error)
+    ElMessage.error('页面显示异常，请刷新后重试；已保存的名单和台账不会丢失。')
+  }
   app.mount('#app')
   host.attach({ canLeave: () => !document.querySelector('[data-business-busy="true"]') })
   const resize = new ResizeObserver(() => host.resize(Math.ceil(document.documentElement.getBoundingClientRect().height)))

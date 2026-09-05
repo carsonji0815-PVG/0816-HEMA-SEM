@@ -64,7 +64,7 @@ const remaining = computed(() => Math.max(0,capacity.value-activeCount.value))
 const pendingCount = computed(() => records.value.filter(record => record.sync_status === 'pending' || (!USE_MOCK && record.sync_status === 'mock')).length)
 const filtered = computed(() => {
   const term = filter.value.trim().toLowerCase()
-  return records.value.filter(record => (statusFilter.value === '全部' || record.status === statusFilter.value) && (!term || [record.name, record.dept, record.attend_id, record.mobile, record.luggage_barcode].some(value => value.toLowerCase().includes(term))))
+  return records.value.filter(record => (statusFilter.value === '全部' || record.status === statusFilter.value) && (!term || [record.name, record.dept, record.attend_id, record.mobile, record.luggage_barcode].some(value => String(value || '').toLowerCase().includes(term))))
 })
 const paged = computed(() => filtered.value.slice((page.value - 1) * 10, page.value * 10))
 const canWork = computed(() => ready.value && !!eventId.value && !busy.value && !!host.context())
@@ -94,7 +94,8 @@ async function refresh() {
   } else ledgerSource.value = 'local'
   const all = await getAllLuggage(id)
   if (token !== refreshNumber || id !== eventId.value) return
-  attendees.value = people; records.value = all
+  attendees.value = Array.isArray(people) ? people : []
+  records.value = Array.isArray(all) ? all : []
   if (selected.value) selected.value = people.find(person => person.attend_id === selected.value.attend_id) || null
   if (page.value > Math.max(1, Math.ceil(filtered.value.length / 10))) page.value = 1
 }

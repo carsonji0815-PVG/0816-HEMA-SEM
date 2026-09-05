@@ -22,6 +22,16 @@ const hash = async (value: string) => {
 
 const clean = (value: unknown, max = 200) => String(value || "").replace(/[\u200B-\u200D\uFEFF]/gu,"").replace(/\u3000/gu," ").trim().replace(/\s+/gu," ").slice(0, max);
 const normalized = (value: unknown, max = 200) => clean(value, max).replace(/\s+/g, "").toLowerCase();
+const publicStorageUrl = (value: unknown) => {
+  if (!value) return "";
+  try {
+    const parsed = new URL(String(value));
+    const publicPath = parsed.pathname.startsWith("/supabase/") ? parsed.pathname : `/supabase${parsed.pathname}`;
+    return `${publicPath}${parsed.search}`;
+  } catch {
+    return "";
+  }
+};
 const yes = (value: unknown) => ["Y", "true", "1", "是"].includes(String(value));
 const transportType = (value: unknown) => ({飞机:"PLANE",高铁:"HIGH_SPEED_RAIL",本地参会:"LOCAL_ATTEND",PLANE:"PLANE",HIGH_SPEED_RAIL:"HIGH_SPEED_RAIL",LOCAL_ATTEND:"LOCAL_ATTEND"}[clean(value,30)] || "");
 const notificationLabels:Record<string,string>={
@@ -383,7 +393,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     let placardFileUrl="";
     if(item.direction==="pickup"&&item.placard_file_path){
       const {data}=await db.storage.from("transport-placards").createSignedUrl(item.placard_file_path,900);
-      placardFileUrl=data?.signedUrl||"";
+      placardFileUrl=publicStorageUrl(data?.signedUrl);
     }
     return { direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, placardFileName:item.placard_file_name||"", placardFileUrl, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy };
   }));

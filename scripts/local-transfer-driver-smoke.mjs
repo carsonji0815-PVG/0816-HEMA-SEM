@@ -54,6 +54,7 @@ if (!app.includes('crypto.randomUUID()}${extension}') || !app.includes('name:fil
 for (const placardColumn of ["placard_file_path", "placard_file_name"]) {
   if (!edge.includes(placardColumn)) throw new Error(`public query missing ${placardColumn}`);
 }
+if (!edge.includes("publicStorageUrl(data?.signedUrl)") || !edge.includes("`/supabase${parsed.pathname}`")) throw new Error("signed placard URL must use the public same-origin storage route");
 
 if (!css.includes("Compact admin density")) throw new Error("compact admin density rules missing");
 console.log("local transfer driver and compact admin smoke passed");

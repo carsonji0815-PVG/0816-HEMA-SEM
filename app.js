@@ -201,6 +201,7 @@
   let adminRefreshPromise = null;
   let adminRealtimeChannel = null;
   let adminRealtimeMeetingId = null;
+  let adminRevisionFingerprint = null;
   let adminRefreshQueued = false;
   let lastAdminRefreshAt = 0;
   let lastLookupSchedule = null;
@@ -734,7 +735,7 @@
     }
     populateUsers(); populateProjects(); bindNavigation(); bindForms(); bindControls(); route(); renderAll(); maybeAutoBackup();
     window.setInterval(renderGreeting,60000);
-    window.setInterval(()=>refreshAdminState("poll"),12000);
+    window.setInterval(()=>refreshAdminState("poll"),5000);
     window.setInterval(async()=>{if(backend&&staffAccess.allowed){try{await registerStaffSession();}catch(error){if(error?.transient||isTransientBackendError(error))return;await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent="登录会话已在其他设备失效，请重新登录";$("#loginDialog").showModal();}}},5*60*1000);
     window.addEventListener("hashchange", route);
     window.addEventListener("scroll", () => $(".topbar")?.classList.toggle("scrolled", scrollY > 4));
@@ -966,7 +967,10 @@
   function adminEditorIsActive(){
     if(document.querySelector("dialog[open]"))return true;
     const active=document.activeElement;
-    return !!active&&active!==document.body&&active.matches?.('input,select,textarea,[contenteditable="true"]');
+    if(!active||active===document.body||!active.matches?.('input,select,textarea,[contenteditable="true"]'))return false;
+    if(active.matches('[type="search"],[role="searchbox"]')||/search|filter/i.test(active.id||""))return false;
+    const form=active.closest("form");
+    return !!form&&!!form.querySelector('button[type="submit"],input[type="submit"]');
   }
   function adminRouteIsVisible(){
     const routeName=(location.hash||"#dashboard").slice(1).split("?")[0];
@@ -978,7 +982,11 @@
     if(adminRefreshPromise)return adminRefreshPromise;
     if(!force&&Date.now()-lastAdminRefreshAt<2500)return;
     const meetingId=backendMeetingId;adminRefreshQueued=false;
-    adminRefreshPromise=(async()=>{try{await loadBackendState(meetingId,{refreshAuxiliary:false});if(meetingId!==backendMeetingId)return;populateUsers();populateProjects();renderAll();lastAdminRefreshAt=Date.now();}catch(error){if(reason!=="poll"&&!isTransientBackendError(error))console.warn("自动同步失败",error);}finally{adminRefreshPromise=null;}})();
+    adminRefreshPromise=(async()=>{try{
+      const revision=await backend.rpc("get_meeting_live_revision",{p_meeting_id:meetingId});
+      if(!revision.error){const fingerprint=String(revision.data||"");if(!force&&adminRevisionFingerprint===fingerprint){lastAdminRefreshAt=Date.now();return;}adminRevisionFingerprint=fingerprint;}
+      await loadBackendState(meetingId,{refreshAuxiliary:false});if(meetingId!==backendMeetingId)return;populateUsers();populateProjects();renderAll();lastAdminRefreshAt=Date.now();
+    }catch(error){if(reason!=="poll"&&!isTransientBackendError(error))console.warn("自动同步失败",error);}finally{adminRefreshPromise=null;}})();
     return adminRefreshPromise;
   }
   function scheduleAdminRefresh(){
@@ -987,14 +995,14 @@
     adminRefreshTimer=setTimeout(()=>refreshAdminState("realtime"),350);
   }
   function stopAdminAutoSync(){
-    clearTimeout(adminRefreshTimer);adminRefreshTimer=null;adminRefreshQueued=false;adminRealtimeMeetingId=null;
+    clearTimeout(adminRefreshTimer);adminRefreshTimer=null;adminRefreshQueued=false;adminRealtimeMeetingId=null;adminRevisionFingerprint=null;
     if(adminRealtimeChannel&&backend?.removeChannel)backend.removeChannel(adminRealtimeChannel);adminRealtimeChannel=null;
   }
   function configureAdminAutoSync(){
     if(!backend||!backendMeetingId||!staffAccess.allowed)return;
     if(adminRealtimeMeetingId===backendMeetingId)return;
     if(adminRealtimeChannel&&backend.removeChannel)backend.removeChannel(adminRealtimeChannel);
-    adminRealtimeMeetingId=backendMeetingId;
+    adminRealtimeMeetingId=backendMeetingId;adminRevisionFingerprint=null;
     if(typeof backend.channel!=="function")return;
     const meetingId=backendMeetingId,changed=()=>scheduleAdminRefresh();
     let channel=backend.channel(`meeting-live-${meetingId}`)

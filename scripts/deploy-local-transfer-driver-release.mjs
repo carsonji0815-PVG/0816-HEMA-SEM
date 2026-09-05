@@ -39,6 +39,7 @@ const quotaGuard=run('docker',['exec','lilly-stage-db','psql','-U','postgres','-
 const normalizedQuotaGuard=quotaGuard.replace(/\s+/g,' ').toLowerCase();
 check('unallocated listener regions remain registerable',normalizedQuotaGuard.includes('if v_quota=0 then return new; end if;')&&!quotaGuard.includes('尚未配置听众名额'));
 check('management data published for live refresh',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename in ('meetings','attendees','transports','column_locks','notifications','registrants')"]).trim()==='6');
+check('lightweight meeting revision endpoint installed',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='get_meeting_live_revision'"]).trim()==='1');
 try{
   fs.mkdirSync(path.dirname(syncTarget),{recursive:true,mode:0o755});fs.writeFileSync(syncTarget,syncSource,{mode:0o755});
   fs.writeFileSync(syncService,`[Unit]\nDescription=Lilly meeting station dictionary incremental sync\nAfter=network-online.target docker.service\nWants=network-online.target\nRequires=docker.service\n\n[Service]\nType=oneshot\nUser=root\nExecStart=/usr/local/bin/node ${syncTarget}\nTimeoutStartSec=10min\nNice=10\n`,{mode:0o644});

@@ -3446,6 +3446,7 @@ insert into public.station_dict(city_name,transport_type,station_name,station_sh
 ('兰州','PLANE','兰州中川国际机场','兰州中川'),
 ('西安','PLANE','西安咸阳国际机场T2航站楼','西安咸阳 T2'),
 ('西安','PLANE','西安咸阳国际机场T3航站楼','西安咸阳 T3'),
+('西安','PLANE','西安咸阳国际机场T5航站楼','西安咸阳 T5'),
 ('贵阳','PLANE','贵阳龙洞堡国际机场','贵阳龙洞堡'),
 ('成都','PLANE','成都双流国际机场T1航站楼','成都双流 T1'),
 ('成都','PLANE','成都双流国际机场T2航站楼','成都双流 T2'),

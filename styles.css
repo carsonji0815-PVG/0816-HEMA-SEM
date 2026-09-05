@@ -236,6 +236,7 @@ tbody tr { transition: background .15s; } tbody tr:hover { background: #fafbf8; 
 .portal-tab { min-height: 52px; border: 0; border-radius: 11px; color: #68736c; background: transparent; font-size: 13px; font-weight: 700; transition: .2s ease; }
 .portal-tab span { margin-right: 5px; font-size: 16px; }.portal-tab.active { color: white; background: var(--green); box-shadow: 0 8px 18px rgba(82,103,217,.2); }
 .portal-panel { animation: pageIn .25s ease both; }.lookup-name { margin-top: 16px; font-size: 12px; font-weight: 700; }
+.portal-purpose-note{display:flex;align-items:center;gap:8px;margin:0 0 13px;padding:9px 11px;border-left:3px solid var(--lilly-red);border-radius:9px;background:#fff3ef;color:#6d504d;font-size:8px;line-height:1.5}.portal-purpose-note strong{flex:0 0 auto;color:#a82620;font-size:9px}.portal-purpose-note span{min-width:0}
 .calendar-button { margin-top: 5px; min-height: 48px; font-size: 12px; }.calendar-hint { margin: -3px 0 0; color: var(--ink-soft); text-align: center; font-size: 8px; line-height: 1.6; }
 .portal-layout:has(.portal-card.expanded) { grid-template-columns: minmax(250px,.6fr) minmax(620px,780px); gap: 5vw; align-items: start; padding-top: 42px; }
 .portal-card.expanded { padding: 24px; }.public-full-form { display: grid; gap: 14px; margin-top: 18px; }
@@ -1161,4 +1162,35 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
   .portal-lookup-mode [data-portal-panel="lookup"] .lookup-card h2{font-size:16px}
   .portal-lookup-mode .participant-info-card{grid-template-columns:1fr}
   .portal-lookup-mode .lookup-transfer-details{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .public-shell{padding:8px 10px 16px}
+  .public-header{padding-bottom:6px}
+  .lilly-brand-public .lilly-logo-frame{width:78px;height:43px}
+  .public-header .text-link{margin-top:7px;font-size:8px}
+  .portal-layout{flex:0 0 auto;align-content:start;gap:8px;margin:0 auto;padding:8px 0 6px}
+  .lookup-copy{display:grid;grid-template-columns:1fr;grid-template-areas:"eyebrow" "title" "project" "facts";gap:1px;padding:10px 11px;border:1px solid rgba(218,192,187,.7);border-radius:14px;background:rgba(255,252,250,.82);box-shadow:0 10px 30px rgba(89,55,50,.06)}
+  .lookup-copy>.eyebrow{grid-area:eyebrow;font-size:6px}
+  .lookup-copy>h1{grid-area:title;max-width:none;margin:0;font-size:23px;line-height:1.08;letter-spacing:-.04em}
+  .lookup-copy>h1::after{width:38px;height:3px;margin-top:7px}
+  .public-project-chip{grid-area:project;width:100%;min-width:0;gap:7px;margin:6px 0 0;padding:7px 8px;border-radius:10px;box-shadow:none}
+  .public-project-chip>span{width:28px;height:28px;border-radius:8px;font-size:13px}
+  .public-project-chip small{font-size:7px}
+  .public-project-chip strong{font-size:9px}
+  .public-entry-reminder,.privacy-note{display:none}
+  .public-project-facts{grid-area:facts;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin:7px 0 0;padding-top:7px;border-top:1px solid rgba(218,192,187,.58)}
+  .public-project-facts>div{gap:6px;min-height:46px;padding:6px 7px;border-radius:9px;background:#fff}
+  .public-project-facts>div>span{width:23px;height:23px;border-radius:7px;font-size:10px}
+  .public-project-facts small{font-size:6.5px}
+  .public-project-facts strong{font-size:8px}
+  .portal-card{width:100%;padding:10px;border-radius:14px}
+  .portal-tabs{grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;margin-bottom:9px;padding:3px;border-radius:10px}
+  .portal-tab{min-height:38px;padding:0 2px;border-radius:8px;font-size:9px;white-space:nowrap}
+  .portal-tab span{margin-right:1px;font-size:11px}
+  .portal-purpose-note{gap:6px;margin-bottom:9px;padding:7px 8px;font-size:7.5px}
+  .portal-purpose-note strong{font-size:8px}
+  .portal-panel>.lookup-card-head,.portal-panel>#publicAuthStep>.lookup-card-head{padding-bottom:9px}
+  .portal-panel .lookup-card-head .icon-badge{width:32px;height:32px;font-size:15px}
+  .portal-panel .lookup-card h2{font-size:16px}
+  .portal-panel .stack-form{gap:9px;margin-top:10px}
 }

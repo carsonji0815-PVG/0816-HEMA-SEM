@@ -6,6 +6,15 @@ test("transport enums and local attendee are normalized",()=>{
   assert.equal(F.normalizeType("飞机"),"PLANE");assert.equal(F.normalizeType("高铁"),"HIGH_SPEED_RAIL");assert.equal(F.normalizeType("本地参会"),"LOCAL_ATTEND");
   assert.equal(F.applyLegacy({departCity:"上海",departTransportType:"LOCAL_ATTEND",departStation:"错误场站"}).outFrom,"上海");
 });
+test("journey dates repair two-digit browser years and reject invalid dates",()=>{
+  assert.equal(F.normalizeDate("0026-11-28"),"2026-11-28");
+  assert.equal(F.normalizeDate("26/11/28"),"2026-11-28");
+  assert.equal(F.normalizeDate("2026年2月28日"),"2026-02-28");
+  assert.equal(F.normalizeDate("2026-02-29"),"");
+  assert.equal(F.normalizeDate("1999-12-31"),"");
+  const attendee=F.applyLegacy({departDate:"0026-11-27",returnDepartDate:"0026-11-28"});
+  assert.equal(attendee.outDate,"2026-11-27");assert.equal(attendee.returnDate,"2026-11-28");
+});
 test("dictionary filters city and transport independently",()=>{
   assert.ok(F.options([], "上海市","PLANE").every(name=>name.includes("机场")));
   assert.ok(F.options([], "北京","HIGH_SPEED_RAIL").every(name=>name.endsWith("站")));

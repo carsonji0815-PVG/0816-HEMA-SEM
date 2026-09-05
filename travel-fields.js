@@ -19,6 +19,18 @@
     ["苏州","HIGH_SPEED_RAIL","苏州站"],["苏州","HIGH_SPEED_RAIL","苏州北站"],["苏州","HIGH_SPEED_RAIL","苏州园区站"],["苏州","HIGH_SPEED_RAIL","苏州新区站"],
   ].map(([city,type,name])=>({city,type,name}));
   const clean=value=>String(value??"").replace(/[\u200B-\u200D\uFEFF]/gu,"").replace(/\u3000/gu," ").trim().replace(/\s+/g," ");
+  function normalizeDate(value){
+    const raw=clean(value).replace(/[\u5e74/.]/gu,"-").replace(/\u6708/gu,"-").replace(/\u65e5/gu,"");
+    const match=raw.match(/^(\d{1,4})-(\d{1,2})-(\d{1,2})$/);if(!match)return"";
+    let year=Number(match[1]);const month=Number(match[2]),day=Number(match[3]);
+    // Browsers can serialize a two-digit year as 0026. The platform only
+    // schedules contemporary meetings, so preserve the intended 20xx year.
+    if(year>=0&&year<100)year+=2000;
+    if(year<2000||year>2099||month<1||month>12||day<1||day>31)return"";
+    const date=new Date(Date.UTC(year,month-1,day));
+    if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)return"";
+    return`${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  }
   const normalizeCity=value=>clean(value).replace(/(?:市|地区)$/u,"");
   const canonicalStation=(value,type)=>{
     const mode=normalizeType(type);let raw=clean(value);
@@ -83,19 +95,19 @@
     const returnMode=normalizeType(attendee.returnDepartTransportType,attendee.returnNo);
     const returnArrivalMode=normalizeType(attendee.returnArriveTransportType||returnMode,attendee.returnNo);
     return{
-      departDate:attendee.departDate||attendee.outDate||"",
+      departDate:normalizeDate(attendee.departDate||attendee.outDate),
       departCity:normalizeCity(attendee.departCity||attendee.outFrom||""),
       departTransportType:mode,
       departStation:mode==="LOCAL_ATTEND"?"":officialStation(attendee.departStation||attendee.outFrom||"",mode)||"",
-      arriveDate:attendee.arriveDate||attendee.outDate||"",
+      arriveDate:normalizeDate(attendee.arriveDate||attendee.outDate),
       arriveCity:normalizeCity(attendee.arriveCity||attendee.outTo||""),
       arriveTransportType:arrivalMode,
       arriveStation:arrivalMode==="LOCAL_ATTEND"?"":officialStation(attendee.arriveStation||attendee.outTo||"",arrivalMode)||"",
-      returnDepartDate:attendee.returnDepartDate||attendee.returnDate||"",
+      returnDepartDate:normalizeDate(attendee.returnDepartDate||attendee.returnDate),
       returnDepartCity:normalizeCity(attendee.returnDepartCity||attendee.returnFrom||""),
       returnDepartTransportType:returnMode,
       returnDepartStation:returnMode==="LOCAL_ATTEND"?"":officialStation(attendee.returnDepartStation||attendee.returnFrom||"",returnMode)||"",
-      returnArriveDate:attendee.returnArriveDate||attendee.returnDate||"",
+      returnArriveDate:normalizeDate(attendee.returnArriveDate||attendee.returnDate),
       returnArriveCity:normalizeCity(attendee.returnArriveCity||attendee.returnTo||""),
       returnArriveTransportType:returnArrivalMode,
       returnArriveStation:returnArrivalMode==="LOCAL_ATTEND"?"":officialStation(attendee.returnArriveStation||attendee.returnTo||"",returnArrivalMode)||"",
@@ -196,6 +208,6 @@
     }
     return()=>cleanups.forEach(fn=>fn());
   }
-  const api={TYPES,DEFAULT_DICTIONARY,clean,normalizeCity,normalizeType,canonicalStation,dictionary,stationList,options,filterStationOptions,displayStation,officialStation,cityForStation,parseDictionary,stringifyDictionary,hydrate,applyLegacy,bindForm};
+  const api={TYPES,DEFAULT_DICTIONARY,clean,normalizeDate,normalizeCity,normalizeType,canonicalStation,dictionary,stationList,options,filterStationOptions,displayStation,officialStation,cityForStation,parseDictionary,stringifyDictionary,hydrate,applyLegacy,bindForm};
   if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.TravelFields=Object.freeze(api);
 })(typeof window!=="undefined"?window:globalThis);

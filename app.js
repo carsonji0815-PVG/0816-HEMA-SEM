@@ -253,7 +253,7 @@
     return{fields,messages};
   }
   const normalizeVenueLabel = value => String(value || "").trim().replace(/会场$/u, "").trim();
-  const dbDate = value => /^20\d{2}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(String(value||"")) ? value : null;
+  const dbDate = value => TravelFields.normalizeDate(value)||null;
   const dbTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||"")) ? value : null;
   function normalizePrivacyStatus(value) { return value === "paper" ? "paper" : ["electronic","sent","complete"].includes(value) ? "electronic" : "pending"; }
   const currentUser = () => state.users.find(user => user.id === state.currentUserId) || state.users[0];
@@ -1321,11 +1321,23 @@
     if (!backend) throw new Error("项目建档文件仅在正式登录模式下使用");
     const { data } = await backend.auth.getSession(); const token = data.session?.access_token;
     if (!token) throw new Error("登录已过期，请重新登录");
-    const response = await fetch(`${DOCUMENT_API_BASE}${path}`, { ...options, headers:{ Authorization:`Bearer ${token}`, ...(options.headers||{}) } });
-    if (options.download && response.ok) return response;
-    const payload = (response.headers.get("content-type")||"").includes("application/json") ? await response.json() : {};
-    if (!response.ok) throw new Error(payload.error || "文件服务暂时不可用");
-    return payload;
+    const {download=false,timeoutMs=0,transientRetries=0,...fetchOptions}=options;
+    let lastError;
+    for(let attempt=0;attempt<=transientRetries;attempt+=1){
+      try{
+        const signal=timeoutMs>0?AbortSignal.timeout(timeoutMs):fetchOptions.signal;
+        const response=await fetch(`${DOCUMENT_API_BASE}${path}`,{...fetchOptions,signal,headers:{Authorization:`Bearer ${token}`,...(fetchOptions.headers||{})}});
+        if(download&&response.ok)return response;
+        const payload=(response.headers.get("content-type")||"").includes("application/json")?await response.json():{};
+        if(!response.ok){const failure=new Error(payload.error||"文件服务暂时不可用");failure.status=response.status;failure.transient=[502,503,504].includes(response.status);throw failure;}
+        return payload;
+      }catch(error){
+        lastError=error;const transient=error?.transient===true||error?.name==="AbortError"||error instanceof TypeError||/load failed|failed to fetch|networkerror|fetch failed|timeout/i.test(String(error?.message||""));
+        if(!transient||attempt>=transientRetries)throw error;
+        await new Promise(resolve=>setTimeout(resolve,700*(attempt+1)));
+      }
+    }
+    throw lastError;
   }
 
   async function loadProjectArchiveStates() {
@@ -1897,7 +1909,7 @@
     let ready=false;
     if(groups.size&&backend&&meetingId){
       try{
-        const status=await documentApi(`/api/integrated/projects/${meetingId}/travel/status`,{signal:AbortSignal.timeout(15000)});
+        const status=await documentApi(`/api/integrated/projects/${meetingId}/travel/status`,{timeoutMs:15000,transientRetries:2});
         if(status.version!==2)throw new Error('服务器尚未发布新版核验模块，已停止查询以避免调用旧收费接口');
         ready=true;
         const flightQuota=status.flight.unlimited?'不限每日次数':`每日 ${status.flight.dailyLimit} 次，今日已用 ${status.flight.usedToday||0} 次`;
@@ -1913,7 +1925,7 @@
         if(!backend||!meetingId)throw new Error('请正式登录后使用在线核验；演示页面不会调用数据源');
         if(!ready)throw new Error(failure||'核验服务尚未就绪');
         // One unique itinerary per request bounds latency; repeated attendees share the result.
-        const batch=await documentApi(`/api/integrated/projects/${meetingId}/travel/verify`,{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(90000),body:JSON.stringify({journeys:[group[0]],allowPaid:group[0].allowPaid===true})});
+        const batch=await documentApi(`/api/integrated/projects/${meetingId}/travel/verify`,{method:'POST',headers:{'Content-Type':'application/json'},timeoutMs:90000,transientRetries:1,body:JSON.stringify({journeys:[group[0]],allowPaid:group[0].allowPaid===true})});
         const result=batch.results?.find(item=>item.attendeeId===group[0].attendeeId&&item.segment===group[0].segment);
         group.forEach(j=>results.push({...result,attendeeId:j.attendeeId,segment:j.segment,found:result?.found===true,warnings:result?.warnings||['接口未返回本段核验结果']}));
         cacheHits+=batch.usage?.cacheHits||0;

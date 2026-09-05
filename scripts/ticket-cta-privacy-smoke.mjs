@@ -21,11 +21,13 @@ await page.screenshot({path:".tmp/browser/ticket-cta-settings.png",fullPage:true
 
 await page.evaluate(()=>{location.hash="attendees";});await page.waitForTimeout(180);
 if(await page.locator("#attendeeTableHead").innerText().then(text=>!text.includes("CTA 签署")))throw new Error("CTA roster column missing");
-const ticket=page.locator('[data-progress-field="ticketStatus"]').first();
-const ticketLabels=await page.locator("#ticketStatusSuggestions option").evaluateAll(options=>options.map(option=>option.value));
+const ticket=page.locator('[data-ticket-status-preset]').first();
+const ticketLabels=await ticket.locator("option").allTextContents();
 for(const label of ["待出票","出票中","已出票（机票）","已出票（高铁）","已出票（机票+高铁）","改签中","已退票","去程已出票+返程待审批","去程待审批+返程已出票","财务复核中"]){if(!ticketLabels.includes(label))throw new Error(`Ticket option missing: ${label}`);}
-await ticket.fill("会务确认中");await ticket.dispatchEvent("change");await page.waitForTimeout(120);
-if(await ticket.inputValue()!=="会务确认中")throw new Error("Manual ticket status was not saved");
+await ticket.selectOption("__manual__");const manualTicket=page.locator('[data-ticket-status-manual]').first();await manualTicket.fill("会务确认中");await page.locator('[data-ticket-status-save]').first().click();await page.waitForTimeout(120);
+if(await page.locator('[data-ticket-status-preset]').first().locator("option:checked").innerText()!=="会务确认中")throw new Error("Manual ticket status was not saved");
+await page.locator('[data-ticket-status-preset]').first().selectOption("__clear__");await page.waitForTimeout(120);
+if(await page.locator('[data-ticket-status-preset]').first().inputValue()!=="pending")throw new Error("Ticket status could not be cleared to pending");
 if(await page.locator('[data-progress-field="ctaStatus"]').count()===0)throw new Error("CTA status control missing");
 
 const privacy=page.locator('[data-progress-field="privacyLetterStatus"]').first();
@@ -49,6 +51,8 @@ if(!header.includes("CTA 签署")||!header.includes("出票状态"))throw new Er
 if(firstRow[header.indexOf("CTA 签署")]!=="未完成")throw new Error("CTA export value mismatch");
 if(!String(firstRow[header.indexOf("隐私沟通函状态")]).includes("纸质版"))throw new Error("Paper privacy export value mismatch");
 await page.screenshot({path:".tmp/browser/ticket-cta-roster.png",fullPage:true});
+await page.locator('[data-progress-field="privacyLetterStatus"]').first().selectOption("__clear__");await page.waitForTimeout(120);
+if(await page.locator('[data-progress-field="privacyLetterStatus"]').first().inputValue()!=="pending")throw new Error("Privacy status could not be cleared");
 
 console.log(JSON.stringify({settings:"pass",ticketStatuses:ticketLabels.length,cta:"pass",paperPrivacyUpload:"pass",export:"pass",errors},null,2));
 await browser.close();if(errors.length)process.exitCode=1;

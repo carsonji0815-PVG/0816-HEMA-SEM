@@ -53,3 +53,10 @@ final result: passed
 - Paper privacy-letter objects now use UUID-only ASCII storage keys with a validated extension; the original Chinese filename remains the visible/download filename.
 - Ticket status is a combobox: administrators can choose a configured preset or type and save an attendee-specific status directly.
 - Automated coverage includes a Chinese PDF filename, ASCII storage-key assertion, original-name preservation, configured suggestions, and manual ticket-status entry.
+
+## 2026-09-05 Privacy RLS and clear-state follow-up
+
+- Privacy uploads refresh the authenticated staff heartbeat before the storage request; active global super administrators also have a narrowly scoped storage fallback.
+- Ticket status now uses a native, explicitly colored select with a dedicated manual-entry row, avoiding browser datalist contrast problems.
+- Ticket status can be cleared back to `待出票`; privacy status can be cleared together with its stored paper attachment and metadata.
+- Browser coverage verifies manual entry, preset selection, both clear flows, Chinese filenames, upload closure, and export integrity.

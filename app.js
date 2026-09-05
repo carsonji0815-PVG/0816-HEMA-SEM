@@ -2414,7 +2414,11 @@
     const info=typeof attendeeInfo==="string"?{name:attendeeInfo}:attendeeInfo||{};const name=info.name||"参会人员";
     const displayTime = value => { if (!value) return "待公布"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("zh-CN",{hour12:false}); };
     const journeyTime=(date,time)=>[date,time].filter(Boolean).join(" ")||"待公布";
-    const journeyDetails=trip=>`<div class="lookup-journey-grid"><div><small>航班 / 车次号</small><strong>${escapeHtml(trip.number||"待公布")}</strong></div><div><small>出发航站楼 / 高铁站</small><strong>${escapeHtml(trip.fromStation||trip.from||"待公布")}</strong></div><div><small>出发时间</small><strong>${escapeHtml(journeyTime(trip.date,trip.departure))}</strong></div><div><small>抵达航站楼 / 高铁站</small><strong>${escapeHtml(trip.toStation||trip.to||"待公布")}</strong></div><div><small>抵达时间</small><strong>${escapeHtml(journeyTime(trip.arrivalDate||trip.date,trip.arrival))}</strong></div></div>`;
+    const journeyDetails=trip=>`<div class="lookup-journey-grid">
+      <div class="lookup-journey-line lookup-journey-number"><small>航班号 / 车次号</small><strong>${escapeHtml(trip.number||"待公布")}</strong></div>
+      <div class="lookup-journey-line lookup-journey-route"><div><small>出发时间</small><strong>${escapeHtml(journeyTime(trip.date,trip.departure))}</strong></div><div><small>出发航站楼 / 高铁站</small><strong>${escapeHtml(trip.fromStation||trip.from||"待公布")}</strong></div></div>
+      <div class="lookup-journey-line lookup-journey-route"><div><small>抵达时间</small><strong>${escapeHtml(journeyTime(trip.arrivalDate||trip.date,trip.arrival))}</strong></div><div><small>抵达航站楼 / 高铁站</small><strong>${escapeHtml(trip.toStation||trip.to||"待公布")}</strong></div></div>
+    </div>`;
     const card = (label, trip, t) => {
       const staff = isStaffTransport({...t,driver:t.driver || t.driver_name});
       const driver = staff ? (t.staffName || t.staff_name || "会务工作人员现场接待") : (t.driver || t.driver_name || "待分配");

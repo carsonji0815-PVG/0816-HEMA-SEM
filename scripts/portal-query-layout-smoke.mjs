@@ -3,7 +3,8 @@ import fs from "node:fs/promises";
 
 await fs.mkdir(".tmp/browser", { recursive:true });
 const browser=await chromium.launch({headless:true,executablePath:"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"});
-const page=await browser.newPage({viewport:{width:1440,height:1100}});
+const mobile=process.env.PORTAL_QUERY_VIEWPORT==="mobile";
+const page=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1440,height:1100},isMobile:mobile,deviceScaleFactor:mobile?2:1});
 const errors=[];
 page.on("pageerror",error=>errors.push(error.message));
 await page.route("**/functions/v1/public-trip-query",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({
@@ -29,14 +30,18 @@ const cardBox=await page.locator(".portal-card").boundingBox();
 const meetingBox=await page.locator(".lookup-transport-group.meeting").boundingBox();
 const localBox=await page.locator(".lookup-transport-group.local").boundingBox();
 if(!headerBox||!cardBox||headerBox.y>=cardBox.y)throw new Error("Meeting platform context is not above the query workspace");
-if(!meetingBox||!localBox||meetingBox.width<1000||localBox.width<1000||localBox.y<=meetingBox.y)throw new Error("Transport sections are not full-width stacked rows");
+if(!meetingBox||!localBox||meetingBox.width<(mobile?340:1000)||localBox.width<(mobile?340:1000)||localBox.y<=meetingBox.y)throw new Error("Transport sections are not full-width stacked rows");
 if(await page.locator(".lookup-transport-group.meeting .lookup-transfer-card").count()!==2||await page.locator(".lookup-transport-group.local .lookup-transfer-card").count()!==2)throw new Error("Outbound and return cards are not paired within each row");
 if(await page.locator(".lookup-placard-preview img").getAttribute("alt")!=="接机牌样稿缩略图")throw new Error("Placard thumbnail semantics failed");
 const journeyText=await page.locator(".lookup-transport-group.meeting .lookup-transfer-card").first().innerText();
-for(const expected of ["航班 / 车次号","CZ5828","出发航站楼 / 高铁站","上海浦东机场T2航站楼","出发时间","2026-11-27 12:10","抵达航站楼 / 高铁站","长沙黄花机场T2航站楼","抵达时间","2026-11-27 14:45"]){if(!journeyText.includes(expected))throw new Error(`Journey detail missing: ${expected}`);}
+for(const expected of ["航班号 / 车次号","CZ5828","出发航站楼 / 高铁站","上海浦东机场T2航站楼","出发时间","2026-11-27 12:10","抵达航站楼 / 高铁站","长沙黄花机场T2航站楼","抵达时间","2026-11-27 14:45"]){if(!journeyText.includes(expected))throw new Error(`Journey detail missing: ${expected}`);}
 const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
 if(overflow>1)throw new Error(`Desktop horizontal overflow: ${overflow}px`);
-await page.screenshot({path:".tmp/browser/portal-query-balanced.png",fullPage:true});
-console.log(JSON.stringify({layout:"pass",headerAboveQuery:true,meetingRow:Math.round(meetingBox.width),localRow:Math.round(localBox.width),placardThumbnail:"pass",journeyDetails:"pass",overflow,errors},null,2));
+await page.screenshot({path:mobile?".tmp/browser/mobile-portal-query-result.png":".tmp/browser/portal-query-balanced.png",fullPage:true});
+if(mobile){
+  await page.screenshot({path:".tmp/browser/mobile-portal-query-viewport.png"});
+  await page.locator(".lookup-transport-group.meeting").screenshot({path:".tmp/browser/mobile-query-journey-focus.png"});
+}
+console.log(JSON.stringify({layout:"pass",viewport:mobile?"390x844":"1440x1100",headerAboveQuery:true,meetingRow:Math.round(meetingBox.width),localRow:Math.round(localBox.width),placardThumbnail:"pass",journeyDetails:"pass",overflow,errors},null,2));
 await browser.close();
 if(errors.length)process.exitCode=1;

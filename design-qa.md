@@ -1,18 +1,49 @@
-# 报名进度 · 设计 QA
+**Comparison target**
 
-- 视觉方案：第二种「运营预警型」
-- 视觉来源：`/Users/carson/.codex/generated_images/01a012e2-0819-7700-aaee-8595dc86f3d9/exec-0fb47efc-4724-415d-92bd-9dac2ec50bf5.png`
-- 实现截图：`/tmp/journey-quota-v14.png`（仅用于布局比对，不作为业务数据依据）
-- 桌面验证视口：1440 × 1800
-- 移动布局验证：Chrome 最小布局视口 500px；模块在 760px 以下切换为双列指标、单列预警与横向滚动明细表
+- Source visual truth: `/var/folders/qx/glgdffcs1cl2hszg7mnpcxp80000gn/T/codex-clipboard-13009404-f074-47a8-9b12-ef4eaafb36ad.png`
+- Implementation screenshot: `/Users/carson/Documents/文稿 - Archie In The House - 1/ChatGPT/行程管理工具/.tmp/project-compact-1440.png`
+- Combined comparison: `/Users/carson/Documents/文稿 - Archie In The House - 1/ChatGPT/行程管理工具/.tmp/project-compact-comparison.png`
+- Source pixels: 2378 × 1470. Implementation pixels: 1440 × 1000.
+- CSS viewport: 1440 × 1000 at device scale factor 1.
+- Normalization: source resized proportionally to 1440 × 890; implementation retained at 1440 × 1000 and both were placed side by side without cropping.
+- State: desktop light theme, meeting-management route. The source contains three production projects; the local implementation contains one demo project, so the comparison is component- and density-focused rather than content-count-focused.
 
-## 对比结论
+**Full-view comparison evidence**
 
-- 信息层级与选定视觉一致：总名额、实际报名、缺口、完成率为第一层；会场进度和缺口/超额预警为第二层；分组明细为第三层。
-- 延续现有礼来品牌体系，保留 PMS 485 红色作为风险和品牌强调色，并使用深蓝承载表头、角色切换和统计结构。
-- 已补齐会场小计、角色合计、Gap、剩余名额、完成率与状态标签；未配置或没有超额数据时均有空状态。
-- 名额配置、角色筛选、角色页签和明细横向浏览均可操作；小屏状态没有页面级横向溢出。
-- 业务数据已改为直接读取当前 Supabase 项目的有效名单；固定演示名额、演示身份预览入口均已移除。
-- 代码语法检查及差异空白检查通过。
+- The large forced card height and central blank region in the source are removed. The implementation card is 372 px high and keeps all actions above the fold.
+- The page title is reduced to a 37 px rendered line box while retaining the existing purple page accent and hierarchy.
+- Primary actions remain horizontal and grouped; secondary actions form one compact row. No horizontal page overflow was detected at 1440 px.
+
+**Focused region comparison evidence**
+
+- A separate crop was unnecessary because the combined image keeps the title, registration state, toggle, all seven actions, borders, and spacing legible at the normalized size.
+
+**Findings**
+
+- No actionable P0, P1, or P2 issues remain.
+- Fonts and typography: existing brand fonts, weights, and colors are preserved; the meeting-center title and eyebrow are intentionally reduced.
+- Spacing and layout rhythm: card padding, status blocks, toggle, separators, and action gaps are consistently tightened.
+- Colors and visual tokens: existing Lilly red, project purple/teal, neutral canvas, and semantic switch colors remain unchanged.
+- Image quality and asset fidelity: supplied Lilly logo remains the original raster asset; no new or substituted visual assets were introduced.
+- Copy and content: all project actions and explanatory copy are unchanged.
+
+**Comparison history**
+
+- Initial source finding (P2): 560–600 px forced card height produced a large unused center area and pushed actions toward the bottom of the viewport.
+- Fix: removed forced minimum heights, reduced title/card/control spacing, kept actions in compact horizontal groups, and added responsive fallbacks.
+- Post-fix evidence: `.tmp/project-compact-1440.png`; automated measurements report card height 372 px, heading line box 37 px, and body scroll width equal to the 1440 px viewport.
+
+**Implementation checklist**
+
+- [x] Reduce `MEETING CENTER / 会议管理` hierarchy.
+- [x] Remove forced card height and unused vertical space.
+- [x] Keep primary actions readable and horizontal on desktop.
+- [x] Preserve two-column and single-column responsive behavior.
+- [x] Verify project creation and project-link interactions.
+- [x] Check browser console errors during the smoke flow.
+
+**Follow-up polish**
+
+- None required for this density adjustment.
 
 final result: passed

@@ -51,7 +51,7 @@ const registrationView = (row: Record<string, unknown>) => ({
   returnArriveDate:row.return_arrive_date||row.return_date||"",returnArriveCity:row.return_arrive_city||row.return_to||"",returnArriveTransportType:row.return_arrive_transport_type||"",returnArriveStation:row.return_arrive_station||"",
   outDate: row.out_date || "", outFrom: row.out_from || "", outTo: row.out_to || "", outNo: row.out_no || "", outDeparture: String(row.out_departure || "").slice(0, 5), outArrival: String(row.out_arrival || "").slice(0, 5),
   returnDate: row.return_date || "", returnFrom: row.return_from || "", returnTo: row.return_to || "", returnNo: row.return_no || "", returnDeparture: String(row.return_departure || "").slice(0, 5), returnArrival: String(row.return_arrival || "").slice(0, 5),
-  outboundTransferOrigin:row.outbound_transfer_origin||"",outboundTransferTime:String(row.outbound_transfer_time||"").slice(0,16),outboundTransferNotes:row.outbound_transfer_notes||"",returnTransferDestination:row.return_transfer_destination||"",returnTransferTime:String(row.return_transfer_time||"").slice(0,16),returnTransferNotes:row.return_transfer_notes||"",
+  outboundTransferOrigin:row.outbound_transfer_origin||"",outboundTransferTime:String(row.outbound_transfer_time||"").slice(0,16),outboundTransferNotes:row.outbound_transfer_notes||"",outboundTransferDriverName:row.outbound_transfer_driver_name||"",outboundTransferDriverPhone:row.outbound_transfer_driver_phone||"",outboundTransferVehicle:row.outbound_transfer_vehicle||"",returnTransferDestination:row.return_transfer_destination||"",returnTransferTime:String(row.return_transfer_time||"").slice(0,16),returnTransferNotes:row.return_transfer_notes||"",returnTransferDriverName:row.return_transfer_driver_name||"",returnTransferDriverPhone:row.return_transfer_driver_phone||"",returnTransferVehicle:row.return_transfer_vehicle||"",
   region: row.region || "", contactName: row.contact_name || "", contactMobile: row.contact_mobile || "", mslContact: row.msl_contact || "", remarks: row.remarks === "公开报名认证，待填写完整信息" ? "" : row.remarks || "",
   customFields: row.custom_fields || {},
 });
@@ -373,21 +373,29 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   }
 
   const { data: attendee } = await db.from("attendees")
-    .select("id,name,venue,accommodation,custom_fields,depart_date,depart_city,depart_transport_type,depart_station,arrive_date,arrive_city,arrive_transport_type,arrive_station,out_date,out_from,out_to,out_no,out_departure,out_arrival,return_date,return_from,return_to,return_no,return_departure,return_arrival")
+    .select("id,name,venue,accommodation,custom_fields,depart_date,depart_city,depart_transport_type,depart_station,arrive_date,arrive_city,arrive_transport_type,arrive_station,return_depart_date,return_depart_city,return_depart_transport_type,return_depart_station,return_arrive_date,return_arrive_city,return_arrive_transport_type,return_arrive_station,out_date,out_from,out_to,out_no,out_departure,out_arrival,return_date,return_from,return_to,return_no,return_departure,return_arrival,outbound_transfer_origin,outbound_transfer_time,outbound_transfer_notes,outbound_transfer_driver_name,outbound_transfer_driver_phone,outbound_transfer_vehicle,return_transfer_destination,return_transfer_notes,return_transfer_driver_name,return_transfer_driver_phone,return_transfer_vehicle")
     .eq("meeting_id", meeting.id).eq("phone", phone).eq("business_status","active").maybeSingle();
   if (!attendee) return reply({ found: false });
   const { data: transports } = await db.from("transports")
-    .select("direction,driver_name,staff_name,driver_phone,vehicle,service_time,meeting_point,service_mode,batch_id,batch_name,terminal,placard,capacity,notes,time_strategy")
+    .select("direction,driver_name,staff_name,driver_phone,vehicle,service_time,meeting_point,service_mode,batch_id,batch_name,terminal,placard,placard_file_path,placard_file_name,capacity,notes,time_strategy")
     .eq("attendee_id", attendee.id);
+  const publicTransports=await Promise.all((transports || []).map(async item=>{
+    let placardFileUrl="";
+    if(item.direction==="pickup"&&item.placard_file_path){
+      const {data}=await db.storage.from("transport-placards").createSignedUrl(item.placard_file_path,900);
+      placardFileUrl=data?.signedUrl||"";
+    }
+    return { direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, placardFileName:item.placard_file_name||"", placardFileUrl, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy };
+  }));
 
   return reply({
     found: true,
     meeting: meeting.name,
     project: viewProject(meeting),
-    attendee: { name: `${attendee.name.slice(0, 1)}${"*".repeat(Math.max(attendee.name.length - 1, 1))}`, venue:attendee.venue||"待公布", accommodation:attendee.accommodation?"需要住宿":"无需住宿", hotel:(attendee.custom_fields as Record<string,unknown> || {}).hotel || (attendee.custom_fields as Record<string,unknown> || {}).酒店 || "待公布" },
+    attendee: { name: `${attendee.name.slice(0, 1)}${"*".repeat(Math.max(attendee.name.length - 1, 1))}`, venue:attendee.venue||"待公布", accommodation:attendee.accommodation?"需要住宿":"无需住宿", hotel:(attendee.custom_fields as Record<string,unknown> || {}).hotel || (attendee.custom_fields as Record<string,unknown> || {}).酒店 || "待公布", outboundTransferOrigin:attendee.outbound_transfer_origin||"", outboundTransferTime:String(attendee.outbound_transfer_time||"").slice(0,16), outboundTransferNotes:attendee.outbound_transfer_notes||"", outboundTransferDriverName:attendee.outbound_transfer_driver_name||"", outboundTransferDriverPhone:attendee.outbound_transfer_driver_phone||"", outboundTransferVehicle:attendee.outbound_transfer_vehicle||"", returnTransferDestination:attendee.return_transfer_destination||"", returnTransferNotes:attendee.return_transfer_notes||"", returnTransferDriverName:attendee.return_transfer_driver_name||"", returnTransferDriverPhone:attendee.return_transfer_driver_phone||"", returnTransferVehicle:attendee.return_transfer_vehicle||"" },
     outbound: { date: attendee.depart_date || attendee.out_date, from: attendee.depart_city || attendee.out_from, fromStation:attendee.depart_station, fromTransportType:attendee.depart_transport_type, to: attendee.arrive_city || attendee.out_to, toStation:attendee.arrive_station, toTransportType:attendee.arrive_transport_type, number: attendee.out_no, departure: attendee.out_departure, arrival: attendee.out_arrival },
-    returnTrip: { date: attendee.return_date, from: attendee.return_from, to: attendee.return_to, number: attendee.return_no, departure: attendee.return_departure, arrival: attendee.return_arrival },
-    transports: (transports || []).map(item => ({ direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy })),
+    returnTrip: { date: attendee.return_depart_date || attendee.return_date, from: attendee.return_depart_city || attendee.return_from, fromStation:attendee.return_depart_station || attendee.return_from, fromTransportType:attendee.return_depart_transport_type, to: attendee.return_arrive_city || attendee.return_to, toStation:attendee.return_arrive_station || attendee.return_to, toTransportType:attendee.return_arrive_transport_type, number: attendee.return_no, departure: attendee.return_departure, arrival: attendee.return_arrival, arrivalDate:attendee.return_arrive_date || attendee.return_date },
+    transports: publicTransports,
   });
 }),
 };

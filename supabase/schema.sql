@@ -110,6 +110,18 @@ create table if not exists public.attendees (
   contact_mobile text,
   msl_contact text,
   remarks text,
+  outbound_transfer_origin text,
+  outbound_transfer_time timestamptz,
+  outbound_transfer_notes text,
+  outbound_transfer_driver_name text,
+  outbound_transfer_driver_phone text,
+  outbound_transfer_vehicle text,
+  return_transfer_destination text,
+  return_transfer_time timestamptz,
+  return_transfer_notes text,
+  return_transfer_driver_name text,
+  return_transfer_driver_phone text,
+  return_transfer_vehicle text,
   custom_fields jsonb not null default '{}'::jsonb,
   privacy_letter_status text not null default 'pending',
   ticket_status text not null default 'pending',
@@ -125,6 +137,12 @@ create table if not exists public.attendees (
 
 alter table public.attendees add column if not exists contact_name text;
 alter table public.attendees add column if not exists contact_mobile text;
+alter table public.attendees add column if not exists outbound_transfer_driver_name text;
+alter table public.attendees add column if not exists outbound_transfer_driver_phone text;
+alter table public.attendees add column if not exists outbound_transfer_vehicle text;
+alter table public.attendees add column if not exists return_transfer_driver_name text;
+alter table public.attendees add column if not exists return_transfer_driver_phone text;
+alter table public.attendees add column if not exists return_transfer_vehicle text;
 
 create index if not exists attendees_meeting_owner_idx on public.attendees(meeting_id, owner_id);
 create index if not exists attendees_phone_idx on public.attendees(meeting_id, phone);

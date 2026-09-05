@@ -6,7 +6,7 @@
     <meta name="description" content="无服务器行程报名、审批与接送机管理工具" />
     <meta name="theme-color" content="#D52B1E" />
     <title>礼来会议管理平台</title>
-    <link rel="stylesheet" href="styles.css?v=20260903-meeting-type-luggage-01" />
+    <link rel="stylesheet" href="styles.css?v=20260905-query-layout-13" />
     <script src="assets/vendor/qrcode.min.js" defer></script>
     <script src="assets/vendor/supabase.js" defer></script>
     <script>
@@ -18,9 +18,10 @@
           window.location.replace(target.href);
           return;
         }
-        const productionOrigin = /^https?:$/.test(window.location.protocol)
-          ? window.location.origin
-          : "https://139.196.97.236";
+        const isLocalPreview = ["127.0.0.1", "localhost"].includes(window.location.hostname);
+        const productionOrigin = isLocalPreview
+          ? "https://139.196.97.236"
+          : (/^https?:$/.test(window.location.protocol) ? window.location.origin : "https://139.196.97.236");
         window.APP_CONFIG = {
           mode: "production",
           supabaseUrl: `${productionOrigin}/supabase`,
@@ -36,7 +37,7 @@
     <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-panel.js?v=20260903-verification-queue-01" defer></script>
     <script src="rooming-engine.js?v=20260903-room-counting-01" defer></script>
-    <script src="app.js?v=20260904-security-hardening-01" defer></script>
+    <script src="app.js?v=20260905-query-layout-13" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -355,9 +356,14 @@
           </section>
 
           <section class="page" data-page="transport">
-            <div class="page-heading heading-with-action"><div><span class="eyebrow">GROUND TRANSPORT</span><h1>接送机 / 送站管理</h1><p>接送场站取自参会人的实际行程；工作人员安排可批量处理，独立司机逐人维护。</p></div><div class="heading-actions"><button class="button button-secondary auto-arrange-button" id="autoArrangeTransport">⚡ 生成参考安排</button><button class="button button-secondary batch-pickup-button" id="newPickupBatch">＋ 批量工作人员接机</button><button class="button button-primary" id="newDropoffBatch">＋ 批量工作人员送机</button><button class="button button-secondary" id="exportTransportPlan">导出接送表</button><a class="button button-secondary" href="#portal" data-current-public-link target="_blank" rel="noopener">打开当前项目报名界面 ↗</a></div></div>
+            <div class="page-heading heading-with-action"><div><span class="eyebrow">GROUND TRANSPORT</span><h1>接送机 / 送站管理</h1><p>会议举办地的执行安排与参会人出发地（属地）接送信息分区管理，查询详情保持同一口径。</p></div><div class="heading-actions"><button class="button button-secondary" id="exportTransportPlan">导出接送表</button><a class="button button-secondary" href="#portal" data-current-public-link target="_blank" rel="noopener">打开参会信息查询 ↗</a></div></div>
+            <div class="transport-scope-tabs" role="tablist" aria-label="接送信息范围">
+              <button class="transport-scope-tab active" type="button" role="tab" aria-selected="true" data-transport-scope="meeting"><span class="transport-scope-name">会议地接送</span><span class="transport-scope-metrics"><span><small>接送任务</small><b id="meetingTransportTasks">0</b></span><span><small>已安排</small><b id="meetingTransportAssigned">0</b></span><span><small>待安排</small><b id="meetingTransportPending">0</b></span></span></button>
+              <button class="transport-scope-tab local" type="button" role="tab" aria-selected="false" data-transport-scope="local"><span class="transport-scope-name">出发地（属地）接送</span><span class="transport-scope-metrics"><span><small>属地任务</small><b id="localTransportTasks">0</b></span><span><small>已安排</small><b id="localTransportAssigned">0</b></span><span><small>待安排</small><b id="localTransportPending">0</b></span></span></button>
+            </div>
+            <div class="transport-meeting-actions" id="transportMeetingActions"><button class="button button-secondary auto-arrange-button" id="autoArrangeTransport">生成参考安排</button><button class="button button-secondary batch-pickup-button" id="newPickupBatch">＋ 批量工作人员接机</button><button class="button button-primary" id="newDropoffBatch">＋ 批量工作人员送机</button></div>
             <div class="transport-batch-list" id="transportBatchList"></div>
-            <div class="panel table-panel"><div class="table-toolbar"><div class="segmented"><button class="active" data-transport-filter="all">全部</button><button data-transport-filter="pickup">接机</button><button data-transport-filter="dropoff">送机</button></div><div class="search-box">⌕ <input id="transportSearch" placeholder="搜索姓名、航班或批次" /></div></div><div class="transport-grid" id="transportGrid"></div></div>
+            <div class="panel table-panel transport-table-panel"><div class="table-toolbar"><div class="segmented" id="transportDirectionFilter"><button class="active" data-transport-filter="all">全部</button><button data-transport-filter="pickup">接机 / 接站</button><button data-transport-filter="dropoff">送机 / 送站</button></div><label class="search-box"><span>⌕</span><input id="transportSearch" placeholder="搜索姓名、航班、场站或负责人" /></label></div><div class="table-wrap"><table class="transport-table"><thead id="transportTableHead"></thead><tbody id="transportTableBody"></tbody></table></div></div>
           </section>
 
           <section class="page" data-page="locks">
@@ -481,10 +487,12 @@
         <p id="adminAccessLinkStatus" class="system-setting-note is-hidden"></p>
         <label>工作邮箱<input name="email" type="email" autocomplete="username" required placeholder="name@grandchinamice.com" /></label>
         <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>
+        <label>6位动态验证码（阿里云虚拟 MFA）<input name="mfaCode" class="login-mfa-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="请输入阿里云 App 当前显示的6位验证码" /></label>
+        <p class="login-mfa-hint">请打开阿里云 App → 虚拟 MFA，输入当前动态验证码。首次登录尚未绑定时可留空，登录后按提示完成绑定。</p>
         <p id="loginError" class="login-error"></p>
-        <button class="button button-primary button-block" type="submit">登录管理端</button>
+        <button class="button button-primary button-block" type="submit">安全登录管理端</button>
       </form>
-      <p class="login-help">管理端仅向超级管理员预设的会务负责人邮箱开放；参会者无需管理端登录。</p>
+      <p class="login-help">工作邮箱、密码和动态验证码需同时验证。管理端仅向已授权的管理员及会务负责人开放。</p>
     </dialog>
     <dialog id="mfaDialog" class="login-dialog mfa-dialog">
       <div class="login-brand"><span class="brand-mark">盾</span><div><strong>管理端双重验证</strong><small id="mfaDialogHint">使用身份验证器完成登录</small></div></div>

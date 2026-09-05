@@ -158,6 +158,7 @@
 
   let state = loadState();
   let activeTransportFilter = "all";
+  let activeTransportScope = "meeting";
   let activeQuotaRole = "听众";
   let incompleteRosterOnly = false;
   let cancelledRosterView = false;
@@ -493,9 +494,34 @@
   const approvalRequired = (a,segment) => evaluateSegmentRisks(a)[segment].length>0;
   function ticketApprovalBlockers(a) { return ["outbound","return"].filter(segment=>approvalRequired(a,segment)&&segmentApproval(a,segment)!=="approved"); }
 
+  const backendRetryDelay = milliseconds => new Promise(resolve=>setTimeout(resolve,milliseconds));
+  function isTransientBackendError(error) {
+    const status=Number(error?.status||error?.statusCode||0);
+    const message=String(error?.message||error||"").toLowerCase();
+    return [502,503,504].includes(status)||/(upstream connect|disconnect\/reset|reset before headers|connection termination|failed to fetch|fetch failed|networkerror|network request|timed?\s*out|service unavailable|temporarily unavailable)/.test(message);
+  }
+  function transientLoginError() {
+    const error=new Error("登录服务刚刚短暂重连，请直接再次点击“安全登录管理端”；密码和动态验证码无需修改。");
+    error.transient=true;
+    return error;
+  }
+  async function rpcWithRetry(name,args,attempts=3) {
+    let lastError=null;
+    for(let attempt=0;attempt<attempts;attempt+=1){
+      try{
+        const result=await backend.rpc(name,args);
+        if(!result.error)return result;
+        lastError=result.error;
+      }catch(error){lastError=error;}
+      if(!isTransientBackendError(lastError)||attempt===attempts-1)break;
+      await backendRetryDelay(350*(attempt+1));
+    }
+    return {data:null,error:lastError};
+  }
+
   async function loadStaffAccess() {
-    const {data,error}=await backend.rpc("get_staff_access");
-    if(error)throw new Error("系统账号权限尚未升级，请先执行最新数据库升级");
+    const {data,error}=await rpcWithRetry("get_staff_access");
+    if(error){if(isTransientBackendError(error))throw transientLoginError();throw new Error("系统账号权限尚未升级，请先执行最新数据库升级");}
     const row=Array.isArray(data)?data[0]:data;
     if(!row?.allowed)throw new Error("当前邮箱未开放管理系统权限");
     staffAccess={allowed:true,email:row.email||"",displayName:row.display_name||"",systemRole:row.system_role||"ops"};
@@ -503,8 +529,8 @@
   }
 
   async function registerStaffSession(){
-    const {data,error}=await backend.rpc("register_staff_session",{p_device_id:adminDeviceId(),p_user_agent:navigator.userAgent});
-    if(error)throw new Error(error.message||"登录会话登记失败");
+    const {data,error}=await rpcWithRetry("register_staff_session",{p_device_id:adminDeviceId(),p_user_agent:navigator.userAgent});
+    if(error){if(isTransientBackendError(error))throw transientLoginError();throw new Error(error.message||"登录会话登记失败");}
     const row=Array.isArray(data)?data[0]:data;
     if(!row?.allowed)throw new Error("当前登录会话未通过安全校验");
     if(Number(row.revoked_sessions)>0)toast(`已超出 ${row.max_devices} 台在线设备，最早的登录会话已失效`);
@@ -662,13 +688,13 @@
       const { data } = offlineLuggageSession ? {data:{session:null}} : await backend.auth.getSession();
       if (data.session) {
         try{await requireManagementMfa();await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();await requirePasswordChange();}
-        catch(error){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=error.message;$("#loginDialog").showModal();}
+        catch(error){if(!error?.transient&&!isTransientBackendError(error))await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=error?.transient||isTransientBackendError(error)?transientLoginError().message:(error.message||"登录会话已失效");$("#loginDialog").showModal();}
       }
       else if (!offlineLuggageSession && !["portal", "lookup", "register", "manage"].includes((location.hash || "#dashboard").slice(1).split("?")[0])) $("#loginDialog").showModal();
     }
     populateUsers(); populateProjects(); bindNavigation(); bindForms(); bindControls(); route(); renderAll(); maybeAutoBackup();
     window.setInterval(renderGreeting,60000);
-    window.setInterval(async()=>{if(backend&&staffAccess.allowed){try{await registerStaffSession();}catch{await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent="登录会话已在其他设备失效，请重新登录";$("#loginDialog").showModal();}}},5*60*1000);
+    window.setInterval(async()=>{if(backend&&staffAccess.allowed){try{await registerStaffSession();}catch(error){if(error?.transient||isTransientBackendError(error))return;await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent="登录会话已在其他设备失效，请重新登录";$("#loginDialog").showModal();}}},5*60*1000);
     window.addEventListener("hashchange", route);
     window.addEventListener("scroll", () => $(".topbar")?.classList.toggle("scrolled", scrollY > 4));
     setTimeout(renderQr, 400);
@@ -761,15 +787,23 @@
       const form = event.currentTarget;
       const button=form.querySelector('button[type="submit"]');button.disabled=true;
       const email=String(form.elements.email.value||"").trim().toLowerCase();
+      const mfaCode=String(form.elements.mfaCode.value||"").trim();
+      if(mfaCode&&!/^\d{6}$/.test(mfaCode)){ $("#loginError").textContent="动态验证码必须为6位数字";button.disabled=false;return; }
       const { error } = await backend.auth.signInWithPassword({ email, password: form.elements.password.value });
-      if (error) { $("#loginError").textContent = "邮箱或密码不正确"; button.disabled=false; return; }
-      try{$("#loginError").textContent="";await requireManagementMfa();await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();await requirePasswordChange();toast(state.activeProjectId?`登录成功 · ${signedInAccessLabel()}`:"登录成功，请先新建项目");}
-      catch(accessError){await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=accessError.message||"当前邮箱未开放管理系统权限";}
+      if (error) {
+        const authMessage=String(error.message||"").toLowerCase();
+        const invalidCredentials=error.status===400||authMessage.includes("invalid login credentials")||authMessage.includes("invalid credentials");
+        $("#loginError").textContent = invalidCredentials ? "工作邮箱或密码不正确" : "登录认证服务暂时不可用，请检查网络后重试";
+        button.disabled=false;
+        return;
+      }
+      try{$("#loginError").textContent="";await requireManagementMfa(mfaCode);await registerStaffSession();await loadStaffAccess();await loadBackendState();armAdminIdleTimeout();populateUsers();populateProjects();renderAll();form.elements.password.value="";form.elements.mfaCode.value="";$("#loginDialog").close();location.hash=state.activeProjectId?"dashboard":"projects";route();await requirePasswordChange();toast(state.activeProjectId?`登录成功 · ${signedInAccessLabel()}`:"登录成功，请先新建项目");}
+      catch(accessError){const transient=accessError?.transient||isTransientBackendError(accessError);if(!transient)await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent=transient?transientLoginError().message:(accessError.message||"当前邮箱未开放管理系统权限");}
       finally{button.disabled=false;}
     });
   }
 
-  async function requireManagementMfa() {
+  async function requireManagementMfa(initialCode="") {
     const assurance=await backend.auth.mfa.getAuthenticatorAssuranceLevel();
     if(assurance.error)throw assurance.error;
     if(assurance.data?.currentLevel==="aal2")return;
@@ -782,6 +816,14 @@
       const enrolled=await backend.auth.mfa.enroll({factorType:"totp",friendlyName:"礼来会议管理平台"});
       if(enrolled.error)throw enrolled.error;
       enrollment=enrolled.data;factor={id:enrollment.id};
+    }
+    if(!enrollment&&!initialCode)throw new Error("请输入阿里云虚拟 MFA 当前显示的6位动态验证码");
+    if(!enrollment&&initialCode){
+      const verified=await backend.auth.mfa.challengeAndVerify({factorId:factor.id,code:initialCode});
+      if(verified.error)throw new Error("动态验证码无效或已过期，请输入阿里云虚拟 MFA 当前显示的号码");
+      const next=await backend.auth.mfa.getAuthenticatorAssuranceLevel();
+      if(next.error||next.data?.currentLevel!=="aal2")throw next.error||new Error("双重验证状态未生效");
+      return;
     }
     const dialog=$("#mfaDialog"),form=$("#mfaForm"),enrollmentPanel=$("#mfaEnrollment");
     $("#mfaError").textContent="";form.reset();
@@ -884,7 +926,7 @@
   }
 
   function fromDbAttendee(row) {
-    return Object.assign(fromDbAttendeeBase(row),{outboundTransferOrigin:row.outbound_transfer_origin||"",outboundTransferTime:(row.outbound_transfer_time||"").slice(0,16),outboundTransferNotes:row.outbound_transfer_notes||"",returnTransferDestination:row.return_transfer_destination||"",returnTransferTime:(row.return_transfer_time||"").slice(0,16),returnTransferNotes:row.return_transfer_notes||""});
+    return Object.assign(fromDbAttendeeBase(row),{outboundTransferOrigin:row.outbound_transfer_origin||"",outboundTransferTime:(row.outbound_transfer_time||"").slice(0,16),outboundTransferNotes:row.outbound_transfer_notes||"",outboundTransferDriverName:row.outbound_transfer_driver_name||"",outboundTransferDriverPhone:row.outbound_transfer_driver_phone||"",outboundTransferVehicle:row.outbound_transfer_vehicle||"",returnTransferDestination:row.return_transfer_destination||"",returnTransferTime:(row.return_transfer_time||"").slice(0,16),returnTransferNotes:row.return_transfer_notes||"",returnTransferDriverName:row.return_transfer_driver_name||"",returnTransferDriverPhone:row.return_transfer_driver_phone||"",returnTransferVehicle:row.return_transfer_vehicle||""});
   }
 
   function toDbAttendeeBase(a) {
@@ -894,14 +936,16 @@
   }
 
   function toDbAttendee(a) {
-    return {...toDbAttendeeBase(a),outbound_transfer_origin:a.outboundTransferOrigin||null,outbound_transfer_time:a.outboundTransferTime||null,outbound_transfer_notes:a.outboundTransferNotes||null,return_transfer_destination:a.returnTransferDestination||null,return_transfer_time:a.returnTransferTime||null,return_transfer_notes:a.returnTransferNotes||null};
+    return {...toDbAttendeeBase(a),outbound_transfer_origin:a.outboundTransferOrigin||null,outbound_transfer_time:a.outboundTransferTime||null,outbound_transfer_notes:a.outboundTransferNotes||null,outbound_transfer_driver_name:a.outboundTransferDriverName||null,outbound_transfer_driver_phone:a.outboundTransferDriverPhone||null,outbound_transfer_vehicle:a.outboundTransferVehicle||null,return_transfer_destination:a.returnTransferDestination||null,return_transfer_time:a.returnTransferTime||null,return_transfer_notes:a.returnTransferNotes||null,return_transfer_driver_name:a.returnTransferDriverName||null,return_transfer_driver_phone:a.returnTransferDriverPhone||null,return_transfer_vehicle:a.returnTransferVehicle||null};
   }
+
+  function toDbTransport(a,direction){const t=a.transport?.[direction]||{};return{attendee_id:a.id,direction,driver_name:t.driver||null,staff_name:t.staffName||null,driver_phone:t.phone||null,vehicle:t.vehicle||null,service_time:direction==="pickup"?null:parseServiceTime(t.time),meeting_point:direction==="pickup"?null:(t.point||null),service_mode:t.mode||null,batch_id:t.batchId||null,batch_name:t.batchName||null,terminal:transportTerminal(a,direction)||null,placard:direction==="pickup"?(t.placard||null):null,placard_file_path:direction==="pickup"?(t.placardFilePath||null):null,placard_file_name:direction==="pickup"?(t.placardFileName||null):null,placard_file_size:direction==="pickup"?(t.placardFileSize||null):null,capacity:t.capacity||null,notes:t.notes||null,time_strategy:t.timeStrategy||null,time_source:t.timeSource||null};}
 
   async function syncBackend() {
     if (!backend || !backendMeetingId) return;
     const attendeeRows = state.attendees.map(toDbAttendee);
     if (attendeeRows.length&&canEditAttendeeData()) { const { error } = await backend.from("attendees").upsert(attendeeRows); if (error) throw error; }
-    const transportRows = state.attendees.flatMap(a => ["pickup","dropoff"].map(direction => { const t = a.transport?.[direction] || {}; return { attendee_id:a.id, direction, driver_name:t.driver||null, staff_name:t.staffName||null, driver_phone:t.phone||null, vehicle:t.vehicle||null, service_time:direction==="pickup"?null:parseServiceTime(t.time), meeting_point:direction==="pickup"?null:(t.point||null), service_mode:t.mode||null, batch_id:t.batchId||null, batch_name:t.batchName||null, terminal:transportTerminal(a,direction)||null, placard:direction==="pickup"?(t.placard||null):null, placard_file_path:direction==="pickup"?(t.placardFilePath||null):null, placard_file_name:direction==="pickup"?(t.placardFileName||null):null, placard_file_size:direction==="pickup"?(t.placardFileSize||null):null, capacity:t.capacity||null, notes:t.notes||null, time_strategy:t.timeStrategy||null, time_source:t.timeSource||null }; }));
+    const transportRows = state.attendees.flatMap(a => ["pickup","dropoff"].map(direction=>toDbTransport(a,direction)));
     if (transportRows.length) { const { error } = await backend.from("transports").upsert(transportRows,{onConflict:"attendee_id,direction"}); if (error) throw error; }
     toast("已同步到云端");
   }
@@ -993,6 +1037,7 @@
     $("#transportBatchForm").elements.capacity.addEventListener("input",updateBatchCapacityNotice);
     $("#addTransportStationRule").addEventListener("click",()=>{state.settings.transportStationRules=[...(state.settings.transportStationRules||[]),{station:"",minutes:90}];renderTransportStationRules();});
     $("#selectAllBatchAttendees").addEventListener("change", event => { $$('[name="batchAttendee"]',$("#batchAttendeeList")).forEach(input=>input.checked=event.target.checked); updateBatchCapacityNotice(); });
+    $$('[data-transport-scope]').forEach(button => button.addEventListener("click", () => { activeTransportScope=button.dataset.transportScope; $$('[data-transport-scope]').forEach(item=>{const selected=item===button;item.classList.toggle("active",selected);item.setAttribute("aria-selected",String(selected));});renderTransport(); }));
     $$('[data-transport-filter]').forEach(button => button.addEventListener("click", () => { activeTransportFilter = button.dataset.transportFilter; $$('[data-transport-filter]').forEach(b => b.classList.toggle("active", b === button)); renderTransport(); }));
     $("#exportExcel").addEventListener("click", exportExcel);
     $("#transferRegistrant").addEventListener("click", openRegistrantTransfer);
@@ -1045,6 +1090,7 @@
   function setPortalTab(tab) {
     if(publicAuthSession&&tab!==publicAuthSession.mode)resetPublicRegistrationStep();
     $(".portal-card")?.classList.remove("workspace-mode");
+    $("#publicPortalView")?.classList.toggle("portal-lookup-mode",tab==="lookup");
     $$('[data-portal-tab]').forEach(button => {
       const active = button.dataset.portalTab === tab;
       button.classList.toggle("active", active);
@@ -1562,27 +1608,62 @@
 
   function renderTransport() {
     const query = $("#transportSearch").value.trim().toLowerCase();
-    const list = activeVisibleAttendees().filter(a => !query || [a.name,a.outNo,a.returnNo,a.transport?.pickup?.batchName,a.transport?.dropoff?.batchName].join(" ").toLowerCase().includes(query));
-    renderTransportBatches(list);
+    const all = activeVisibleAttendees();
+    const list = all.filter(a => !query || [a.name,a.phone,a.outNo,a.returnNo,a.outFrom,a.outTo,a.returnFrom,a.returnTo,a.outboundTransferOrigin,a.outboundTransferDriverName,a.outboundTransferDriverPhone,a.outboundTransferVehicle,a.returnTransferDestination,a.returnTransferDriverName,a.returnTransferDriverPhone,a.returnTransferVehicle,a.transport?.pickup?.batchName,a.transport?.pickup?.staffName,a.transport?.pickup?.driver,a.transport?.dropoff?.batchName,a.transport?.dropoff?.staffName,a.transport?.dropoff?.driver].join(" ").toLowerCase().includes(query));
+    const meetingRecords=all.flatMap(a=>[a.transport?.pickup||{},a.transport?.dropoff||{}]);
+    const meetingAssigned=meetingRecords.filter(transportIsAssigned).length;
+    const localAssigned=all.reduce((count,a)=>{const assignment=localTransferAssignmentState(a);return count+Number(assignment.outbound)+Number(assignment.returning);},0);
+    const localTotal=all.length*2;
+    const localPending=localTotal-localAssigned;
+    const pendingCount=meetingRecords.length-meetingAssigned;
+    $("#meetingTransportTasks").textContent=meetingRecords.length;
+    $("#meetingTransportAssigned").textContent=meetingAssigned;
+    $("#meetingTransportPending").textContent=pendingCount;
+    $("#localTransportTasks").textContent=localTotal;
+    $("#localTransportAssigned").textContent=localAssigned;
+    $("#localTransportPending").textContent=localPending;
+    const meetingScope=activeTransportScope==="meeting";
+    $(".transport-table-panel").classList.toggle("local-scope",!meetingScope);
+    $("#transportMeetingActions").classList.toggle("is-hidden",!meetingScope);
+    $("#transportDirectionFilter").classList.toggle("is-hidden",!meetingScope);
+    $("#transportBatchList").classList.toggle("is-hidden",!meetingScope);
+    renderTransportBatches(meetingScope?list:[]);
     $("#newPickupBatch").classList.toggle("is-hidden",!canManage()); $("#newDropoffBatch").classList.toggle("is-hidden",!canManage()); $("#autoArrangeTransport").classList.toggle("is-hidden",!canManage());$("#exportTransportPlan").classList.toggle("is-hidden",!canManage());
-    const cards = [];
-    list.forEach(a => {
-      ["pickup","dropoff"].forEach(type => {
-        if (activeTransportFilter !== "all" && activeTransportFilter !== type) return;
-        const item = a.transport?.[type] || {};
-        const staff = isStaffTransport(item);
-        const assigned = staff || (item.driver && item.driver !== "待分配");
-        const contact = staff ? `${item.staffName || "会务工作人员"} · ${item.phone || "—"}` : `${item.driver || "待分配"} · ${item.phone || "—"}`;
-        const vehicle = staff ? "无需录入司机 / 车辆" : (item.vehicle || "待分配");
-        const terminal=transportTerminal(a,type)||"行程场站待补全",rule=type==="dropoff"?dropoffStationRule(a):null;
-        const operational=type==="pickup"?`<div><small>实际抵达场站</small><strong>${escapeHtml(terminal)}</strong></div><div><small>接机牌</small><strong>${escapeHtml(item.placard||"未设置")}</strong></div>`:`<div><small>送机时间</small><strong>${escapeHtml(item.time||recommendedDropoffTime(a)||"待人工填写")}</strong></div><div><small>送机地点 / 集合点</small><strong>${escapeHtml(item.point||"待设置")}</strong></div>`;
-        cards.push(`<article class="transport-card"><div class="transport-head"><div><h3>${escapeHtml(a.name)} · ${type === "pickup" ? "接机 / 接站" : "送机 / 送站"}</h3><p>${escapeHtml(type === "pickup" ? `${a.outNo||"班次待补"} · ${a.outArrival||"--:--"} 到达` : `${a.returnNo||"班次待补"} · ${a.returnDeparture||"--:--"} 出发`)}</p>${item.batchName?`<span class="transport-batch-tag">⌘ ${escapeHtml(item.batchName)}</span>`:""}</div><span class="status ${assigned ? "status-normal" : "status-pending"}">${assigned ? (staff ? "工作人员安排" : "独立司机") : "待分配"}</span></div><div class="transport-details"><div><small>${staff?"工作人员":"司机"}</small><strong>${escapeHtml(contact)}</strong></div><div><small>${staff?"安排类型":"车辆 / 车牌"}</small><strong>${escapeHtml(vehicle)}</strong></div>${operational}</div><div class="transport-rule">${type==="pickup"?`接送点位直接取实际抵达场站，不设置时间或集合点。`:`返程出发场站：${escapeHtml(terminal)} · ${rule?`提前 ${Number(rule.minutes)||0} 分钟，参考 ${escapeHtml(recommendedDropoffTime(a)||"待补全班次时间")}`:"未匹配场站规则，请人工填写送机时间"}`}${item.placardFilePath?` · <button class="text-button" type="button" data-download-transport-placard="${escapeHtml(item.placardFilePath)}" data-placard-name="${escapeHtml(item.placardFileName||"接机牌样稿")}">查看接机牌附件</button>`:""}</div>${canManage() ? `<button class="transport-edit" data-edit-transport="${a.id}" data-type="${type}">编辑安排 →</button>` : ""}</article>`);
-      });
-    });
-    $("#transportGrid").innerHTML = cards.join("") || `<div class="empty-state">暂无接送机记录</div>`; bindDynamicButtons();$$('[data-download-transport-placard]').forEach(button=>button.onclick=()=>downloadTransportPlacard(button.dataset.downloadTransportPlacard,button.dataset.placardName));
+    if(meetingScope)renderMeetingTransportRows(list);else renderLocalTransportRows(list);
+    bindDynamicButtons();
+    $$('[data-open-transport-person]').forEach(button=>button.onclick=()=>openTransportAttendee(button.dataset.openTransportPerson));
+    $$('[data-edit-local-transport]').forEach(button=>button.onclick=()=>{const attendee=state.attendees.find(item=>item.id===button.dataset.editLocalTransport);if(attendee){openTransportAttendee(attendee.id);showTransferCollectionEditor(attendee);}});
   }
 
-  async function exportTransportPlan(){try{await ensureExcelTools();}catch(error){return toast(error.message,"error");}const headers=["方向","参会者","会场","航班/车次","实际场站","安排类型","工作人员/司机","联系电话","车辆/车牌","送机时间","送机地点/集合点","接机牌文字","接机牌附件","批次","备注"];const rows=activeVisibleAttendees().flatMap(a=>["pickup","dropoff"].map(direction=>{const t=a.transport?.[direction]||{},staff=isStaffTransport(t);return[direction==="pickup"?"接机/接站":"送机/送站",a.name,a.venue,direction==="pickup"?a.outNo:a.returnNo,transportTerminal(a,direction),staff?"工作人员":"独立司机",staff?(t.staffName||"会务工作人员"):(t.driver||""),t.phone||"",staff?"":(t.vehicle||""),direction==="pickup"?"":(t.time||""),direction==="pickup"?"":(t.point||""),direction==="pickup"?(t.placard||""):"",direction==="pickup"?(t.placardFileName||""):"",t.batchName||"",t.notes||""];}));const sheet=XLSX.utils.aoa_to_sheet([headers,...rows]);sheet["!cols"]=headers.map((_,index)=>({wch:[1,4,6,9,10,11,12,13,14].includes(index)?22:14}));const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,"接送执行安排");try{await writeStyledWorkbook(book,`${state.settings.slug||"会议"}-接送执行安排.xlsx`);toast("接送执行安排已按统一格式导出");}catch(error){toast(`导出失败：${error.message}`,"error");}}
+  function renderMeetingTransportRows(list){
+    $("#transportTableHead").innerHTML=`<tr><th>参会人员</th><th>行程摘要</th><th>接送方向</th><th>会议地接送点位</th><th>安排类型</th><th>负责人 / 司机</th><th>联系电话</th><th>车辆 / 车牌</th><th>状态</th><th>操作</th></tr>`;
+    const rows=list.flatMap(a=>["pickup","dropoff"].filter(type=>activeTransportFilter==="all"||activeTransportFilter===type).map(type=>{const item=a.transport?.[type]||{},staff=isStaffTransport(item),assigned=transportIsAssigned(item),terminal=transportTerminal(a,type)||"行程场站待补全",contact=staff?(item.staffName||"会务工作人员"):(item.driver||"待分配"),trip=type==="pickup"?`${a.outNo||"班次待补"} · ${a.outArrival||"--:--"} 抵达`:`${a.returnNo||"班次待补"} · ${a.returnDeparture||"--:--"} 出发`;return`<tr><td><span class="cell-primary">${escapeHtml(a.name)}</span><span class="cell-secondary">${escapeHtml(a.venue||"会场未填写")}</span></td><td><span class="cell-primary">${escapeHtml(trip)}</span><span class="cell-secondary">${escapeHtml(type==="pickup"?`${a.outFrom||"—"} → ${a.outTo||"—"}`:`${a.returnFrom||"—"} → ${a.returnTo||"—"}`)}</span></td><td><strong>${type==="pickup"?"接机 / 接站":"送机 / 送站"}</strong>${item.batchName?`<span class="transport-batch-tag">${escapeHtml(item.batchName)}</span>`:""}</td><td><span class="cell-primary">${escapeHtml(terminal)}</span><span class="cell-secondary">${type==="pickup"?"取自实际抵达场站":escapeHtml(item.point||item.time||recommendedDropoffTime(a)||"送机安排待补")}</span></td><td>${assigned?`<span class="transport-mode ${staff?"staff":"driver"}">${staff?"工作人员":"独立司机"}</span>`:"—"}</td><td>${escapeHtml(contact)}</td><td>${escapeHtml(item.phone||"—")}</td><td>${escapeHtml(staff?"—":item.vehicle||"待补")}</td><td><span class="status ${assigned?"status-normal":"status-pending"}">${assigned?"已安排":"待安排"}</span></td><td><div class="transport-row-actions"><button class="text-button" type="button" data-open-transport-person="${a.id}">查看详情</button>${canManage()?`<button class="text-button" type="button" data-edit-transport="${a.id}" data-type="${type}">编辑</button>`:""}</div></td></tr>`;}));
+    $("#transportTableBody").innerHTML=rows.join("")||`<tr><td colspan="10"><div class="empty-state">没有符合条件的会议地接送记录</div></td></tr>`;
+  }
+
+  function localTransferAssignmentState(a){
+    const outbound=[a.outboundTransferOrigin,a.outboundTransferDriverName,a.outboundTransferDriverPhone,a.outboundTransferVehicle].every(value=>String(value||"").trim());
+    const returning=[a.returnTransferDestination,a.returnTransferDriverName,a.returnTransferDriverPhone,a.returnTransferVehicle].every(value=>String(value||"").trim());
+    const outboundAny=[a.outboundTransferOrigin,a.outboundTransferTime,a.outboundTransferNotes,a.outboundTransferDriverName,a.outboundTransferDriverPhone,a.outboundTransferVehicle].some(value=>String(value||"").trim());
+    const returningAny=[a.returnTransferDestination,a.returnTransferNotes,a.returnTransferDriverName,a.returnTransferDriverPhone,a.returnTransferVehicle].some(value=>String(value||"").trim());
+    return {outbound,returning,complete:outbound&&returning,outboundLabel:outbound?"已安排":outboundAny?"待补全":"待安排",returningLabel:returning?"已安排":returningAny?"待补全":"待安排"};
+  }
+
+  function renderLocalTransportRows(list){
+    $("#transportTableHead").innerHTML=`<tr><th>参会人员</th><th>行程摘要</th><th>接送方向</th><th>属地接送点位</th><th>安排类型</th><th>负责人 / 司机</th><th>联系电话</th><th>车辆 / 车牌</th><th>状态</th><th>操作</th></tr>`;
+    const rows=list.flatMap(a=>{
+      const assignment=localTransferAssignmentState(a),outStation=TravelFields.displayStation(a.departStation||a.outFrom,a.departTransportType,stationDictionary())||a.outFrom||"出发场站待补",returnStation=TravelFields.displayStation(a.returnTo,a.returnTransportType,stationDictionary())||a.returnTo||"返程抵达场站待补",person=`<span class="cell-primary">${escapeHtml(a.name)}</span><span class="cell-secondary">${escapeHtml(a.region||"大区未填写")} · ${escapeHtml(a.phone||"手机号未填写")}</span>`;
+      const actions=`<div class="transport-row-actions"><button class="text-button" type="button" data-open-transport-person="${a.id}">查看详情</button>${canEditAttendeeData()?`<button class="text-button" type="button" data-edit-local-transport="${a.id}">编辑</button>`:""}</div>`;
+      const directions=[
+        {label:"去程属地送站",number:a.outNo,clock:a.outArrival,date:a.outDate,route:`${a.outFrom||"—"} → ${a.outTo||"—"}`,point:a.outboundTransferOrigin||"出发地点待补",pointNote:`前往 ${outStation}`,driver:a.outboundTransferDriverName,phone:a.outboundTransferDriverPhone,vehicle:a.outboundTransferVehicle,assigned:assignment.outbound,status:assignment.outboundLabel},
+        {label:"返程属地接站",number:a.returnNo,clock:a.returnArrival,date:a.returnDate,route:`${a.returnFrom||"—"} → ${a.returnTo||"—"}`,point:returnStation,pointNote:`送达 ${a.returnTransferDestination||"目的地待补"}`,driver:a.returnTransferDriverName,phone:a.returnTransferDriverPhone,vehicle:a.returnTransferVehicle,assigned:assignment.returning,status:assignment.returningLabel,automatic:true},
+      ];
+      return directions.map(direction=>`<tr class="local-transport-row"><td>${person}</td><td><span class="cell-primary">${escapeHtml(direction.number||"班次待补")} · ${escapeHtml(direction.clock||"--:--")} 抵达</span><span class="cell-secondary">${escapeHtml(direction.route)} · ${escapeHtml(direction.date||"日期待补")}</span>${direction.automatic?'<span class="cell-secondary">按照实际航班/车次抵达时间</span>':""}</td><td><strong>${direction.label}</strong></td><td><span class="cell-primary">${escapeHtml(direction.point)}</span><span class="cell-secondary">${escapeHtml(direction.pointNote)}</span></td><td>${direction.assigned?'<span class="transport-mode driver">属地司机</span>':"—"}</td><td>${escapeHtml(direction.driver||"待分配")}</td><td>${escapeHtml(direction.phone||"—")}</td><td>${escapeHtml(direction.vehicle||"待补")}</td><td><span class="status ${direction.assigned?"status-normal":"status-pending"}">${direction.status}</span></td><td>${actions}</td></tr>`);
+    });
+    $("#transportTableBody").innerHTML=rows.join("")||`<tr><td colspan="10"><div class="empty-state">没有符合条件的出发地（属地）接送信息</div></td></tr>`;
+  }
+
+  async function exportTransportPlan(){try{await ensureExcelTools();}catch(error){return toast(error.message,"error");}const attendees=activeVisibleAttendees(),headers=["方向","参会者","会场","航班/车次","实际场站","安排类型","工作人员/司机","联系电话","车辆/车牌","送机时间","送机地点/集合点","接机牌文字","接机牌附件","批次","备注"];const rows=attendees.flatMap(a=>["pickup","dropoff"].map(direction=>{const t=a.transport?.[direction]||{},staff=isStaffTransport(t);return[direction==="pickup"?"接机/接站":"送机/送站",a.name,a.venue,direction==="pickup"?a.outNo:a.returnNo,transportTerminal(a,direction),staff?"工作人员":"独立司机",staff?(t.staffName||"会务工作人员"):(t.driver||""),t.phone||"",staff?"":(t.vehicle||""),direction==="pickup"?"":(t.time||""),direction==="pickup"?"":(t.point||""),direction==="pickup"?(t.placard||""):"",direction==="pickup"?(t.placardFileName||""):"",t.batchName||"",t.notes||""];}));const sheet=XLSX.utils.aoa_to_sheet([headers,...rows]);sheet["!cols"]=headers.map((_,index)=>({wch:[1,4,6,9,10,11,12,13,14].includes(index)?22:14}));const localHeaders=["参会者","手机号","大区","去程属地送站出发地点","属地预约送站时间","去程司机","去程司机电话","去程车辆/车牌","去程属地送站备注","返程抵达场站","属地接站送达目的地","属地预约接站时间","返程司机","返程司机电话","返程车辆/车牌","返程属地接站备注"],localRows=attendees.map(a=>[a.name,a.phone,a.region,a.outboundTransferOrigin||"",a.outboundTransferTime||"",a.outboundTransferDriverName||"",a.outboundTransferDriverPhone||"",a.outboundTransferVehicle||"",a.outboundTransferNotes||"",a.returnTo||"",a.returnTransferDestination||"","按照实际航班/车次抵达时间",a.returnTransferDriverName||"",a.returnTransferDriverPhone||"",a.returnTransferVehicle||"",a.returnTransferNotes||""]),localSheet=XLSX.utils.aoa_to_sheet([localHeaders,...localRows]);localSheet["!cols"]=localHeaders.map((_,index)=>({wch:[3,4,5,6,7,8,9,10,11,12,13,14,15].includes(index)?22:15}));const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,"会议地接送安排");XLSX.utils.book_append_sheet(book,localSheet,"出发地（属地）接送");try{await writeStyledWorkbook(book,`${state.settings.slug||"会议"}-接送安排.xlsx`);toast("会议地与出发地（属地）接送信息已分表导出");}catch(error){toast(`导出失败：${error.message}`,"error");}}
 
   const comparableStation = value => String(value||"").replace(/(?:火车)?站$/u,"").replace(/\s+/g,"").trim();
   const verificationProviderLabel = check => check?.source?.label || ({variflight:"飞常准",rail_12306:"12306 公共查询",aerodatabox:"AeroDataBox（API.Market）",juhe_flight_dynamic:"聚合数据·全球航班动态",aliyun_train:"阿里云市场·聚合数据",train:"高铁计划接口",flight:"航班计划接口"}[check?.provider] || check?.provider || "计划时刻接口");
@@ -1814,7 +1895,19 @@
     attendee.transport[direction]={driver:"待分配",phone:"—",vehicle:"待分配",time:"",point:"",terminal:transportTerminal(attendee,direction)};
   }
 
-  async function uploadTransportPlacard(file,scopeId){if(!file)return null;if(file.size>15*1024*1024)throw new Error("接机牌附件不能超过 15MB");if(!backend)return{path:"",name:file.name,size:file.size};const safe=file.name.replace(/[^\w.\-\u4e00-\u9fff]+/g,"-");const path=`${backendMeetingId}/${scopeId}/${crypto.randomUUID()}-${safe}`;const result=await backend.storage.from("transport-placards").upload(path,file,{contentType:file.type||"application/octet-stream",upsert:false});if(result.error)throw result.error;return{path,name:file.name,size:file.size};}
+  async function uploadTransportPlacard(file,scopeId){
+    if(!file)return null;
+    if(file.size>15*1024*1024)throw new Error("接机牌附件不能超过 15MB");
+    const extension=(file.name.match(/\.(png|jpe?g|webp|gif|pdf)$/i)?.[0]||"").toLowerCase();
+    if(!extension)throw new Error("接机牌附件仅支持 JPG、PNG、WEBP、GIF 或 PDF");
+    if(!backend)return{path:"",name:file.name,size:file.size};
+    // Storage keys only use server-safe ASCII. The original Chinese filename is
+    // retained separately for display and download.
+    const path=`${backendMeetingId}/${scopeId}/${crypto.randomUUID()}${extension}`;
+    const result=await backend.storage.from("transport-placards").upload(path,file,{contentType:file.type||"application/octet-stream",upsert:false});
+    if(result.error)throw result.error;
+    return{path,name:file.name,size:file.size};
+  }
   async function downloadTransportPlacard(path,name){if(!path||!backend)return;try{const{data,error}=await backend.storage.from("transport-placards").createSignedUrl(path,60,{download:name||"接机牌样稿"});if(error)throw error;window.open(data.signedUrl,"_blank","noopener");}catch(error){toast(error.message||"接机牌附件下载失败","error");}}
 
   async function saveTransportBatch(event) {
@@ -1924,16 +2017,29 @@
     $$('[data-edit-transport]').forEach(button => button.onclick = () => editTransport(button.dataset.editTransport, button.dataset.type));
   }
 
+  function openTransportAttendee(id){
+    const attendee=state.attendees.find(item=>item.id===id);if(!attendee)return;
+    const dialog=$("#attendeeDialog"),pickup=attendee.transport?.pickup||{},dropoff=attendee.transport?.dropoff||{},canEdit=!isLocked(attendee)&&canEditAttendeeData();
+    dialog.classList.add("transport-detail-drawer");
+    dialog.addEventListener("close",()=>dialog.classList.remove("transport-detail-drawer"),{once:true});
+    const meetingSection=`<section class="transport-detail-section meeting"><h3>会议地接送信息</h3><div class="detail-grid"><div class="detail-block"><small>接机 / 接站 · ${escapeHtml(attendee.outNo||"班次待补")}</small><strong>${escapeHtml(transportTerminal(attendee,"pickup")||"实际抵达场站待补全")}</strong><span>${escapeHtml(isStaffTransport(pickup)?pickup.staffName||"会务工作人员":pickup.driver||"待安排")} · ${escapeHtml(pickup.phone||"电话待补")}${isStaffTransport(pickup)?"":` · ${escapeHtml(pickup.vehicle||"车牌待补")}`}</span>${canEdit?`<button class="text-button" id="editMeetingPickup" type="button">编辑接机安排</button>`:""}</div><div class="detail-block"><small>送机 / 送站 · ${escapeHtml(attendee.returnNo||"班次待补")}</small><strong>${escapeHtml(transportTerminal(attendee,"dropoff")||"返程出发场站待补全")}</strong><span>${escapeHtml(dropoff.time||recommendedDropoffTime(attendee)||"时间待安排")} · ${escapeHtml(isStaffTransport(dropoff)?dropoff.staffName||"会务工作人员":dropoff.driver||"待安排")} · ${escapeHtml(dropoff.phone||"电话待补")}${isStaffTransport(dropoff)?"":` · ${escapeHtml(dropoff.vehicle||"车牌待补")}`}</span>${canEdit?`<button class="text-button" id="editMeetingDropoff" type="button">编辑送机安排</button>`:""}</div></div></section>`;
+    const localSection=`<section class="transport-detail-section local"><h3>出发地（属地）接送信息</h3><div class="transport-detail-subtitle">去程属地送站</div><div class="detail-grid"><div class="detail-block"><small>出发地点</small><strong>${escapeHtml(attendee.outboundTransferOrigin||"未填写")}</strong><span>前往 ${escapeHtml(attendee.departStation||attendee.outFrom||"出发场站待补全")}</span></div><div class="detail-block"><small>预约送站时间</small><strong>${escapeHtml(attendee.outboundTransferTime||"未填写")}</strong><span>${escapeHtml(attendee.outboundTransferNotes||"无备注")}</span></div><div class="detail-block"><small>司机 / 联系电话 / 车牌号</small><strong>${escapeHtml(attendee.outboundTransferDriverName||"司机待补")}</strong><span>${escapeHtml(attendee.outboundTransferDriverPhone||"电话待补")} · ${escapeHtml(attendee.outboundTransferVehicle||"车牌待补")}</span></div></div><div class="transport-detail-subtitle">返程属地接站</div><div class="detail-grid"><div class="detail-block"><small>接站与送达</small><strong>${escapeHtml(attendee.returnTo||"返程抵达场站待补全")} → ${escapeHtml(attendee.returnTransferDestination||"未填写")}</strong><span>${escapeHtml(attendee.returnTransferNotes||"无备注")}</span></div><div class="detail-block"><small>属地预约接站时间</small><strong>按照实际航班/车次抵达时间</strong><span>${escapeHtml(returnTransferArrivalTime(attendee)||"返程抵达时间待补全")}</span></div><div class="detail-block"><small>司机 / 联系电话 / 车牌号</small><strong>${escapeHtml(attendee.returnTransferDriverName||"司机待补")}</strong><span>${escapeHtml(attendee.returnTransferDriverPhone||"电话待补")} · ${escapeHtml(attendee.returnTransferVehicle||"车牌待补")}</span></div></div>${canEdit?`<button class="button button-secondary transport-local-edit" id="editLocalTransport" type="button">编辑属地接送信息</button>`:""}</section>`;
+    $("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">TRANSPORT DETAIL</span><h2>${escapeHtml(attendee.name)}</h2><p>${escapeHtml(attendee.region||"大区未填写")} · ${escapeHtml(attendee.phone||"手机号未填写")} · ${escapeHtml(attendee.venue||"会场未填写")}</p></div><div class="detail-body">${meetingSection}${localSection}<div class="detail-actions"><button class="button button-secondary" id="closeDetailButton" type="button">关闭</button></div></div>`;
+    dialog.showModal();
+    $("#closeDetailButton").onclick=()=>dialog.close();
+    if(canEdit){$("#editMeetingPickup").onclick=()=>editTransport(attendee.id,"pickup");$("#editMeetingDropoff").onclick=()=>editTransport(attendee.id,"dropoff");$("#editLocalTransport").onclick=()=>showTransferCollectionEditor(attendee);}
+  }
+
   function openAttendee(id) {
     const a = state.attendees.find(item => item.id === id); if (!a) return;
     const locked = isLocked(a); const canEdit = !locked && canEditAttendeeData() && (canManage() || isSystemAdmin() || a.ownerId === currentUser().id);
     $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#b9ddc5">ATTENDEE DETAIL</span><h2>${escapeHtml(a.name)}</h2><p>${escapeHtml(a.hospital)} · ${escapeHtml(a.department)} · ${escapeHtml(userName(a.ownerId))}负责</p></div><div class="detail-body"><div class="detail-grid"><div class="detail-block"><small>手机号</small><strong>${escapeHtml(a.phone)}</strong></div><div class="detail-block"><small>客户编号</small><strong>${escapeHtml(a.hcpId)}</strong></div><div class="detail-block"><small>去程</small><strong>${escapeHtml(a.outNo)} · ${fmtDate(a.outDate)} ${escapeHtml(a.outDeparture)}</strong></div><div class="detail-block"><small>返程</small><strong>${escapeHtml(a.returnNo)} · ${fmtDate(a.returnDate)} ${escapeHtml(a.returnDeparture)}</strong></div><div class="detail-block"><small>去程路线</small><strong>${escapeHtml(a.outFrom)} → ${escapeHtml(a.outTo)}</strong></div><div class="detail-block"><small>返程路线</small><strong>${escapeHtml(a.returnFrom)} → ${escapeHtml(a.returnTo)}</strong></div></div>${verificationDetails(a)}${a.risks.length ? `<div class="risk-preview warning">${a.risks.map(r => `△ ${escapeHtml(r)}`).join("<br>")}</div>` : `<div class="risk-preview ok">✓ 当前行程符合预设规则</div>`}<div class="detail-actions">${canEdit ? `<button class="button button-primary" id="editTripButton">修改行程</button>` : `<span class="status status-locked">${locked ? "名单已锁定" : "无修改权限"}</span>`}<button class="button button-secondary" id="closeDetailButton">关闭</button></div></div>`;
     const extras=a.customFields?._journeySegments||[];if(extras.length){const counts={outbound:1,return:1},html=extras.map(item=>{const direction=item.direction==="return"?"return":"outbound",label=`${direction==="return"?"返程":"去程"}第 ${++counts[direction]} 段`;return `<div class="detail-block"><small>${escapeHtml(label)} · ${escapeHtml(TravelFields.TYPES[item.transportType]||item.transportType||"未选择")}</small><strong>${escapeHtml(item.number||"未填写")} · ${escapeHtml(item.departDate||"—")} ${escapeHtml(item.departure||"—")}</strong><span>${escapeHtml(item.departCity||"—")} / ${escapeHtml(TravelFields.displayStation(item.departStation,item.transportType,stationDictionary())||"—")} → ${escapeHtml(item.arriveCity||"—")} / ${escapeHtml(TravelFields.displayStation(item.arriveStation,item.transportType,stationDictionary())||"—")}</span></div>`;}).join("");$("#attendeeDetail .detail-grid").insertAdjacentHTML("afterend",`<div class="detail-grid extra-trip-detail-grid">${html}</div>`);}
-    if(state.settings.transferCollectionEnabled){const block=`<h3>去程出发地（属地）送站信息</h3><div class="detail-grid transfer-detail-grid"><div class="detail-block"><small>属地送站出发地点</small><strong>${escapeHtml(a.outboundTransferOrigin||"未填写")}</strong></div><div class="detail-block"><small>属地预约送站时间</small><strong>${escapeHtml(a.outboundTransferTime||"未填写")}</strong></div><div class="detail-block"><small>属地送站备注</small><strong>${escapeHtml(a.outboundTransferNotes||"未填写")}</strong></div></div><h3>返程出发地（属地）接站信息</h3><div class="detail-grid transfer-detail-grid"><div class="detail-block"><small>属地接站送达目的地</small><strong>${escapeHtml(a.returnTransferDestination||"未填写")}</strong></div><div class="detail-block"><small>接站时间（随返程实际抵达）</small><strong>${escapeHtml(returnTransferArrivalTime(a)||"返程抵达时间待补全")}</strong></div><div class="detail-block"><small>属地接站备注</small><strong>${escapeHtml(a.returnTransferNotes||"未填写")}</strong></div></div>`;$("#attendeeDetail .detail-body").insertAdjacentHTML("afterbegin",block);if(canEdit)$("#attendeeDetail .detail-actions").insertAdjacentHTML("afterbegin",'<button class="button button-secondary" id="editTransferCollectionButton">编辑属地接送信息</button>');}
+    if(state.settings.transferCollectionEnabled){const block=`<section class="transport-detail-section local"><h3>出发地（属地）接送信息</h3><div class="transport-detail-subtitle">去程属地送站</div><div class="detail-grid transfer-detail-grid"><div class="detail-block"><small>属地送站出发地点</small><strong>${escapeHtml(a.outboundTransferOrigin||"未填写")}</strong></div><div class="detail-block"><small>属地预约送站时间</small><strong>${escapeHtml(a.outboundTransferTime||"未填写")}</strong></div><div class="detail-block"><small>司机 / 联系电话 / 车牌号</small><strong>${escapeHtml(a.outboundTransferDriverName||"司机待补")}</strong><span>${escapeHtml(a.outboundTransferDriverPhone||"电话待补")} · ${escapeHtml(a.outboundTransferVehicle||"车牌待补")}</span></div><div class="detail-block"><small>属地送站备注</small><strong>${escapeHtml(a.outboundTransferNotes||"未填写")}</strong></div></div><div class="transport-detail-subtitle">返程属地接站</div><div class="detail-grid transfer-detail-grid"><div class="detail-block"><small>属地接站送达目的地</small><strong>${escapeHtml(a.returnTransferDestination||"未填写")}</strong></div><div class="detail-block"><small>属地预约接站时间</small><strong>按照实际航班/车次抵达时间</strong><span>${escapeHtml(returnTransferArrivalTime(a)||"返程抵达时间待补全")}</span></div><div class="detail-block"><small>司机 / 联系电话 / 车牌号</small><strong>${escapeHtml(a.returnTransferDriverName||"司机待补")}</strong><span>${escapeHtml(a.returnTransferDriverPhone||"电话待补")} · ${escapeHtml(a.returnTransferVehicle||"车牌待补")}</span></div><div class="detail-block"><small>属地接站备注</small><strong>${escapeHtml(a.returnTransferNotes||"未填写")}</strong></div></div></section>`;$("#attendeeDetail .detail-body").insertAdjacentHTML("afterbegin",block);if(canEdit)$("#attendeeDetail .detail-actions").insertAdjacentHTML("afterbegin",'<button class="button button-secondary" id="editTransferCollectionButton">编辑属地接送信息</button>');}
     const dialog = $("#attendeeDialog"); dialog.showModal(); $("#closeDetailButton").onclick = () => dialog.close(); if (canEdit) $("#editTripButton").onclick = () => showTripEditor(a);if($("#editTransferCollectionButton"))$("#editTransferCollectionButton").onclick=()=>showTransferCollectionEditor(a);
   }
 
-  function showTransferCollectionEditor(a){if(!canEditAttendeeData())return deny();const renderFields=fields=>fields.map(([key,label,type])=>`<label class="${type==="textarea"?"span-2":""}">${label}${type==="textarea"?`<textarea name="${key}" rows="2">${escapeHtml(a[key]||"")}</textarea>`:`<input name="${key}" type="${type}" value="${escapeHtml(a[key]||"")}" />`}</label>`).join("");const outboundFields=[["outboundTransferOrigin","属地送站出发地点","text"],["outboundTransferTime","属地预约送站时间","datetime-local"],["outboundTransferNotes","属地送站备注","textarea"]],returnFields=[["returnTransferDestination","属地接站送达目的地","text"],["returnTransferNotes","属地接站备注","textarea"]];$("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">LOCAL TRANSFER</span><h2>编辑 ${escapeHtml(a.name)} 的出发地（属地）接送信息</h2><p>返程接站时间自动使用最后一段航班/车次的抵达时间，无需单独填写。</p></div><form class="detail-body" id="transferCollectionEditForm"><h3>去程出发地（属地）送站信息</h3><div class="field-grid">${renderFields(outboundFields)}</div><h3>返程出发地（属地）接站信息</h3><div class="field-grid">${renderFields(returnFields)}<div class="detail-block span-2"><small>接站时间（自动）</small><strong>${escapeHtml(returnTransferArrivalTime(a)||"返程抵达时间待补全")}</strong></div></div><div class="detail-actions"><button class="button button-primary" type="submit">保存属地接送信息</button><button class="button button-secondary" type="button" id="cancelTransferCollectionEdit">取消</button></div></form>`;$("#cancelTransferCollectionEdit").onclick=()=>openAttendee(a.id);$("#transferCollectionEditForm").onsubmit=async event=>{event.preventDefault();Object.assign(a,Object.fromEntries(new FormData(event.currentTarget)));try{if(backend){const{error}=await backend.from("attendees").update({outbound_transfer_origin:a.outboundTransferOrigin||null,outbound_transfer_time:a.outboundTransferTime||null,outbound_transfer_notes:a.outboundTransferNotes||null,return_transfer_destination:a.returnTransferDestination||null,return_transfer_notes:a.returnTransferNotes||null}).eq("id",a.id);if(error)throw error;}addNotification("change",`${currentUser().name}更新了${a.name}的出发地（属地）接送信息`);saveState();renderAll();openAttendee(a.id);toast("属地接送信息已保存");}catch(error){toast(error.message||"保存失败","error");}};}
+  function showTransferCollectionEditor(a){if(!canEditAttendeeData())return deny();const renderFields=fields=>fields.map(([key,label,type])=>`<label class="${type==="textarea"?"span-2":""}">${label}${type==="textarea"?`<textarea name="${key}" rows="2">${escapeHtml(a[key]||"")}</textarea>`:`<input name="${key}" type="${type}" value="${escapeHtml(a[key]||"")}" />`}</label>`).join("");const outboundFields=[["outboundTransferOrigin","属地送站出发地点","text"],["outboundTransferTime","属地预约送站时间","datetime-local"],["outboundTransferDriverName","去程司机姓名","text"],["outboundTransferDriverPhone","去程司机联系电话","tel"],["outboundTransferVehicle","去程车辆 / 车牌号","text"],["outboundTransferNotes","属地送站备注","textarea"]],returnFields=[["returnTransferDestination","属地接站送达目的地","text"],["returnTransferDriverName","返程司机姓名","text"],["returnTransferDriverPhone","返程司机联系电话","tel"],["returnTransferVehicle","返程车辆 / 车牌号","text"],["returnTransferNotes","属地接站备注","textarea"]];$("#attendeeDetail").innerHTML=`<div class="detail-head"><span class="kicker">LOCAL TRANSFER</span><h2>编辑 ${escapeHtml(a.name)} 的出发地（属地）接送信息</h2><p>分别维护去程与返程司机、联系电话和车牌号；返程接站时间自动使用最后一段航班/车次的抵达时间。</p></div><form class="detail-body" id="transferCollectionEditForm"><h3>去程出发地（属地）送站信息</h3><div class="field-grid">${renderFields(outboundFields)}</div><h3>返程出发地（属地）接站信息</h3><div class="field-grid">${renderFields(returnFields)}<div class="detail-block span-2"><small>接站时间（自动）</small><strong>按照实际航班/车次抵达时间</strong><span>${escapeHtml(returnTransferArrivalTime(a)||"返程抵达时间待补全")}</span></div></div><div class="detail-actions"><button class="button button-primary" type="submit">保存属地接送信息</button><button class="button button-secondary" type="button" id="cancelTransferCollectionEdit">取消</button></div></form>`;$("#cancelTransferCollectionEdit").onclick=()=>openAttendee(a.id);$("#transferCollectionEditForm").onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;Object.assign(a,Object.fromEntries(new FormData(event.currentTarget)));try{if(backend){const{error}=await backend.from("attendees").update({outbound_transfer_origin:a.outboundTransferOrigin||null,outbound_transfer_time:a.outboundTransferTime||null,outbound_transfer_notes:a.outboundTransferNotes||null,outbound_transfer_driver_name:a.outboundTransferDriverName||null,outbound_transfer_driver_phone:a.outboundTransferDriverPhone||null,outbound_transfer_vehicle:a.outboundTransferVehicle||null,return_transfer_destination:a.returnTransferDestination||null,return_transfer_notes:a.returnTransferNotes||null,return_transfer_driver_name:a.returnTransferDriverName||null,return_transfer_driver_phone:a.returnTransferDriverPhone||null,return_transfer_vehicle:a.returnTransferVehicle||null}).eq("id",a.id);if(error)throw error;}addNotification("change",`${currentUser().name}更新了${a.name}的出发地（属地）接送信息`);saveState();renderAll();$("#attendeeDialog").close();toast("属地接送信息已保存，参会查询端已同步");}catch(error){submit.disabled=false;toast(error.message||"保存失败","error");}};}
 
   function showTripEditor(a,{verification=false,segments=null}={}) {
     if(!canEditAttendeeData())return deny();
@@ -2025,12 +2131,30 @@
     const pickup=type==="pickup",suggested=pickup?"":recommendedDropoffTime(a),rule=pickup?null:dropoffStationRule(a);
     const savedTime = !t.time || ["待设置","待分配"].includes(t.time) ? suggested : t.time;
     const currentMode = isStaffTransport(t) ? "staff" : "driver";
-    $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#e9d8f2">TRANSPORT</span><h2>${escapeHtml(a.name)} · ${typeName}</h2><p>实际场站：${escapeHtml(transportTerminal(a,type)||"行程尚未补全")}；单独修改后将退出原接送批次</p></div><form class="detail-body" id="transportEditForm"><div class="field-grid"><label class="span-2">安排类型<select name="mode" id="transportMode"><option value="staff" ${currentMode === "staff" ? "selected" : ""}>工作人员${pickup?"接机 / 接站":"送机 / 送站"}</option><option value="driver" ${currentMode === "driver" ? "selected" : ""}>独立司机接送</option></select></label><div class="span-2 driver-fields" id="staffFields"><div class="field-grid"><label>工作人员姓名<input name="staffName" value="${escapeHtml(t.staffName||"")}"></label><label>工作人员电话<input name="staffPhone" value="${escapeHtml(currentMode==="staff"?t.phone||"":"")}"></label>${pickup?`<label class="span-2">接机牌文字<input name="placard" value="${escapeHtml(t.placard||"")}"></label><label class="span-2 document-file-picker">接机牌样稿附件<input name="placardFile" type="file" accept="image/*,.pdf"><small>${escapeHtml(t.placardFileName||"支持图片或 PDF，最大 15MB")}</small></label>`:""}</div></div><div class="span-2 driver-fields" id="driverFields"><div class="field-grid"><label>司机姓名<input name="driver" value="${escapeHtml(currentMode === "driver" ? t.driver || "" : "")}"></label><label>司机电话<input name="driverPhone" value="${escapeHtml(currentMode === "driver" ? t.phone || "" : "")}"></label><label class="span-2">司机车牌号<input name="vehicle" value="${escapeHtml(currentMode === "driver" ? t.vehicle || "" : "")}"></label></div></div>${pickup?"":`<label>送机时间<input name="time" value="${escapeHtml(savedTime||"")}" placeholder="YYYY-MM-DD HH:mm" required></label><label>${currentMode==="staff"?"送机地点":"送机集合点"}<input name="point" value="${escapeHtml(t.point||"")}" required></label>`}</div>${pickup?`<div class="risk-preview">接机固定不维护时间和集合点，接送点位直接使用实际抵达场站。</div>`:`<div class="risk-preview ${rule?"ok":"warning"}">${rule?`✓ ${escapeHtml(rule.station)}提前 ${Number(rule.minutes)||0} 分钟；参考送机时间 ${escapeHtml(suggested||"待补全返程班次时间")}`:"未匹配当前场站规则，请人工填写送机时间。"} 人工保存后不会被规则变更覆盖。</div>`}<div class="detail-actions"><button class="button button-primary" type="submit">保存安排</button><button class="button button-secondary" type="button" id="cancelTransport">取消</button></div></form>`;
+    $("#attendeeDetail").innerHTML = `<div class="detail-head"><span class="kicker" style="color:#e9d8f2">TRANSPORT</span><h2>${escapeHtml(a.name)} · ${typeName}</h2><p>实际场站：${escapeHtml(transportTerminal(a,type)||"行程尚未补全")}；单独修改后将退出原接送批次</p></div><form class="detail-body" id="transportEditForm"><div class="field-grid"><label class="span-2">安排类型<select name="mode" id="transportMode"><option value="staff" ${currentMode === "staff" ? "selected" : ""}>工作人员${pickup?"接机 / 接站":"送机 / 送站"}</option><option value="driver" ${currentMode === "driver" ? "selected" : ""}>独立司机接送</option></select></label><div class="span-2 driver-fields" id="staffFields"><div class="field-grid"><label>工作人员姓名<input name="staffName" value="${escapeHtml(t.staffName||"")}"></label><label>工作人员电话<input name="staffPhone" value="${escapeHtml(currentMode==="staff"?t.phone||"":"")}"></label></div></div><div class="span-2 driver-fields" id="driverFields"><div class="field-grid"><label>司机姓名<input name="driver" value="${escapeHtml(currentMode === "driver" ? t.driver || "" : "")}"></label><label>司机电话<input name="driverPhone" value="${escapeHtml(currentMode === "driver" ? t.phone || "" : "")}"></label><label class="span-2">司机车牌号<input name="vehicle" value="${escapeHtml(currentMode === "driver" ? t.vehicle || "" : "")}"></label></div></div>${pickup?`<label class="span-2">接机牌文字<input name="placard" value="${escapeHtml(t.placard||"")}" placeholder="工作人员和独立司机接机均可填写"></label><label class="span-2 document-file-picker">接机牌样稿附件<input name="placardFile" type="file" accept="image/*,.pdf"><small>${escapeHtml(t.placardFileName||"支持图片或 PDF，最大 15MB")}</small></label>`:`<label>送机时间<input name="time" value="${escapeHtml(savedTime||"")}" placeholder="YYYY-MM-DD HH:mm" required></label><label>${currentMode==="staff"?"送机地点":"送机集合点"}<input name="point" value="${escapeHtml(t.point||"")}" required></label>`}</div>${pickup?`<div class="risk-preview">接机固定不维护时间和集合点，接送点位直接使用实际抵达场站；工作人员或独立司机均可上传接机牌样稿。</div>`:`<div class="risk-preview ${rule?"ok":"warning"}">${rule?`✓ ${escapeHtml(rule.station)}提前 ${Number(rule.minutes)||0} 分钟；参考送机时间 ${escapeHtml(suggested||"待补全返程班次时间")}`:"未匹配当前场站规则，请人工填写送机时间。"} 人工保存后不会被规则变更覆盖。</div>`}<p class="login-error transport-save-error" id="transportSaveError" role="alert"></p><div class="detail-actions"><button class="button button-primary" type="submit">保存安排</button><button class="button button-secondary" type="button" id="cancelTransport">取消</button></div></form>`;
     const dialog = $("#attendeeDialog"); dialog.showModal();
     const form = $("#transportEditForm"); const mode = $("#transportMode"); const driverFields = $("#driverFields"); const staffFields=$("#staffFields");
     const toggleDriverFields = () => { const show = mode.value === "driver"; driverFields.classList.toggle("is-hidden", !show); staffFields.classList.toggle("is-hidden",show); $$('input', driverFields).forEach(input => input.required = show); $$('input',staffFields).forEach(input=>input.required=false); };
     mode.onchange = toggleDriverFields; toggleDriverFields(); $("#cancelTransport").onclick = () => dialog.close();
-    form.onsubmit = async event => { event.preventDefault(); if(t.batchId&&!confirm("单独修改后该参会者将退出原接送批次，是否继续？"))return; const values=Object.fromEntries(new FormData(form));let fileMeta=null;try{fileMeta=pickup&&values.mode==="staff"?await uploadTransportPlacard(form.elements.placardFile?.files?.[0],a.id):null;}catch(error){return toast(error.message,"error");}const common={mode:values.mode,batchId:"",batchName:"",terminal:transportTerminal(a,type),time:pickup?"":values.time,point:pickup?"":values.point,timeSource:pickup?"none":"manual"};a.transport[type]=values.mode==="staff"?{...common,staffName:values.staffName,driver:"会务工作人员",phone:values.staffPhone,vehicle:"",placard:pickup?values.placard:"",placardFilePath:fileMeta?.path||t.placardFilePath||"",placardFileName:fileMeta?.name||t.placardFileName||"",placardFileSize:fileMeta?.size||t.placardFileSize||0}:{...common,staffName:"",driver:values.driver,phone:values.driverPhone,vehicle:values.vehicle,placard:"",placardFilePath:"",placardFileName:"",placardFileSize:0};addNotification("change", `${currentUser().name}更新了${a.name}的${typeName}安排`);saveState();dialog.close();renderAll();toast(`${typeName}安排已更新`); };
+    form.onsubmit = async event => {
+      event.preventDefault();
+      if(t.batchId&&!confirm("单独修改后该参会者将退出原接送批次，是否继续？"))return;
+      const submit=form.querySelector('button[type="submit"]'),errorBox=$("#transportSaveError"),values=Object.fromEntries(new FormData(form));
+      let uploadedPath="";
+      submit.disabled=true;submit.textContent="正在保存…";errorBox.textContent="";
+      try{
+        const fileMeta=pickup?await uploadTransportPlacard(form.elements.placardFile?.files?.[0],a.id):null;
+        uploadedPath=fileMeta?.path||"";
+        const common={mode:values.mode,batchId:"",batchName:"",terminal:transportTerminal(a,type),time:pickup?"":values.time,point:pickup?"":values.point,timeSource:pickup?"none":"manual",placard:pickup?values.placard:"",placardFilePath:pickup?(fileMeta?.path||t.placardFilePath||""):"",placardFileName:pickup?(fileMeta?.name||t.placardFileName||""):"",placardFileSize:pickup?(fileMeta?.size||t.placardFileSize||0):0};
+        a.transport[type]=values.mode==="staff"?{...common,staffName:values.staffName,driver:"会务工作人员",phone:values.staffPhone,vehicle:""}:{...common,staffName:"",driver:values.driver,phone:values.driverPhone,vehicle:values.vehicle};
+        if(backend){const result=await backend.from("transports").upsert(toDbTransport(a,type),{onConflict:"attendee_id,direction"});if(result.error)throw result.error;}
+        persistStateLocally();addNotification("change",`${currentUser().name}更新了${a.name}的${typeName}安排`);
+        if(dialog.open)dialog.close();renderAll();toast(`${typeName}安排已保存`);
+      }catch(error){
+        if(uploadedPath&&backend)await backend.storage.from("transport-placards").remove([uploadedPath]).catch(()=>{});
+        errorBox.textContent=`保存未完成：${error.message||"请稍后重试"}`;toast("保存失败，请查看弹窗内提示","error");
+      }finally{submit.disabled=false;submit.textContent="保存安排";}
+    };
   }
 
   function isStaffTransport(item = {}) { return item.mode === "staff" || item.service_mode === "staff" || item.driver === "会务工作人员" || item.driver_name === "会务工作人员"; }
@@ -2270,10 +2394,10 @@
     }
     const a = state.attendees.find(item => normalizePhone(item.phone) === phone);
     if (!a) { result.innerHTML = `<div class="lookup-error">未查询到该手机号的行程，请确认号码或联系会务服务台。</div>`; return; }
-    const outbound = { number:a.outNo, from:a.outFrom, to:a.outTo, date:`${a.outDate} ${a.outArrival} 到达` };
-    const returnTrip = { number:a.returnNo, from:a.returnFrom, to:a.returnTo, date:`${a.returnDate} ${a.returnDeparture} 出发` };
+    const outbound = { number:a.outNo, from:a.outFrom, to:a.outTo, fromStation:a.departStation||a.outFrom, toStation:a.arriveStation||a.outTo, date:`${a.outDate} ${a.outArrival} 到达` };
+    const returnTrip = { number:a.returnNo, from:a.returnFrom, to:a.returnTo, fromStation:a.returnFrom, toStation:a.returnTo, date:`${a.returnDate} ${a.returnDeparture} 出发`, arrivalDate:a.returnDate, arrival:a.returnArrival };
     const pickup = a.transport?.pickup || {}; const dropoff = a.transport?.dropoff || {};
-    result.innerHTML = renderLookupResult({name:maskName(a.name),venue:a.venue,accommodation:a.accommodation==="Y"?"需要住宿":"无需住宿",hotel:a.customFields?.hotel||"待公布"}, outbound, returnTrip, pickup, dropoff, state.settings);
+    result.innerHTML = renderLookupResult({name:maskName(a.name),venue:a.venue,accommodation:a.accommodation==="Y"?"需要住宿":"无需住宿",hotel:a.customFields?.hotel||"待公布",outboundTransferOrigin:a.outboundTransferOrigin,outboundTransferTime:a.outboundTransferTime,outboundTransferNotes:a.outboundTransferNotes,outboundTransferDriverName:a.outboundTransferDriverName,outboundTransferDriverPhone:a.outboundTransferDriverPhone,outboundTransferVehicle:a.outboundTransferVehicle,returnTransferDestination:a.returnTransferDestination,returnTransferNotes:a.returnTransferNotes,returnTransferDriverName:a.returnTransferDriverName,returnTransferDriverPhone:a.returnTransferDriverPhone,returnTransferVehicle:a.returnTransferVehicle}, outbound, returnTrip, pickup, dropoff, state.settings);
     lastLookupSchedule = buildLookupSchedule(a.name, pickup, dropoff);
     $("#addCalendarButton")?.addEventListener("click", downloadCalendar);
   }
@@ -2283,12 +2407,19 @@
     const displayTime = value => { if (!value) return "待公布"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("zh-CN",{hour12:false}); };
     const card = (label, trip, t) => {
       const staff = isStaffTransport({...t,driver:t.driver || t.driver_name});
-      const driver = staff ? `${t.staffName || t.staff_name || "会务工作人员现场接待"}${t.phone || t.driver_phone ? ` · ${t.phone || t.driver_phone}` : ""}` : `${t.driver || t.driver_name || "待分配"} · ${t.phone || t.driver_phone || "—"}`;
+      const driver = staff ? (t.staffName || t.staff_name || "会务工作人员现场接待") : (t.driver || t.driver_name || "待分配");
+      const phone=t.phone||t.driver_phone||"待公布";
       const vehicle = staff ? "无需司机及车辆信息" : (t.vehicle || "待分配");
-      const execution=label==="接机"?`<div><small>实际抵达场站</small><strong>${escapeHtml(t.terminal||trip.to||"待公布")}</strong></div>${t.placard?`<div><small>接机牌</small><strong>${escapeHtml(t.placard)}</strong></div>`:""}`:`<div><small>送机时间</small><strong>${escapeHtml(displayTime(t.time||t.service_time))}</strong></div><div><small>送机地点 / 集合点</small><strong>${escapeHtml(t.point||t.meeting_point||"待公布")}</strong></div><div><small>返程出发场站</small><strong>${escapeHtml(t.terminal||trip.from||"待公布")}</strong></div>`;
-      return `<div class="result-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="result-route"><div><small>工作人员 / 司机</small><strong>${escapeHtml(driver)}</strong></div><div><small>车辆</small><strong>${escapeHtml(vehicle)}</strong></div>${execution}</div></div>`;
+      const placardName=String(t.placardFileName||"");
+      const placardIsImage=/\.(?:avif|gif|jpe?g|png|webp)$/i.test(placardName);
+      const placardPreview=t.placardFileUrl?(placardIsImage?`<a class="lookup-placard-preview" href="${escapeHtml(t.placardFileUrl)}" target="_blank" rel="noopener noreferrer" aria-label="查看接机牌原图"><img src="${escapeHtml(t.placardFileUrl)}" alt="接机牌样稿缩略图" loading="lazy"><span>点击查看原图</span></a>`:`<a class="lookup-placard-file" href="${escapeHtml(t.placardFileUrl)}" target="_blank" rel="noopener noreferrer">查看接机牌 PDF</a>`):"";
+      const execution=label.startsWith("接机")?`<div><small>实际抵达场站</small><strong>${escapeHtml(t.terminal||trip.toStation||trip.to||"待公布")}</strong></div><div><small>接机地点</small><strong>机场/高铁站出口处等待</strong></div>${t.placard||placardPreview?`<div class="lookup-transfer-note lookup-placard-field"><small>接机牌</small>${t.placard?`<strong>${escapeHtml(t.placard)}</strong>`:""}${placardPreview}</div>`:""}`:`<div><small>送机时间</small><strong>${escapeHtml(displayTime(t.time||t.service_time))}</strong></div><div><small>送机地点 / 集合点</small><strong>${escapeHtml(t.point||t.meeting_point||"待公布")}</strong></div><div><small>返程出发场站</small><strong>${escapeHtml(t.terminal||trip.fromStation||trip.from||"待公布")}</strong></div>`;
+      return `<article class="lookup-transfer-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="lookup-transfer-details"><div><small>工作人员 / 司机</small><strong>${escapeHtml(driver)}</strong></div><div><small>联系电话</small><strong>${escapeHtml(phone)}</strong></div><div><small>车辆 / 车牌</small><strong>${escapeHtml(vehicle)}</strong></div>${execution}</div></article>`;
     };
-    return `<div class="lookup-name">${escapeHtml(name)}，你的参会安排如下</div><div class="participant-info-card"><div><small>会议</small><strong>${escapeHtml(project.name||project.eventName||"待公布")}</strong></div><div><small>会议日期</small><strong>${escapeHtml([project.startDate,project.endDate].filter(Boolean).join(" — ")||"待公布")}</strong></div><div><small>会场</small><strong>${escapeHtml(info.venue||"待公布")}</strong></div><div><small>住宿安排</small><strong>${escapeHtml(info.accommodation||"待公布")} · ${escapeHtml(info.hotel||"待公布")}</strong></div></div>${card("接机",outbound,pickup)}${card("送机",returnTrip,dropoff)}<div class="calendar-action"><strong>还差一步：开启手机自动提醒</strong><span>受手机隐私规则限制，网页不能静默写入日历。请点击并在系统弹窗中确认“添加全部”。</span><button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">加入手机日历 · 接送前 30 分钟提醒</button></div>`;
+    const localEnabled=project.transferCollectionEnabled??project.transfer_collection_enabled??true;
+    const localCard=(label,trip,{point,destination,time,driver,phone,vehicle,notes})=>`<article class="lookup-transfer-card"><h3>${label} · ${escapeHtml(trip.number||"待公布")}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")} · ${escapeHtml(trip.date||"")}</p><div class="lookup-transfer-details"><div><small>属地接送点</small><strong>${escapeHtml(point||"待公布")}</strong></div><div><small>${label.startsWith("去程")?"预约送站时间":"接站时间"}</small><strong>${escapeHtml(time||"待公布")}</strong></div><div><small>司机</small><strong>${escapeHtml(driver||"待公布")}</strong></div><div><small>联系电话</small><strong>${escapeHtml(phone||"待公布")}</strong></div><div><small>车辆 / 车牌</small><strong>${escapeHtml(vehicle||"待公布")}</strong></div><div><small>${label.startsWith("去程")?"前往场站":"送达目的地"}</small><strong>${escapeHtml(destination||"待公布")}</strong></div>${notes?`<div class="lookup-transfer-note"><small>备注</small><strong>${escapeHtml(notes)}</strong></div>`:""}</div></article>`;
+    const localSection=localEnabled?`<section class="lookup-transport-group local"><div class="lookup-group-heading"><span>出发地（属地）接送安排</span><small>属地送站与返程接站</small></div><div class="lookup-transfer-grid">${localCard("去程属地送站",outbound,{point:info.outboundTransferOrigin,destination:outbound.fromStation||outbound.from,time:displayTime(info.outboundTransferTime),driver:info.outboundTransferDriverName,phone:info.outboundTransferDriverPhone,vehicle:info.outboundTransferVehicle,notes:info.outboundTransferNotes})}${localCard("返程属地接站",returnTrip,{point:returnTrip.toStation||returnTrip.to,destination:info.returnTransferDestination,time:"按照实际航班/车次抵达时间",driver:info.returnTransferDriverName,phone:info.returnTransferDriverPhone,vehicle:info.returnTransferVehicle,notes:info.returnTransferNotes})}</div></section>`:"";
+    return `<div class="lookup-name">${escapeHtml(name)}，你的参会安排如下</div><div class="participant-info-card"><div><small>会议</small><strong>${escapeHtml(project.name||project.eventName||"待公布")}</strong></div><div><small>会议日期</small><strong>${escapeHtml([project.startDate,project.endDate].filter(Boolean).join(" — ")||"待公布")}</strong></div><div><small>会场</small><strong>${escapeHtml(info.venue||"待公布")}</strong></div><div><small>住宿安排</small><strong>${escapeHtml(info.accommodation||"待公布")} · ${escapeHtml(info.hotel||"待公布")}</strong></div></div><section class="lookup-transport-group meeting"><div class="lookup-group-heading"><span>会议地接送安排</span><small>会议举办城市内执行</small></div><div class="lookup-transfer-grid">${card("接机 / 接站",outbound,pickup)}${card("送机 / 送站",returnTrip,dropoff)}</div></section>${localSection}<div class="calendar-action"><strong>还差一步：开启手机自动提醒</strong><span>受手机隐私规则限制，网页不能静默写入日历。请点击并在系统弹窗中确认“添加全部”。</span><button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">加入手机日历 · 接送前 30 分钟提醒</button></div>`;
   }
 
   function buildLookupSchedule(name, pickup = {}, dropoff = {}) {

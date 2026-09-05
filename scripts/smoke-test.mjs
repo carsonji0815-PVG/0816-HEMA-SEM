@@ -62,7 +62,7 @@ if (await page.locator("[data-approve]").count() < 1) throw new Error("Expected 
 await page.goto("http://127.0.0.1:4173/#lookup", { waitUntil: "domcontentloaded" });
 await page.fill("#lookupPhone", "13800005201");
 await page.click('#lookupForm button[type="submit"]');
-await page.waitForSelector(".result-card");
+await page.waitForSelector(".lookup-transfer-card");
 const resultText = await page.locator("#lookupResult").innerText();
 if (!resultText.includes("刘师傅") || resultText.includes("华东示范医院")) throw new Error("Public query data minimization failed");
 await page.screenshot({ path: ".tmp/browser/lookup.png", fullPage: true });

@@ -12,7 +12,7 @@
   --lavender: #dedbf1;
   --shadow: 0 18px 50px rgba(30, 40, 75, 0.09);
   --radius: 18px;
-  font-family: "DM Sans", "Noto Sans SC", system-ui, sans-serif;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif;
   color: var(--ink);
   background: var(--canvas);
 }
@@ -1020,4 +1020,22 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
 }
 @media(max-width:600px){
   .page[data-page="projects"] .project-primary-actions{grid-template-columns:1fr}
+}
+
+/* Compact change-log detail: keep old/new values scannable without oversized cards. */
+.notification-detail-dialog{width:min(820px,calc(100vw - 28px))}
+.notification-detail-dialog .detail-head{padding:20px 24px}
+.notification-detail-dialog .detail-head h2{margin:5px 0 2px;font-size:23px;line-height:1.2}
+.notification-detail-dialog .detail-head p{font-size:10px}
+.notification-detail-dialog .detail-body{padding:18px 20px 22px}
+.notification-detail-dialog .change-detail-list{gap:7px}
+.notification-detail-dialog .change-detail-row{grid-template-columns:minmax(112px,145px) minmax(0,1fr) 22px minmax(0,1fr);gap:8px;padding:9px 10px;border-radius:10px;background:#fff}
+.notification-detail-dialog .change-detail-row>strong{font-size:12px;line-height:1.4}
+.notification-detail-dialog .change-detail-row>span{display:flex;min-height:50px;flex-direction:column;justify-content:center;padding:7px 9px;border-radius:8px;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.notification-detail-dialog .change-detail-row small{margin-bottom:2px;font-size:9px}
+.notification-detail-dialog .change-detail-row>b{text-align:center;font-size:14px}
+[data-theme="dark"] .notification-detail-dialog .change-detail-row{background:#1e222c}
+@media(max-width:680px){
+  .notification-detail-dialog .change-detail-row{grid-template-columns:1fr 22px 1fr}
+  .notification-detail-dialog .change-detail-row>strong{grid-column:1/-1}
 }

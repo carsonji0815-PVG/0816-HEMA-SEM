@@ -18,6 +18,23 @@
   const DOCUMENT_API_BASE = String(window.APP_CONFIG?.documentApiBase || window.location.origin || "https://139.196.97.236").replace(/\/$/, "");
   const DOCUMENT_ADMIN_NAME = "季亮亮";
   const DEFAULT_TOURISM_CITIES = ["北京","天津","承德","秦皇岛","大连","青岛","上海","南京","苏州","杭州","宁波","黄山","厦门","泉州","武汉","宜昌","长沙","张家界","广州","深圳","珠海","桂林","海口","三亚","重庆","成都","乐山","昆明","大理","丽江"];
+  const optionalScriptLoads = new Map();
+  function loadOptionalScript(path,globalName){
+    if(window[globalName])return Promise.resolve(window[globalName]);
+    const src=new URL(path,document.baseURI).href;
+    if(optionalScriptLoads.has(src))return optionalScriptLoads.get(src);
+    const pending=new Promise((resolve,reject)=>{
+      const script=document.createElement("script");script.src=src;script.async=true;
+      script.onload=()=>window[globalName]?resolve(window[globalName]):reject(new Error(`${globalName} 组件加载不完整`));
+      script.onerror=()=>reject(new Error(`${globalName} 组件加载失败，请检查网络后重试`));
+      document.head.appendChild(script);
+    });
+    optionalScriptLoads.set(src,pending);pending.catch(()=>optionalScriptLoads.delete(src));return pending;
+  }
+  async function ensureExcelTools(){
+    await loadOptionalScript("assets/vendor/xlsx.full.min.js","XLSX");
+    await loadOptionalScript("assets/vendor/jszip.min.js","JSZip");
+  }
   async function writeStyledWorkbook(workbook,fileName){
     if(!window.XLSX)throw new Error("Excel 组件尚未加载");
     if(!window.JSZip){XLSX.writeFile(workbook,fileName);return;}
@@ -1468,7 +1485,7 @@
     $("#roomingOccupancySummary").innerHTML=data.rows.length?`<span><strong>${escapeHtml(data.from)} 至 ${escapeHtml(data.to)}</strong> · 共 ${data.rows.length} 个住宿自然日</span><span>当前筛选合计 <strong>${totalRoomNights}</strong> 间夜 · 标间包含单住与已完成拼住的房间</span>`:`<span><strong>暂无可统计数据</strong> · 请完整确认实际房型和最终入住、退房日期</span><span>无需住宿、待分配及未完成拼房人员不计入</span>`;
     $("#roomingOccupancyBody").innerHTML=data.rows.length?data.rows.map(row=>{const twin=row.twinSingle+row.shared;return`<tr><td>${escapeHtml(roomingOccupancyDateLabel(row.date))}</td><td>${row.single}</td><td>${twin}</td><td class="rooming-day-total">${row.single+twin}</td></tr>`;}).join(""):`<tr><td class="rooming-occupancy-empty" colspan="4">当前日期范围内暂无已完成的住宿安排</td></tr>`;
   }
-  async function exportRoomingOccupancy(){if(isReadOnlyStaff())return toast("只读账号没有数据导出权限","error");if(!window.XLSX)return toast("Excel 组件尚未加载，请刷新后重试","error");const data=roomingOccupancyData();if(!data.rows.length)return toast("当前日期范围内没有可导出的分房数据","error");const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,roomingOccupancySheet(data),"分房统计");try{await writeStyledWorkbook(wb,`${state.settings.slug||"项目"}-分房统计-${data.from}-${data.to}.xlsx`);toast("分房统计已按统一格式导出");}catch(error){toast(`导出失败：${error.message}`,"error");}}
+  async function exportRoomingOccupancy(){if(isReadOnlyStaff())return toast("只读账号没有数据导出权限","error");try{await ensureExcelTools();}catch(error){return toast(error.message,"error");}const data=roomingOccupancyData();if(!data.rows.length)return toast("当前日期范围内没有可导出的分房数据","error");const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,roomingOccupancySheet(data),"分房统计");try{await writeStyledWorkbook(wb,`${state.settings.slug||"项目"}-分房统计-${data.from}-${data.to}.xlsx`);toast("分房统计已按统一格式导出");}catch(error){toast(`导出失败：${error.message}`,"error");}}
 
   function renderApprovals() {
     const list = activeVisibleAttendees().filter(a => ["outbound","return"].some(segment=>["pending","rejected"].includes(segmentApproval(a,segment))));
@@ -1529,7 +1546,7 @@
     if(isReadOnlyStaff())return toast("只读账号没有数据导出权限","error");
     const attendees=activeVisibleAttendees(),stats=roomingStatistics(attendees),occupancy=roomingOccupancyData(),headers=["序号","姓名","性别","大区","省份","城市","医院","职称","会场","入住日期","退房日期","住宿日期推算间夜（参考）","实际允许住宿间夜数","申请房型","系统建议","实际房型","拼住室友","匹配依据","房号","安排状态","住宿审批"];
     const rows=attendees.filter(a=>a.accommodation==="Y"||roomingRecord(a).requestedType||roomingRecord(a).assignedType).map((a,index)=>{const room=roomingRecord(a),dates=roomingDates(a);return[index+1,a.name,a.sex,a.region,RoomingEngine.province(a),a.city,a.hospital,a.title,a.venue,dates.checkIn,dates.checkOut,roomingNights(a),room.actualNights,roomTypeLabel(room.requestedType),roomTypeLabel(suggestedRoomType(a)),roomTypeLabel(room.assignedType),state.attendees.find(item=>item.id===room.roommateId)?.name||"",room.pairingReason||"",room.roomNumber,room.assignedType==="shared"&&!room.roommateId?"待人工安排":"已安排",roomingApprovalStatus(a)==="approved"?"已批准":roomingApprovalStatus(a)==="pending"?"待审批":roomingApprovalStatus(a)==="rejected"?"已退回":"无需审批"]});
-    if(!window.XLSX)return toast("Excel 组件尚未加载，请刷新后重试","error");
+    try{await ensureExcelTools();}catch(error){return toast(error.message,"error");}
     const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);ws["!cols"]=headers.map((header,index)=>({wch:[6,7,16,17].includes(index)?24:14}));const statisticsRows=[["住宿统计指标","数量","计数口径"],["总住宿人数",stats.totalStay+stats.noStay,"纳入住宿安排的全部有效参会人员"],["无需住宿人数",stats.noStay,"不计入三种房型数量"],["住宿人数",stats.totalStay,"实际需要住宿的人员"],["单间数量",stats.single,"按实际房型为单间的人员数"],["标间单住数量",stats.twinSingle,"按实际房型为标间单住的人员数"],["标间拼住数量",stats.shared,"按实际房型为标间拼住的人员数"],["实际允许总间夜",stats.actualNights,"汇总实际允许住宿间夜数"]];const statisticsSheet=XLSX.utils.aoa_to_sheet(statisticsRows);statisticsSheet["!cols"]=[{wch:22},{wch:12},{wch:48}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,statisticsSheet,"住宿统计");XLSX.utils.book_append_sheet(wb,roomingOccupancySheet(occupancy),"分房统计");XLSX.utils.book_append_sheet(wb,ws,"Rooming List");try{await writeStyledWorkbook(wb,`${state.settings.slug||"项目"}-Rooming-List.xlsx`);toast("Rooming List、住宿统计与分房统计已按统一格式导出");}catch(error){toast(`导出失败：${error.message}`,"error");}
   }
 
@@ -1555,7 +1572,7 @@
     $("#transportGrid").innerHTML = cards.join("") || `<div class="empty-state">暂无接送机记录</div>`; bindDynamicButtons();$$('[data-download-transport-placard]').forEach(button=>button.onclick=()=>downloadTransportPlacard(button.dataset.downloadTransportPlacard,button.dataset.placardName));
   }
 
-  async function exportTransportPlan(){if(!window.XLSX)return toast("Excel 组件尚未加载，请刷新后重试","error");const headers=["方向","参会者","会场","航班/车次","实际场站","安排类型","工作人员/司机","联系电话","车辆/车牌","送机时间","送机地点/集合点","接机牌文字","接机牌附件","批次","备注"];const rows=activeVisibleAttendees().flatMap(a=>["pickup","dropoff"].map(direction=>{const t=a.transport?.[direction]||{},staff=isStaffTransport(t);return[direction==="pickup"?"接机/接站":"送机/送站",a.name,a.venue,direction==="pickup"?a.outNo:a.returnNo,transportTerminal(a,direction),staff?"工作人员":"独立司机",staff?(t.staffName||"会务工作人员"):(t.driver||""),t.phone||"",staff?"":(t.vehicle||""),direction==="pickup"?"":(t.time||""),direction==="pickup"?"":(t.point||""),direction==="pickup"?(t.placard||""):"",direction==="pickup"?(t.placardFileName||""):"",t.batchName||"",t.notes||""];}));const sheet=XLSX.utils.aoa_to_sheet([headers,...rows]);sheet["!cols"]=headers.map((_,index)=>({wch:[1,4,6,9,10,11,12,13,14].includes(index)?22:14}));const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,"接送执行安排");try{await writeStyledWorkbook(book,`${state.settings.slug||"会议"}-接送执行安排.xlsx`);toast("接送执行安排已按统一格式导出");}catch(error){toast(`导出失败：${error.message}`,"error");}}
+  async function exportTransportPlan(){try{await ensureExcelTools();}catch(error){return toast(error.message,"error");}const headers=["方向","参会者","会场","航班/车次","实际场站","安排类型","工作人员/司机","联系电话","车辆/车牌","送机时间","送机地点/集合点","接机牌文字","接机牌附件","批次","备注"];const rows=activeVisibleAttendees().flatMap(a=>["pickup","dropoff"].map(direction=>{const t=a.transport?.[direction]||{},staff=isStaffTransport(t);return[direction==="pickup"?"接机/接站":"送机/送站",a.name,a.venue,direction==="pickup"?a.outNo:a.returnNo,transportTerminal(a,direction),staff?"工作人员":"独立司机",staff?(t.staffName||"会务工作人员"):(t.driver||""),t.phone||"",staff?"":(t.vehicle||""),direction==="pickup"?"":(t.time||""),direction==="pickup"?"":(t.point||""),direction==="pickup"?(t.placard||""):"",direction==="pickup"?(t.placardFileName||""):"",t.batchName||"",t.notes||""];}));const sheet=XLSX.utils.aoa_to_sheet([headers,...rows]);sheet["!cols"]=headers.map((_,index)=>({wch:[1,4,6,9,10,11,12,13,14].includes(index)?22:14}));const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,"接送执行安排");try{await writeStyledWorkbook(book,`${state.settings.slug||"会议"}-接送执行安排.xlsx`);toast("接送执行安排已按统一格式导出");}catch(error){toast(`导出失败：${error.message}`,"error");}}
 
   const comparableStation = value => String(value||"").replace(/(?:火车)?站$/u,"").replace(/\s+/g,"").trim();
   const verificationProviderLabel = check => check?.source?.label || ({variflight:"飞常准",rail_12306:"12306 公共查询",aerodatabox:"AeroDataBox（API.Market）",juhe_flight_dynamic:"聚合数据·全球航班动态",aliyun_train:"阿里云市场·聚合数据",train:"高铁计划接口",flight:"航班计划接口"}[check?.provider] || check?.provider || "计划时刻接口");
@@ -1826,7 +1843,14 @@
     $("#notificationList").innerHTML = reminders.length ? reminders.map(n => `<button type="button" class="notification-item ${n.read?"":"unread"}" data-notification-detail="${escapeHtml(String(n.id))}"><span class="notice-icon">${icons[n.type]||"◌"}</span><p><strong>${escapeHtml(n.attendeeName||"报名端变更")}</strong>${escapeHtml(n.text)}</p><small>${new Date(n.time).toLocaleString("zh-CN",{hour12:false})}${n.changes?.length?` · ${n.changes.length}项变更`:""}</small></button>`).join("") : `<div class="empty-state">暂无报名端新增或自行修改提醒；管理员操作请在系统设置的全局操作日志中查询。</div>`;
     $$('[data-notification-detail]').forEach(button=>button.onclick=()=>openNotificationDetail(button.dataset.notificationDetail));
   }
-  function openNotificationDetail(id){const item=state.notifications.find(n=>String(n.id)===String(id));if(!item)return;item.read=true;const changes=item.changes||[];$("#notificationDetailContent").innerHTML=`<div class="detail-head"><span class="kicker">CHANGE LOG</span><h2>${escapeHtml(item.attendeeName||"变更详情")}</h2><p>${escapeHtml(item.actorName||"系统")} · ${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</p></div><div class="detail-body"><div class="change-detail-list">${changes.length?changes.map(change=>`<div class="change-detail-row"><strong>${escapeHtml(change.label||change.field||"字段")}</strong><span class="change-before"><small>修改前</small>${escapeHtml(String(change.before??"未填写"))}</span><b>→</b><span class="change-after"><small>修改后</small>${escapeHtml(String(change.after??"未填写"))}</span></div>`).join(""):`<div class="empty-state">该历史提醒仅保存了操作摘要：${escapeHtml(item.text)}</div>`}</div></div>`;persistStateLocally();renderNotifications();renderCounts();$("#notificationDetailDialog").showModal();}
+  function notificationChangeValue(value){
+    if(value==null||value==="")return"未填写";
+    const text=String(value),iso=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/.test(text);
+    if(!iso)return text;
+    const date=new Date(text);if(Number.isNaN(date.getTime()))return text;
+    return new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(date).replaceAll("/","-");
+  }
+  function openNotificationDetail(id){const item=state.notifications.find(n=>String(n.id)===String(id));if(!item)return;item.read=true;const changes=item.changes||[];$("#notificationDetailContent").innerHTML=`<div class="detail-head"><span class="kicker">CHANGE LOG</span><h2>${escapeHtml(item.attendeeName||"变更详情")}</h2><p>${escapeHtml(item.actorName||"系统")} · ${new Date(item.time).toLocaleString("zh-CN",{hour12:false})}</p></div><div class="detail-body"><div class="change-detail-list">${changes.length?changes.map(change=>`<div class="change-detail-row"><strong>${escapeHtml(change.label||change.field||"字段")}</strong><span class="change-before"><small>修改前</small>${escapeHtml(notificationChangeValue(change.before))}</span><b aria-hidden="true">→</b><span class="change-after"><small>修改后</small>${escapeHtml(notificationChangeValue(change.after))}</span></div>`).join(""):`<div class="empty-state">该历史提醒仅保存了操作摘要：${escapeHtml(item.text)}</div>`}</div></div>`;persistStateLocally();renderNotifications();renderCounts();$("#notificationDetailDialog").showModal();}
   function renderSettings() {
     const form = $("#settingsForm");
     if(!form.elements.fieldClothingSize){const grid=form.querySelector(".field-toggle-grid");const label=document.createElement("label");label.className="check-row";label.innerHTML='<input name="fieldClothingSize" type="checkbox" /> 收集衣服尺寸';grid?.append(label);}
@@ -2420,7 +2444,7 @@
   async function readProjectTemplate(file) {
     if (!file || !canManage()) return;
     if (!/\.(xlsx|xls|csv)$/i.test(file.name)) return toast("请选择 Excel 或 CSV 模板", "error");
-    if (!window.XLSX) return toast("Excel 组件尚未加载，请刷新后重试", "error");
+    try{await ensureExcelTools();}catch(error){return toast(error.message,"error");}
     try {
       const buffer=await file.arrayBuffer(); const workbook=XLSX.read(buffer,{type:"array",cellDates:true}); const sheet=workbook.Sheets[workbook.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false});
@@ -2459,7 +2483,8 @@
   async function downloadProjectTemplate(){
     const columns=columnsWithJourneyFields(meetingTemplateColumns());
     const headers=columns.map(column=>column.header);const example=columns.map(column=>/TransportType$/.test(column.key)?"飞机":"");
-    if(window.XLSX){const ws=XLSX.utils.aoa_to_sheet([headers,example]);ws["!cols"]=headers.map(header=>({wch:Math.max(14,Math.min(28,String(header).length+4))}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"报名模板");try{await writeStyledWorkbook(wb,`${state.settings.slug||"会议"}-报名模板-含完整往返行程.xlsx`);toast("报名模板已按统一格式下载，已包含全部16个往返行程字段");}catch(error){toast(`模板下载失败：${error.message}`,"error");}}
+    try{await ensureExcelTools();}catch(error){return toast(error.message,"error");}
+    const ws=XLSX.utils.aoa_to_sheet([headers,example]);ws["!cols"]=headers.map(header=>({wch:Math.max(14,Math.min(28,String(header).length+4))}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"报名模板");try{await writeStyledWorkbook(wb,`${state.settings.slug||"会议"}-报名模板-含完整往返行程.xlsx`);toast("报名模板已按统一格式下载，已包含全部16个往返行程字段");}catch(error){toast(`模板下载失败：${error.message}`,"error");}
   }
   function excelDate(value) {
     if (!value) return "";
@@ -2480,9 +2505,9 @@
     const preview=$("#importPreview"); pendingImportRows=[]; $("#confirmImport").disabled=true;
     if (!file) return;
     if (!/\.(xlsx|xls|csv)$/i.test(file.name)) return preview.innerHTML=`<div class="lookup-error">请选择 .xlsx、.xls 或 .csv 文件。</div>`;
-    if (!window.XLSX) return preview.innerHTML=`<div class="lookup-error">Excel 组件尚未加载，请刷新页面后重试。</div>`;
     preview.innerHTML=`<div class="import-reading"><span></span>正在读取 ${escapeHtml(file.name)}…</div>`;
     try {
+      await ensureExcelTools();
       const workbook=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true}); const sheet=workbook.Sheets[workbook.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:true});
       const headerIndex=rows.findIndex(row=>row.some(cell=>/(客户)?姓名|name/i.test(cleanCell(cell)))&&row.some(cell=>/手机号|mobile/i.test(cleanCell(cell))));
@@ -2587,6 +2612,7 @@
 
   async function exportExcel() {
     if(isReadOnlyStaff()||!isSystemAdmin()&&!['ops','client','sales'].includes(currentUser().role))return toast("只读账号没有敏感数据导出权限","error");
+    try{await ensureExcelTools();}catch(error){return toast(error.message,"error");}
     const attendeeList=visibleAttendees();
     const exportColumns=columnsWithJourneyFields(meetingTemplateColumns());
     const supplementalColumns=rosterSupplementalColumns(attendeeList,exportColumns);

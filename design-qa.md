@@ -21,7 +21,7 @@
 **Findings**
 
 - No actionable P0, P1, or P2 issues remain.
-- Fonts and typography: existing brand fonts, weights, and colors are preserved; the meeting-center title and eyebrow are intentionally reduced.
+- Fonts and typography: weights and colors are preserved; the interface now uses the local Microsoft YaHei/PingFang stack so the China-hosted entry does not wait for an overseas font service.
 - Spacing and layout rhythm: card padding, status blocks, toggle, separators, and action gaps are consistently tightened.
 - Colors and visual tokens: existing Lilly red, project purple/teal, neutral canvas, and semantic switch colors remain unchanged.
 - Image quality and asset fidelity: supplied Lilly logo remains the original raster asset; no new or substituted visual assets were introduced.
@@ -45,5 +45,12 @@
 **Follow-up polish**
 
 - None required for this density adjustment.
+
+**Change-detail compactness pass**
+
+- Source visual truth: `/var/folders/qx/glgdffcs1cl2hszg7mnpcxp80000gn/T/codex-clipboard-5efc1447-57fd-403a-8233-42f28d07875e.png`
+- Implementation screenshot: `/Users/carson/Documents/文稿 - Archie In The House - 1/ChatGPT/行程管理工具/.tmp/notification-detail-compact.png`
+- Combined comparison: `/Users/carson/Documents/文稿 - Archie In The House - 1/ChatGPT/行程管理工具/.tmp/notification-detail-comparison.png`
+- Result: the header, field labels, old/new cards, and row spacing are all reduced while preserving the left-to-right comparison. ISO timestamps are rendered as readable Shanghai local time. At a 1280 px viewport, a comparison row is 70 px high and the dialog has no horizontal overflow.
 
 final result: passed

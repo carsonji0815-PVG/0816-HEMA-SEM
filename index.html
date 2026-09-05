@@ -106,7 +106,7 @@
                   <label class="is-hidden" data-internal-field>所属 BU<input name="custom__businessUnit" required /></label>
                   <label class="is-hidden" data-internal-field>职位<input name="custom__internalPosition" required /></label>
                   <label class="is-hidden" data-internal-field>员工号<input name="custom__employeeNo" required /></label>
-                  <label data-template-field="venue">会场<select name="venue" required><option value="">请选择</option><option>大连</option><option>福州</option></select></label>
+                  <label data-template-field="venue">会场<select name="venue" required><option value="">正在读取当前项目会场…</option></select></label>
                   <label data-template-field="sex">性别<select name="sex" required><option value="">请选择</option><option>男</option><option>女</option></select></label>
                   <label class="span-2" data-template-field="idNumber">身份证号 / 护照号<input name="idNumber" autocomplete="off" required /></label>
                   <label data-template-field="phone">手机号<input name="phone" inputmode="numeric" maxlength="11" required /></label>
@@ -143,7 +143,7 @@
                   <label data-journey-field="returnDeparture">出发时间<input name="returnDeparture" type="time" required /></label><label data-journey-field="returnArrival">到达时间<input name="returnArrival" type="time" required /></label>
                 </div><div class="extra-journey-list" data-extra-journeys="return"></div><button class="button button-secondary add-journey-button" data-add-journey="return" type="button">＋ 新增一段返程</button></section>
                 <section class="public-form-section optional-transfer-section is-hidden" id="publicReturnTransferCollectionSection"><h3>返程出发地（属地）接站信息 <small>选填，不影响报名提交</small></h3><div class="public-field-grid">
-                  <label>属地接站送达目的地<input name="returnTransferDestination" placeholder="例如：住所 / 酒店 / 单位" /></label><label class="span-2">属地接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
+                  <label>属地接站送达目的地<input name="returnTransferDestination" placeholder="例如：住所 / 酒店 / 单位" /></label><label>属地预约接站时间<input value="按照实际航班/车次抵达时间" readonly aria-readonly="true" /></label><label class="span-2">属地接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
                 </div></section>
                 <section class="public-form-section is-hidden" id="publicCustomFieldsSection"><h3>项目补充信息</h3><div class="public-field-grid" id="publicCustomFields"></div></section>
                 <div id="publicFullRegistrationResult" class="lookup-result" aria-live="polite"></div>
@@ -269,7 +269,7 @@
                     <label class="is-hidden" data-internal-field>所属 BU *<input name="custom__businessUnit" required /></label>
                     <label class="is-hidden" data-internal-field>职位 *<input name="custom__internalPosition" required /></label>
                     <label class="is-hidden" data-internal-field>员工号 *<input name="custom__employeeNo" required /></label>
-                    <label>会场<select name="venue"><option>大连</option><option>福州</option></select></label>
+                    <label>会场<select name="venue"><option value="">正在读取当前项目会场…</option></select></label>
                     <label>性别<select name="sex"><option value="">请选择</option><option>男</option><option>女</option></select></label>
                     <label class="span-2">身份证号 / 护照号 *<input name="idNumber" required autocomplete="off" /></label>
                     <label>手机号 *<input name="phone" required inputmode="numeric" maxlength="11" /></label>
@@ -316,7 +316,7 @@
                 </article>
                 <article class="panel form-section optional-transfer-section is-hidden" id="adminReturnTransferCollectionSection">
                   <div class="section-number">05</div><div class="section-title"><h2>返程出发地（属地）接站信息</h2><p>选填，安排返程场站至属地目的地的接站信息，不参与行程核验</p></div><div class="field-grid">
-                    <label>属地接站送达目的地<input name="returnTransferDestination" /></label><label class="span-2">属地接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
+                    <label>属地接站送达目的地<input name="returnTransferDestination" /></label><label>属地预约接站时间<input value="按照实际航班/车次抵达时间" readonly aria-readonly="true" /></label><label class="span-2">属地接站备注<textarea name="returnTransferNotes" rows="2"></textarea></label>
                   </div>
                 </article>
               </div>
@@ -329,7 +329,7 @@
           <section class="page" data-page="attendees">
             <div class="page-heading heading-with-action"><div><span class="eyebrow">ATTENDEE ROSTER</span><h1>参会名单</h1><p id="rosterScope">按当前账号权限展示名单。</p></div><div class="heading-actions"><button class="button button-secondary" id="auditTravel">⌕ 核验行程填写</button><button class="button button-secondary import-list-button" id="importRoster">⇧ 导入名单</button><button class="button button-secondary" id="transferRegistrant">⇄ 填报人移交</button><button class="button button-secondary" id="exportExcel">导出 Excel</button><a class="button button-primary" href="#registration">＋ 新增报名</a></div></div>
             <div class="panel table-panel">
-              <div class="table-toolbar"><div class="search-box">⌕ <input id="attendeeSearch" placeholder="搜索姓名、城市、医院或航班" /></div><button class="button button-secondary roster-filter-button" id="toggleIncompleteFilter" type="button">筛选未填写</button><button class="button button-secondary roster-archive-button" id="toggleCancelledRoster" type="button">查看已删除报名 <span id="cancelledRosterCount">0</span></button><select id="riskFilter"><option value="all">全部状态</option><option value="pending">待审批</option><option value="approved">已通过</option><option value="normal">行程正常</option></select><select id="venueFilter"><option value="all">全部会场</option><option>大连会场</option><option>福州会场</option></select><button class="button roster-delete-button" id="deleteSelectedAttendees" type="button" disabled>删除所选 <span id="selectedAttendeeCount">0</span></button></div>
+              <div class="table-toolbar"><div class="search-box">⌕ <input id="attendeeSearch" placeholder="搜索姓名、城市、医院或航班" /></div><button class="button button-secondary roster-filter-button" id="toggleIncompleteFilter" type="button">筛选未填写</button><button class="button button-secondary roster-archive-button" id="toggleCancelledRoster" type="button">查看已删除报名 <span id="cancelledRosterCount">0</span></button><select id="riskFilter"><option value="all">全部状态</option><option value="pending">待审批</option><option value="approved">已通过</option><option value="normal">行程正常</option></select><select id="venueFilter"><option value="all">全部会场</option></select><button class="button roster-delete-button" id="deleteSelectedAttendees" type="button" disabled>删除所选 <span id="selectedAttendeeCount">0</span></button></div>
               <div class="table-wrap roster-table-wrap"><table class="roster-template-table"><thead><tr id="attendeeTableHead"></tr></thead><tbody id="attendeeTableBody"></tbody></table></div>
               <div class="empty-state is-hidden" id="attendeeEmpty">没有符合条件的参会人员</div>
             </div>

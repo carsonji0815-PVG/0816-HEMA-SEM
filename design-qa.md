@@ -54,3 +54,14 @@
 - Result: the header, field labels, old/new cards, and row spacing are all reduced while preserving the left-to-right comparison. ISO timestamps are rendered as readable Shanghai local time. At a 1280 px viewport, a comparison row is 70 px high and the dialog has no horizontal overflow.
 
 final result: passed
+
+**Meeting venue consistency pass**
+
+- Source visual truth: `/var/folders/qx/glgdffcs1cl2hszg7mnpcxp80000gn/T/codex-clipboard-5bcefb61-ebe3-44a0-a30c-51db5c0669b8.png`
+- Production data check: `IBU Efsitora China SEM` stores `长沙` in `meetings.venues`; the incorrect `大连 / 福州` choices came from static form markup.
+- Fix: admin registration, attendee-list filter, public registration, and new quota rows now read the active meeting's venue list. Importing a registration template no longer overwrites project venue settings.
+- Empty state: a meeting with no venue configuration shows `当前项目尚未配置会场` instead of inheriting another project's options.
+- Return local pickup: the form restores a read-only `属地预约接站时间` row displaying `按照实际航班/车次抵达时间` in both admin and public forms.
+- Automated evidence: `scripts/meeting-venue-source-smoke.mjs` verifies a `长沙` project produces only the `长沙` option in the admin form and roster filter, and verifies both automatic pickup-time labels.
+
+final result: passed

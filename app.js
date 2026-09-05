@@ -243,6 +243,14 @@
   const isFieldLocked = (attendee,group) => isLocked(attendee)||state.locks.columns.includes(group);
   const currentProject = () => state.projects.find(project => project.id === state.activeProjectId) || state.projects[0] || {};
   const isInternalMeeting = (settings=state.settings) => (settings?.activityType || settings?.meetingType || "external").toString().toLowerCase() === "internal";
+  const meetingVenues = (settings=state.settings) => [...new Set((settings?.venues||[]).map(normalizeVenueLabel).filter(Boolean))];
+  function syncMeetingVenueSelect(select, venues=meetingVenues(), selectedValue=select?.value) {
+    if(!select)return;
+    const selected=normalizeVenueLabel(selectedValue),values=[...new Set((venues||[]).map(normalizeVenueLabel).filter(Boolean))];
+    select.innerHTML=values.length?`<option value="">请选择当前项目会场</option>${values.map(venue=>`<option value="${escapeHtml(venue)}">${escapeHtml(venue)}</option>`).join("")}`:`<option value="">当前项目尚未配置会场</option>`;
+    select.value=values.includes(selected)?selected:"";
+    select.disabled=!values.length;
+  }
   function meetingTemplateColumns(settings=state.settings) {
     const internal=isInternalMeeting(settings);
     let columns=internal ? INTERNAL_BASE_COLUMNS.map(column=>({...column})) : repairRegistrationTemplate(settings.registrationTemplate?.columns?.length?settings.registrationTemplate:standardTemplate()).columns;
@@ -1223,8 +1231,10 @@
   }
 
   function renderRegistrationOwner() {
-    $$(".optional-transfer-section",$("#registrationForm")).forEach(section=>section.classList.toggle("is-hidden",!state.settings.transferCollectionEnabled));
-    applyMeetingTypeFields($("#registrationForm"),state.settings);
+    const form=$("#registrationForm");
+    $$(".optional-transfer-section",form).forEach(section=>section.classList.toggle("is-hidden",!state.settings.transferCollectionEnabled));
+    syncMeetingVenueSelect(form.elements.venue,meetingVenues());
+    applyMeetingTypeFields(form,state.settings);
   }
 
   function applyMeetingTypeFields(form, settings={}) {
@@ -1321,7 +1331,7 @@
     $("#quotaProgressBody").innerHTML=venues.map(venue=>{const list=ordered.filter(row=>row.venue===venue);return list.map(detailRow).join("")+summaryRow(venue,list);}).join("")+summaryRow("全部会场",ordered,true);
   }
 
-  function quotaConfigOptions(key,value) { const configured=state.settings.registrationQuotas||[];const source=key==="venue"?[...(state.settings.venues||[]).map(normalizeVenueLabel),...configured.map(item=>normalizeVenueLabel(item.venue)),...activeVisibleAttendees().map(item=>normalizeVenueLabel(item.venue))]:key==="role"?["听众"]:[...configured.map(item=>normalizeQuotaRegion(item.region)),...activeVisibleAttendees().map(item=>normalizeQuotaRegion(item.region))];const options=[...new Set(source.filter(Boolean))];if(key!=="role"&&value&&!options.includes(value))options.unshift(value);return options.map(option=>`<option value="${escapeHtml(option)}" ${option===value?"selected":""}>${escapeHtml(option)}</option>`).join(""); }
+  function quotaConfigOptions(key,value) { const configured=state.settings.registrationQuotas||[];const configuredVenues=meetingVenues();const source=key==="venue"?(configuredVenues.length?configuredVenues:[...configured.map(item=>normalizeVenueLabel(item.venue)),...activeVisibleAttendees().map(item=>normalizeVenueLabel(item.venue))]):key==="role"?["听众"]:[...configured.map(item=>normalizeQuotaRegion(item.region)),...activeVisibleAttendees().map(item=>normalizeQuotaRegion(item.region))];const options=[...new Set(source.filter(Boolean))];if(key!=="role"&&value&&!options.includes(value))options.unshift(value);return options.map(option=>`<option value="${escapeHtml(option)}" ${option===value?"selected":""}>${escapeHtml(option)}</option>`).join(""); }
   const parseQuotaRegions = value => String(value||"").split(/[、,，\n]+/).map(item=>item.trim()).filter(Boolean);
   function quotaRegionChoices(extra=[]) { const configured=normalizedQuotaConfiguration();return[...new Set([...extra,...(state.settings.quotaRegions||[]),...configured.map(item=>normalizeQuotaRegion(item.region))].map(value=>String(value||"").trim()).filter(Boolean))]; }
   function renderQuotaRegionOptions(extra=[]) { $("#quotaRegionOptions").innerHTML=quotaRegionChoices(extra).map(region=>`<option value="${escapeHtml(region)}"></option>`).join(""); }
@@ -1357,7 +1367,7 @@
       return matchesArchive && (!query || haystack.includes(query)) && (risk === "all" || a.approval === risk) && (venue === "all" || normalizeVenueLabel(a.venue) === venue) && (!incompleteRosterOnly||hasMissing);
     });
   }
-  function syncRosterVenueFilter(){const select=$("#venueFilter");const previous=normalizeVenueLabel(select.value)||"all";const scoped=visibleAttendees().filter(a=>cancelledRosterView?a.businessStatus==="cancelled":a.businessStatus!=="cancelled");const actual=[...new Set(scoped.map(a=>normalizeVenueLabel(a.venue)).filter(Boolean))];const fallback=(state.settings.venues||[]).map(normalizeVenueLabel).filter(Boolean);const values=[...new Set(actual.length?actual:fallback)].sort((a,b)=>a.localeCompare(b,"zh-CN"));select.innerHTML=`<option value="all">全部会场</option>${values.map(value=>`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;select.value=values.includes(previous)?previous:"all";}
+  function syncRosterVenueFilter(){const select=$("#venueFilter");const previous=normalizeVenueLabel(select.value)||"all";const scoped=visibleAttendees().filter(a=>cancelledRosterView?a.businessStatus==="cancelled":a.businessStatus!=="cancelled");const actual=[...new Set(scoped.map(a=>normalizeVenueLabel(a.venue)).filter(Boolean))];const configured=meetingVenues();const values=[...new Set(configured.length?configured:actual)].sort((a,b)=>a.localeCompare(b,"zh-CN"));select.innerHTML=`<option value="all">全部会场</option>${values.map(value=>`<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;select.value=values.includes(previous)?previous:"all";}
   function extraJourneySummary(attendee){const counts={outbound:1,return:1};return(attendee.customFields?._journeySegments||[]).map(item=>{const direction=item.direction==="return"?"return":"outbound";counts[direction]+=1;return`${direction==="return"?"返程":"去程"}${counts[direction]}：${item.number||"未填写"} ${item.departCity||"—"}→${item.arriveCity||"—"}`;}).join("；");}
   function returnTransferArrivalTime(attendee={}){const segments=normalizedExtraJourneys(attendee.customFields?._journeySegments||[]).filter(item=>item.direction==="return").sort((a,b)=>a.order-b.order),last=segments.at(-1);const date=last?.arriveDate||attendee.returnArriveDate||attendee.returnDate||"",time=last?.arrival||attendee.returnArrival||"";return[date,time].filter(Boolean).join(" ");}
   function rosterSupplementalColumns(list,templateColumns){
@@ -2160,7 +2170,7 @@
     $("#publicProjectDeadline").textContent=project.deadline ? new Intl.DateTimeFormat("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(project.deadline)) : "以会务通知为准";
     const footer=$(".public-footer"); if (footer) footer.textContent = project.servicePhone ? `会务服务台 ${project.servicePhone} · 工作时间 08:00–21:00` : "会务服务台 · 工作时间 08:00–21:00";
     const venueSelect=$("#publicFullRegistrationForm").elements.venue;
-    if (venueSelect && project.venues?.length) { const selected=normalizeVenueLabel(venueSelect.value); const venues=[...new Set(project.venues.map(normalizeVenueLabel).filter(Boolean))]; venueSelect.innerHTML=`<option value="">请选择</option>${venues.map(venue=>`<option>${escapeHtml(venue)}</option>`).join("")}`; venueSelect.value=venues.includes(selected) ? selected : ""; }
+    syncMeetingVenueSelect(venueSelect,meetingVenues(project));
     const identityFields=configuredRegistrantIdentityFields(project),identityText=identityFields.map(field=>REGISTRANT_IDENTITY_LABELS[field]).join("、");
     $$('[data-registration-identity-hint]').forEach(node=>node.textContent=`使用${identityText}验证后进入当前项目报名表`);
     const reminder=$('.public-entry-reminder li:first-child span');if(reminder)reminder.textContent=`填报人使用${identityText}进入，提交本人负责的参会人员。`;
@@ -2452,10 +2462,8 @@
       if (headers.length<2) throw new Error("没有识别到模板表头");
       const template=templateFromHeaders(headers); const validationOptions=await templateValidationOptions(buffer,workbook.SheetNames[0]);
       template.columns.forEach((column,index)=>{if(validationOptions[index]?.length)column.options=validationOptions[index];});
-      const venueOptions=template.columns.find(column=>column.key==="venue")?.options?.map(normalizeVenueLabel).filter(Boolean)||[];
-      if(venueOptions.length)state.settings.venues=[...new Set(venueOptions)];
       let newStoragePath="";const previousStoragePath=state.settings.templateStoragePath||"";
-      if(backend&&backendMeetingId){const extension=(file.name.match(/\.(xlsx|xls|csv)$/i)?.[0]||".xlsx").toLowerCase();newStoragePath=`${backendMeetingId}/${crypto.randomUUID()}${extension}`;const uploaded=await backend.storage.from("registration-template-files").upload(newStoragePath,file,{contentType:file.type||"application/octet-stream",upsert:false});if(uploaded.error)throw uploaded.error;const{error}=await backend.rpc("save_project_registration_template",{p_meeting_id:backendMeetingId,p_template_name:file.name,p_template:template,p_storage_path:newStoragePath});if(error){await backend.storage.from("registration-template-files").remove([newStoragePath]);throw error;}if(previousStoragePath&&previousStoragePath!==newStoragePath)await backend.storage.from("registration-template-files").remove([previousStoragePath]);if(venueOptions.length)await persistMeetingSettings({venues:state.settings.venues});}
+      if(backend&&backendMeetingId){const extension=(file.name.match(/\.(xlsx|xls|csv)$/i)?.[0]||".xlsx").toLowerCase();newStoragePath=`${backendMeetingId}/${crypto.randomUUID()}${extension}`;const uploaded=await backend.storage.from("registration-template-files").upload(newStoragePath,file,{contentType:file.type||"application/octet-stream",upsert:false});if(uploaded.error)throw uploaded.error;const{error}=await backend.rpc("save_project_registration_template",{p_meeting_id:backendMeetingId,p_template_name:file.name,p_template:template,p_storage_path:newStoragePath});if(error){await backend.storage.from("registration-template-files").remove([newStoragePath]);throw error;}if(previousStoragePath&&previousStoragePath!==newStoragePath)await backend.storage.from("registration-template-files").remove([previousStoragePath]);}
       state.settings.templateName=file.name;state.settings.templateStoragePath=newStoragePath;state.settings.templateIsSystemDefault=false;state.settings.registrationTemplate=template;state.settings.templateImported=true;const project=currentProject();if(project)project.templateImported=true;
       addNotification("change",`${currentUser().name}为当前项目启用了报名模板：${file.name}`); saveState(); renderSettings(); toast(`模板已启用，共识别 ${headers.length} 列`);
     } catch(error) { toast(error.message||"模板读取失败","error"); }

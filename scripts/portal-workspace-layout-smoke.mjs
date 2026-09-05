@@ -1,0 +1,26 @@
+import { chromium } from "playwright";
+import fs from "node:fs/promises";
+
+await fs.mkdir(".tmp/browser",{recursive:true});
+const browser=await chromium.launch({headless:true,executablePath:"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"});
+const page=await browser.newPage({viewport:{width:1440,height:1000}});
+const errors=[];page.on("pageerror",error=>errors.push(error.message));
+const mode=process.env.PORTAL_WORKSPACE_MODE||"manage";
+const formId=mode==="register"?"publicRegistrationForm":"publicManageForm";
+const project={name:"IBU Efsitora China SEM",clientName:"礼来",startDate:"2026-11-27",endDate:"2026-11-28",deadline:"2026-11-29T02:00:00+08:00",venues:["长沙"],servicePhone:"13918883208",registrationOpen:true,newRegistrationAllowed:true,fieldConfig:{serviceDeskName:"朱冰焰",serviceDeskStart:"09:00",serviceDeskEnd:"18:00",quotaRegions:["上海大区"],registrationIdentityFields:["region","name","employeeNo"]}};
+await page.route("**/functions/v1/public-trip-query",async route=>{const body=route.request().postDataJSON();const response=body.action==="project-info"?{project}:body.action==="registrant-login"?{authenticated:true,sessionToken:"test",registrant:{id:"r1",region:body.region,name:body.name,employeeNo:body.employeeNo},attendees:[{id:"a1",name:"季凡希",hospital:"上海市嘉定区中心医院",venue:"长沙",phone:"13003240331",businessStatus:"active",approval:"normal"}],project}:{error:"unexpected"};await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(response)});});
+await page.goto(`http://127.0.0.1:4173/?event=meeting-diamjsep26-729882-41018#${mode}`,{waitUntil:"domcontentloaded"});
+await page.waitForFunction(id=>document.querySelectorAll(`#${id} [name="region"] option:not([value=""])`).length>0,formId);
+await page.selectOption(`#${formId} [name="region"]`,"上海大区");await page.fill(`#${formId} [name="name"]`,"季亮亮");await page.fill(`#${formId} [name="employeeNo"]`,"L223214141");await page.click(`#${formId} button[type="submit"]`);
+await page.waitForSelector("#publicFullRegistrationStep:not(.is-hidden)");
+const header=await page.locator(".lookup-copy").boundingBox(),card=await page.locator(".portal-card.expanded").boundingBox(),title=await page.locator("#publicPortalTitle").evaluate(node=>({display:getComputedStyle(node).display,clientWidth:node.clientWidth,scrollWidth:node.scrollWidth,fontSize:parseFloat(getComputedStyle(node).fontSize)}));
+if(!header||!card||header.y>=card.y||header.width<1200||card.width<1200)throw new Error("Workspace is not using full-width stacked layout");
+if(title.display!=="none")throw new Error("Duplicate platform hero title should be hidden in the workspace summary");
+const expectedPurpose=mode==="manage"?"更改用途":"报名用途";
+if(!await page.locator('[data-portal-panel="register"] .portal-purpose-note').innerText().then(text=>text.includes(expectedPurpose)))throw new Error(`${mode} workspace purpose reminder is incorrect`);
+const serviceText=await page.locator(".public-service-desk").innerText();if(!serviceText.includes("朱冰焰")||!serviceText.includes("13918883208")||!serviceText.includes("09:00–18:00"))throw new Error("Workspace service desk summary is incomplete");
+await page.click('[data-edit-public-attendee="a1"]');await page.waitForSelector("#publicAttendeeEditor:not(.is-hidden)");
+const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);if(overflow>1)throw new Error(`Workspace horizontal overflow: ${overflow}px`);
+await page.screenshot({path:`.tmp/browser/portal-${mode}-workspace-balanced.png`,fullPage:true});
+console.log(JSON.stringify({layout:"pass",headerWidth:Math.round(header.width),cardWidth:Math.round(card.width),title,serviceDesk:"pass",editor:"pass",purpose:mode,overflow,errors},null,2));
+await browser.close();if(errors.length)process.exitCode=1;

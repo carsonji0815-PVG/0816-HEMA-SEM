@@ -10,7 +10,7 @@ page.on("pageerror", error => errors.push(error.message));
 const requests = [];
 await page.route("**/functions/v1/public-trip-query", async route => {
   const body = route.request().postDataJSON(); requests.push(body);
-  const project={name:"测试项目",clientName:"测试客户",startDate:"2026-09-04",endDate:"2026-09-06",deadline:"2026-08-26T18:00:00+08:00",venues:["上海会场"],servicePhone:"400-001",registrationOpen:true,newRegistrationAllowed:true,fieldConfig:{hcpId:false,remarks:false,quotaRegions:["华东大区"],registrationIdentityFields:["name","phone"]}};
+  const project={name:"测试项目",clientName:"测试客户",startDate:"2026-09-04",endDate:"2026-09-06",deadline:"2026-08-26T18:00:00+08:00",venues:["上海会场"],servicePhone:"400-001",registrationOpen:true,newRegistrationAllowed:true,fieldConfig:{hcpId:false,remarks:false,serviceDeskName:"王会务",serviceDeskStart:"09:00",serviceDeskEnd:"18:00",quotaRegions:["华东大区"],registrationIdentityFields:["name","phone"]}};
   const response = body.action === "project-info" ? {project} : body.action === "registrant-login" ? {authenticated:true,sessionToken:"test-session",registrant:{id:"r1",name:body.name,phone:body.registrantPhone},attendees:[],project} : {saved:true,needsApproval:false,attendee:{id:"test-attendee",name:body.details.name,phone:body.details.phone,hospital:body.details.hospital,venue:body.details.venue,region:"华东大区",contactName:"测试人员",contactMobile:body.details.contactMobile,approval:"normal",rowLocked:false}};
   await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(response)});
 });
@@ -21,6 +21,8 @@ const loginOpen = await page.locator("#loginDialog").evaluate(node => node.open)
 if (loginOpen) throw new Error("Public registration unexpectedly requires login");
 if (fields.join(",") !== "name,registrantPhone") throw new Error(`Unexpected configurable public fields: ${fields.join(",")}`);
 if (await page.locator('[data-portal-tab]').count() !== 3) throw new Error("Unified portal tabs missing");
+if (!await page.locator(".public-service-desk").innerText().then(text=>text.includes("会务负责人")&&text.includes("王会务")&&text.includes("400-001")&&text.includes("09:00–18:00"))) throw new Error("Configurable service desk row missing");
+if (await page.locator("#publicServiceDeskPhone").getAttribute("href") !== "tel:400001") throw new Error("Service desk phone is not actionable");
 await page.click('[data-portal-tab="lookup"]');
 await page.waitForSelector('[data-portal-panel="lookup"]:not(.is-hidden)');
 await page.click('[data-portal-tab="register"]');

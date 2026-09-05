@@ -6,7 +6,7 @@
     <meta name="description" content="无服务器行程报名、审批与接送机管理工具" />
     <meta name="theme-color" content="#D52B1E" />
     <title>礼来会议管理平台</title>
-    <link rel="stylesheet" href="styles.css?v=20260905-mobile-portal-16" />
+    <link rel="stylesheet" href="styles.css?v=20260905-service-desk-19" />
     <script src="assets/vendor/qrcode.min.js" defer></script>
     <script src="assets/vendor/supabase.js" defer></script>
     <script>
@@ -37,7 +37,7 @@
     <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-panel.js?v=20260903-verification-queue-01" defer></script>
     <script src="rooming-engine.js?v=20260903-room-counting-01" defer></script>
-    <script src="app.js?v=20260905-mobile-portal-16" defer></script>
+    <script src="app.js?v=20260905-service-desk-19" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -70,6 +70,12 @@
             <div><span>◇</span><p><small>客户 / 项目</small><strong id="publicProjectClient">读取中…</strong></p></div>
             <div><span>◴</span><p><small>报名截止</small><strong id="publicProjectDeadline">读取中…</strong></p></div>
           </div>
+          <aside class="public-service-desk" aria-label="会务服务台联系方式">
+            <div class="public-service-desk-label"><img src="assets/service-desk-headset.png" alt="" /><strong>会务服务台</strong></div>
+            <div class="public-service-desk-detail"><small>会务负责人</small><strong id="publicServiceDeskName">待公布</strong></div>
+            <div class="public-service-desk-detail public-service-desk-phone"><small>联系电话</small><a id="publicServiceDeskPhone">待公布</a></div>
+            <div class="public-service-desk-detail"><small>工作时间</small><strong id="publicServiceDeskHours">09:00–18:00</strong></div>
+          </aside>
           <div class="privacy-note"><span>✓</span> 无需登录、密码或短信验证码</div>
         </div>
         <div class="lookup-card glass-card portal-card">
@@ -179,7 +185,6 @@
           </div>
         </div>
       </main>
-      <footer class="public-footer">会务服务台 · 工作时间 08:00–21:00</footer>
     </section>
 
     <div class="app-shell" id="adminApp">
@@ -393,7 +398,7 @@
             <form id="settingsForm" class="settings-grid">
               <article class="panel registration-region-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION REGIONS</span><h2>报名大区列表</h2><p>已配置大区时，报名端只能从列表中选择；尚未确认大区时，报名端可自行填写或暂时留空。</p></div></div><label>大区名称 <small>使用顿号、逗号或换行分隔；内外部会议均适用</small><textarea name="registrationRegions" rows="3" placeholder="例如：华北大区、华南大区、沪苏皖"></textarea></label></article>
               <article class="panel registration-identity-panel"><div class="panel-heading"><div><span class="kicker">REGISTRANT IDENTITY</span><h2>填报人身份确认</h2><p>按项目选择报名入口需要填写的信息；大区可随项目去除，员工编号也可改用手机号。</p></div><span class="status status-normal">项目独立</span></div><fieldset class="identity-field-options"><legend>报名端显示并校验</legend><label><input type="checkbox" name="registrationIdentityField" value="region" /> 大区</label><label><input type="checkbox" name="registrationIdentityField" value="name" /> 姓名</label><label><input type="checkbox" name="registrationIdentityField" value="employeeNo" /> 员工编号</label><label><input type="checkbox" name="registrationIdentityField" value="phone" /> 手机号</label></fieldset><p class="form-hint identity-config-hint">员工编号和手机号至少选择一项，用于识别填报人并找回本人已提交的报名。</p></article>
-              <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>会议总名额 <small>用于校验各分组名额合计</small><input name="capacity" type="number" min="1" /></label><label>会务联系电话<input name="servicePhone" /></label></div></article>
+              <article class="panel"><div class="panel-heading"><div><span class="kicker">BASIC</span><h2>项目信息</h2></div></div><div class="stack-form"><label>项目名称<input name="eventName" /></label><label>客户名称<input name="clientName" /></label><div class="field-grid"><label>开始日期<input name="startDate" type="date" /></label><label>结束日期<input name="endDate" type="date" /></label></div><label>会场 <small>用顿号或逗号分隔</small><input name="venues" /></label><label>报名截止<input name="deadline" type="datetime-local" /></label><label>会议总名额 <small>用于校验各分组名额合计</small><input name="capacity" type="number" min="1" /></label><label>会务负责人姓名<input name="serviceDeskName" maxlength="50" placeholder="例如：朱冰焰" /></label><label>会务负责人电话<input name="servicePhone" maxlength="30" inputmode="tel" placeholder="请输入联系电话" /></label><div class="field-grid"><label>服务台开始时间<input name="serviceDeskStart" type="time" /></label><label>服务台结束时间<input name="serviceDeskEnd" type="time" /></label></div><p class="form-hint">以上信息显示在报名截止时间下方；默认工作时间为 09:00–18:00。</p></div></article>
               <article class="panel luggage-control-panel"><div class="panel-heading"><div><span class="kicker">ON-SITE SERVICES</span><h2>行李寄存</h2><p>大型内部会议、外部会议均可按需开启；每场会议独立配置库位与打印模板。</p></div><span class="status" id="luggageFeatureStatus">未启用</span></div><label class="permission-switch"><span><strong>启用本场会议行李寄存</strong><small id="luggageFeatureHint">关闭时不加载扫码、打印模块，不启动后台同步。</small></span><span class="switch"><input id="luggageSwitch" type="checkbox" role="switch" aria-label="启用本场会议行李寄存" /><span></span></span></label><div class="luggage-feature-capabilities"><span>自动库位</span><span>胸卡二维码</span><span>双联标签</span><span>离线寄取</span><span>审计台账</span></div><p class="luggage-feature-note">开关立即保存，只作用于当前会议。有未领取或未同步行李时不能关闭；关闭前请让所有终端联网同步。</p><a id="luggageSettingsEntry" class="button button-secondary is-hidden" href="#luggage">配置库位 / 打印模板 →</a></article>
               <article class="panel transfer-collection-panel"><div class="panel-heading"><div><span class="kicker">OPTIONAL TRANSFER COLLECTION</span><h2>接送机 / 接送站信息收集设置</h2><p>内外部会议均可独立开启；所有接送字段均为选填，不参与行程核验。</p></div><span class="status" id="transferCollectionStatus">未启用</span></div><label class="permission-switch"><span><strong>开启报名端接送信息收集</strong><small>关闭后只隐藏表单，历史接送数据永久保留。</small></span><span class="switch"><input name="transferCollectionEnabled" id="transferCollectionSwitch" type="checkbox" role="switch" /><span></span></span></label><fieldset class="role-option-group"><legend>允许填写的参会角色（可多选）</legend><label><input type="checkbox" name="transferCollectionRole" value="角色嘉宾" /> 角色嘉宾</label><label><input type="checkbox" name="transferCollectionRole" value="听众" /> 普通听众</label><label><input type="checkbox" name="transferCollectionRole" value="赞助商" /> 赞助商</label></fieldset><p class="form-hint">角色嘉宾包含主席、主持、讲者、讨论嘉宾（组长）；配置保存后立即生效。</p></article>
               <article class="panel approval-rules-panel"><div class="panel-heading"><div><span class="kicker">TRAVEL &amp; LODGING APPROVAL</span><h2>行程 &amp; 住宿审批规则</h2><p>按当前会议独立配置；仅外部会议自动校验，内部会议全部跳过。</p></div><span class="status status-normal" id="approvalRuleScope">外部会议生效</span></div><div class="stack-form"><label class="check-row"><input name="mismatchRule" type="checkbox" /> 去程出发城市与返程抵达城市不一致时触发行程审批</label><label class="check-row"><input name="approvalTimeRule" type="checkbox" /> 启用会前抵达、会后撤离时间阈值审批</label><div class="field-grid"><label>允许最早抵达时间<input name="earliestArrival" type="datetime-local" /></label><label>允许最晚撤离时间<input name="latestDeparture" type="datetime-local" /></label></div><label class="check-row"><input name="tourismCityRule" type="checkbox" /> 出发城市属于旅游城市清单时触发审批</label><label>旅游城市清单 <small>项目可自行增删，用顿号或逗号分隔</small><textarea name="tourismCities" rows="3"></textarea></label><div class="approval-rule-note"><strong>住宿单间例外</strong><span>主任医师、副主任医师默认可分配单间；其他职称申请单间，或标记特殊单间需求，自动进入住宿审批。驳回后执行标间拼住。</span></div><div class="system-setting-note">新报名和报名信息变更仅在系统内的「消息提醒」中展示，不单独发送邮件。</div></div></article>

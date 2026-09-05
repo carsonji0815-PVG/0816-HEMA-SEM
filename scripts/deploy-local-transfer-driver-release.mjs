@@ -36,7 +36,8 @@ check('Xi\'an Xianyang T5 station installed',run('docker',['exec','lilly-stage-d
 check('Guangzhou Baiyun T3 station installed',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from public.station_dict where city_name='广州' and transport_type='PLANE' and station_name='广州白云机场T3航站楼' and station_short_name='广州白云 T3'"]).trim()==='1');
 check('new terminal names canonicalized',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from public.station_dict where station_name in ('西安咸阳国际机场T5航站楼','广州白云国际机场T3航站楼')"]).trim()==='0');
 const quotaGuard=run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-X','-Atc',"select pg_get_functiondef('public.enforce_external_listener_quota()'::regprocedure)"]);
-check('unallocated listener regions remain registerable',quotaGuard.includes('IF v_quota = 0 THEN')&&quotaGuard.includes('RETURN new')&&!quotaGuard.includes('尚未配置听众名额'));
+const normalizedQuotaGuard=quotaGuard.replace(/\s+/g,' ').toLowerCase();
+check('unallocated listener regions remain registerable',normalizedQuotaGuard.includes('if v_quota=0 then return new; end if;')&&!quotaGuard.includes('尚未配置听众名额'));
 check('management data published for live refresh',run('docker',['exec','lilly-stage-db','psql','-U','postgres','-d','postgres','-Atc',"select count(*) from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename in ('meetings','attendees','transports','column_locks','notifications','registrants')"]).trim()==='6');
 try{
   fs.mkdirSync(path.dirname(syncTarget),{recursive:true,mode:0o755});fs.writeFileSync(syncTarget,syncSource,{mode:0o755});

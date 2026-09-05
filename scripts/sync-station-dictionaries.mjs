@@ -17,7 +17,11 @@ const terminalOverrides={
 
 let runId='';
 try{
-  if(!dryRun)runId=runSql("insert into public.dictionary_sync_runs(status) values('running') returning id;\n").trim();
+  if(!dryRun){
+    const runOutput=runSql("insert into public.dictionary_sync_runs(status) values('running') returning id;\n");
+    runId=runOutput.match(/^\d+$/mu)?.[0]||'';
+    if(!runId)throw new Error('Unable to read dictionary sync run id');
+  }
   const railText=await fetchText(railUrl),body=railText.match(/'([\s\S]*)'/)?.[1];
   if(!body)throw new Error('12306 station data format changed');
   const railRows=body.split('@').slice(1).map(record=>record.split('|')).map(parts=>({name:clean(parts[1]),city:clean(parts[7]).replace(/市$/u,'')})).filter(row=>row.name&&row.city).map(row=>({...row,name:/站$/u.test(row.name)?row.name:`${row.name}站`,type:'HIGH_SPEED_RAIL'}));

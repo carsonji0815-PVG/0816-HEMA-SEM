@@ -72,7 +72,7 @@
       // different city or transport type; an unknown custom value remains
       // valid and can still be checked by the schedule provider.
       const known=root.TravelFields.dictionary(dictionary).find(item=>item.name===official);
-      if(known&&(known.city!==root.TravelFields.normalizeCity(data[side.city])||known.type!==root.TravelFields.normalizeType(data[side.type])))issues.push({field:map[side.station],message:`场站与城市、出行方式不匹配`,current:data[side.station]});
+      if(known&&(known.city!==root.TravelFields.normalizeCity(data[side.city])||known.type!==root.TravelFields.normalizeType(data[side.type])))issues.push({field:map[side.station],message:`场站与城市、出行方式不匹配`,current:data[side.station],expected:`${known.city} · ${root.TravelFields.TYPES[known.type]||known.type}`});
     }
     return issues;
   }
@@ -113,7 +113,7 @@
   }
   function currentIssues(attendee,segment){
     const check=attendee.customFields?._travelVerification?.[segment];
-    if(check?.fingerprint===fingerprint(attendee,segment)&&Array.isArray(check.fieldIssues))return check.fieldIssues;
+    if(check?.fingerprint===fingerprint(attendee,segment)&&Array.isArray(check.fieldIssues))return check.fieldIssues.filter(issue=>!(issue?.message===`场站与城市、出行方式不匹配`&&issue.expected===undefined));
     if(check?.match&&!check.fingerprint)return buildCheck(attendee,segment,{...check,found:true,warnings:[]}).fieldIssues;
     return localIssues(attendee,segment);
   }

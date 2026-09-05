@@ -4,6 +4,7 @@
   const labels={verified:'核验通过',difference:'计划有差异',review:'需补全 / 人工确认',pending:'尚未核验',unavailable:'暂无法核验',stale:'行程已修改 · 待重查',blank:'未提供行程'};
   const fieldLabels={date:'出发日期',departCity:'出发城市',departTransportType:'出行方式',from:'出发场站',arriveDate:'抵达日期',arriveCity:'抵达城市',to:'抵达场站',number:'航班 / 车次号',departure:'计划出发时间',arrival:'计划到达时间'};
   const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const friendlyNotice=value=>/load failed|failed to fetch|networkerror|network request failed|fetch failed/i.test(String(value||''))?'核验服务连接失败，请检查网络后重试':String(value||'');
   const segmentList=(attendee,V)=>typeof V.segments==='function'?V.segments(attendee):['outbound','return'];
   const segmentDirection=(segment,V)=>typeof V.direction==='function'?V.direction(segment):(segment==='return'?'return':'outbound');
 
@@ -47,7 +48,7 @@
       const source=check?.source?.label||check?.provider||'尚无查询依据';
       const checkedAt=check?.source?.checkedAt||check?.checkedAt;
       const editable=canEdit&&!isLocked(attendee);
-      const notice=status==='stale'?'名单已修改，旧核验结果不再适用。':(check?.notices||[]).join('；');
+      const notice=status==='stale'?'名单已修改，旧核验结果不再适用。':(check?.notices||[]).map(friendlyNotice).join('；');
 
       return `<tr class="verify-card verify-compact-row ${selected.has(selectionKey)?'verify-card-selected':''} ${isFlight&&!flightAllowed?'verify-flight-disabled':''}" data-verification-attendee="${escape(attendee.id)}" data-verification-segment="${escape(segment)}"><td><label class="verify-row-check" title="选择此段行程"><input type="checkbox" data-select-verification="${escape(attendee.id)}" data-select-segment="${escape(segment)}" ${selected.has(selectionKey)?'checked':''} ${status==='blank'?'disabled':''}></label></td><td><strong>${escape(attendee.name)}</strong><small>${escape(attendee.region||'未填写大区')}</small></td><td><strong>${escape(segmentLabel)} · ${escape(schedule)}</strong><small>${escape(route)}</small></td><td>${flightControl}</td><td><span class="verify-state verify-state-${status}">${labels[status]}</span></td><td><button class="text-button verify-expand-button" type="button" data-toggle-verification-detail="${escape(selectionKey)}" aria-expanded="false">展开详情</button></td></tr><tr class="verify-detail-row" data-verification-detail="${escape(selectionKey)}" hidden><td colspan="6"><div class="verify-detail-panel"><div class="verify-table-scroll"><table class="verify-table"><thead><tr><th>名单字段</th><th>当前名单值</th><th>查询到的计划值</th><th>核验说明</th></tr></thead><tbody>${detailRows}</tbody></table></div><p class="verify-notice">${escape(notice)}</p><footer><small>${escape(source)}${checkedAt?' · '+escape(new Date(checkedAt).toLocaleString('zh-CN',{hour12:false})):''}</small><div><button class="button button-secondary" data-review-travel="${escape(attendee.id)}" data-review-segment="${escape(segment)}" ${editable?'':'disabled'}>${editable?'人工审核 / 修改':'只读 / 名单已锁定'}</button>${check&&editable?`<button class="text-button" data-reset-travel="${escape(attendee.id)}" data-reset-segment="${escape(segment)}">重置核验状态</button>`:''}</div></footer></div></td></tr>`;
     }).join('');

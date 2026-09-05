@@ -60,7 +60,12 @@ test('new or manually entered terminals are not falsely rejected by a stale dict
  const stale=[{city:'西安',type:'PLANE',name:'西安咸阳机场T3航站楼'}];
  assert.deepEqual(V.dictionaryIssues(terminal,'return',stale),[]);
  const knownElsewhere=[...stale,{city:'咸阳',type:'PLANE',name:'西安咸阳机场T5航站楼'}];
- assert.equal(V.dictionaryIssues(terminal,'return',knownElsewhere)[0].field,'returnDepartStation');
+ const mismatch=V.dictionaryIssues(terminal,'return',knownElsewhere)[0];
+ assert.equal(mismatch.field,'returnDepartStation');assert.equal(mismatch.expected,'咸阳 · 飞机');
+ const legacy={...terminal,customFields:{_travelVerification:{return:{fingerprint:V.fingerprint(terminal,'return'),fieldIssues:[{field:'returnDepartStation',message:'场站与城市、出行方式不匹配',current:'西安咸阳机场T5航站楼'}],notices:['Load failed']}}}};
+ assert.deepEqual(V.currentIssues(legacy,'return'),[]);
+ assert.match(P.render([legacy],V).html,/核验服务连接失败，请检查网络后重试/);
+ assert.doesNotMatch(P.render([legacy],V).html,/Load failed/);
 });
 test('candidate selection requires exact date and number; multi-leg ambiguity fails closed',()=>{
  assert.equal(chooseMatch(j,[{...candidate,code:'MU5102'}]).match,null);

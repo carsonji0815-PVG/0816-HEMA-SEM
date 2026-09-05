@@ -563,14 +563,15 @@ table tbody tr:hover { background: #fff7f5; }
 }
 
 @media (max-width: 440px) {
-  .public-shell { padding: 18px; }
-  .lilly-brand-public .lilly-logo-frame { width: 92px; height: 52px; }
+  .public-shell { padding: 12px; }
+  .portal-layout { flex:0 0 auto; align-content:start; margin:0 auto; padding-top:10px; }
+  .lilly-brand-public .lilly-logo-frame { width: 82px; height: 46px; }
   .lilly-brand-public .brand-product { display: none; }
-  .public-header .text-link { margin-top: 16px; }
-  #publicPortalTitle { font-size: clamp(30px,9vw,38px); }
+  .public-header .text-link { margin-top: 8px; }
+  #publicPortalTitle { font-size: 23px; }
   .public-entry-reminder { padding:14px; }
   .public-entry-reminder li { grid-template-columns:1fr; gap:1px; }
-  .public-project-facts { grid-template-columns: 1fr; }
+  .public-project-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
 /* Brandbook sidebar refinement · PMS 485 */
@@ -720,8 +721,9 @@ table tbody tr:hover { background: #fff7f5; }
 .cancelled-label { display:inline-flex; margin-left:5px; padding:2px 5px; border-radius:5px; color:#8c5c56; background:#eadfdb; font-size:7px; font-style:normal; }
 
 @media (max-width:760px) {
-  .portal-tabs { grid-template-columns:1fr; }
-  .portal-tab { min-height:44px; }
+  .portal-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); gap:3px; }
+  .portal-tab { min-height:40px; padding:0 4px; font-size:10px; white-space:nowrap; }
+  .portal-tab span { margin-right:2px; font-size:12px; }
   .public-attendee-actions { align-items:stretch; flex-direction:column; }
   .participant-info-card { grid-template-columns:1fr; }
 }
@@ -1132,12 +1134,31 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
   .portal-lookup-mode .calendar-action .button{width:100%;min-width:0;margin-top:8px}
 }
 @media(max-width:560px){
-  .public-shell.portal-lookup-mode{padding:14px}
-  .portal-lookup-mode .lookup-copy,.portal-lookup-mode .portal-card{padding:15px}
-  .portal-lookup-mode .lookup-copy>h1{font-size:27px}
-  .portal-lookup-mode .public-project-facts{grid-template-columns:1fr}
-  .portal-lookup-mode .portal-tabs{grid-template-columns:1fr;gap:4px}
-  .portal-lookup-mode .portal-tab{min-height:40px}
+  .public-shell.portal-lookup-mode{padding:8px 10px 16px}
+  .portal-lookup-mode .public-header{padding-bottom:6px}
+  .portal-lookup-mode .lilly-brand-public .lilly-logo-frame{width:78px;height:43px}
+  .portal-lookup-mode .public-header .text-link{margin-top:7px;font-size:8px}
+  .portal-lookup-mode .portal-layout{flex:0 0 auto;align-content:start;gap:8px;margin:0 auto;padding:8px 0 6px}
+  .portal-lookup-mode .lookup-copy{gap:1px;padding:10px 11px;border-radius:14px}
+  .portal-lookup-mode .lookup-copy>.eyebrow{font-size:6px}
+  .portal-lookup-mode .lookup-copy>h1{margin-top:0;font-size:23px}
+  .portal-lookup-mode .lookup-copy>h1::after{width:38px;height:3px;margin-top:7px}
+  .portal-lookup-mode .public-project-chip{gap:7px;margin-top:6px;padding:7px 8px;border-radius:10px}
+  .portal-lookup-mode .public-project-chip>span{width:28px;height:28px;border-radius:8px;font-size:13px}
+  .portal-lookup-mode .public-project-chip small{font-size:7px}
+  .portal-lookup-mode .public-project-chip strong{font-size:9px}
+  .portal-lookup-mode .public-project-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin:7px 0 0;padding-top:7px}
+  .portal-lookup-mode .public-project-facts>div{gap:6px;min-height:46px;padding:6px 7px;border-radius:9px}
+  .portal-lookup-mode .public-project-facts>div>span{width:23px;height:23px;border-radius:7px;font-size:10px}
+  .portal-lookup-mode .public-project-facts small{font-size:6.5px}
+  .portal-lookup-mode .public-project-facts strong{font-size:8px}
+  .portal-lookup-mode .portal-card{padding:10px;border-radius:14px}
+  .portal-lookup-mode .portal-tabs{grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;margin-bottom:11px;padding:3px;border-radius:10px}
+  .portal-lookup-mode .portal-tab{min-height:38px;padding:0 2px;border-radius:8px;font-size:9px;white-space:nowrap}
+  .portal-lookup-mode .portal-tab span{margin-right:1px;font-size:11px}
+  .portal-lookup-mode [data-portal-panel="lookup"] .lookup-card-head{padding-bottom:9px}
+  .portal-lookup-mode [data-portal-panel="lookup"] .lookup-card-head .icon-badge{width:32px;height:32px;font-size:15px}
+  .portal-lookup-mode [data-portal-panel="lookup"] .lookup-card h2{font-size:16px}
   .portal-lookup-mode .participant-info-card{grid-template-columns:1fr}
   .portal-lookup-mode .lookup-transfer-details{grid-template-columns:repeat(2,minmax(0,1fr))}
 }

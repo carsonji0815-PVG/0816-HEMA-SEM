@@ -47,3 +47,9 @@
 - A live attendee correctly shows `待安排` / `待公布` until an administrator configures and assigns the relevant hotel or meeting venue; no placeholder is persisted as real business data.
 
 final result: passed
+
+## 2026-09-05 Privacy upload and ticket status follow-up
+
+- Paper privacy-letter objects now use UUID-only ASCII storage keys with a validated extension; the original Chinese filename remains the visible/download filename.
+- Ticket status is a combobox: administrators can choose a configured preset or type and save an attendee-specific status directly.
+- Automated coverage includes a Chinese PDF filename, ASCII storage-key assertion, original-name preservation, configured suggestions, and manual ticket-status entry.

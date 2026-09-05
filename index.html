@@ -37,7 +37,7 @@
     <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-panel.js?v=20260905-station-match-03" defer></script>
     <script src="rooming-engine.js?v=20260905-room-type-flow-02" defer></script>
-    <script src="app.js?v=20260905-registration-room-approval-26" defer></script>
+    <script src="app.js?v=20260905-production-storage-label-27" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -208,7 +208,7 @@
         </nav>
         <div class="sidebar-footer">
           <a href="#portal" data-current-public-link target="_blank" rel="noopener"><span>↗</span> 打开当前项目报名界面</a>
-          <div class="demo-badge">演示数据 · 浏览器本地保存</div>
+          <div class="demo-badge is-hidden" id="demoDataBadge">本地演示模式 · 数据仅保存在当前浏览器</div>
         </div>
       </aside>
 
@@ -415,7 +415,7 @@
               <article class="panel system-staff-panel is-hidden" id="clientAccountPanel"><div class="panel-heading"><div><span class="kicker">CLIENT MEETING OWNER</span><h2>客户会议负责人账号</h2><p>按当前项目单独创建客户方登录账号，与内部会务团队账号完全分离。</p></div><button class="button button-secondary" id="openClientAccountDialog" type="button">＋ 创建客户账号</button></div><div id="clientAccountList" class="system-staff-list"></div></article>
               <article class="panel template-panel"><div class="panel-heading"><div><span class="kicker">REGISTRATION TEMPLATE</span><h2>当前项目报名模板（可选）</h2></div><button class="text-button" id="downloadProjectTemplate" type="button">下载当前模板</button></div><p class="template-help">无需导入报名模板即可开放报名；未配置模板时使用系统默认基础字段。也可上传自定义模板，或在复制项目时继承其他会议的模板。</p><label class="template-upload"><input id="projectTemplateFile" type="file" accept=".xlsx,.xls,.csv" /><span>⇧</span><strong>选择报名模板</strong><small>保存字段定义和原始模板文件；原始附件可单独删除，不影响已生成字段和历史报名数据</small></label><div id="templateStatus" class="template-status"></div><div class="template-delete-actions"><button class="text-button danger template-delete-action" id="removeProjectTemplateAttachment" type="button">删除模板附件</button><button class="text-button danger template-delete-action" id="resetProjectTemplate" type="button">删除整个模板</button></div><div id="templateColumns" class="template-columns"></div></article>
               <article class="panel"><div class="panel-heading"><div><span class="kicker">PERMISSION LEVELS</span><h2>系统权限层级</h2></div></div><div class="role-list"><div><span class="role-dot admin"></span><p><strong>超级管理员 · 季亮亮</strong><small>始终拥有全部项目、全部名单、设置、锁定、审批、导入导出及账号分配权限</small></p></div><div><span class="role-dot ops"></span><p><strong>会务负责人</strong><small>仅可进入获授权项目；按项目设置执行名单、审批、接送与报名管理</small></p></div><div><span class="role-dot public"></span><p><strong>填报人 / 参会人员</strong><small>通过参会服务入口使用，不属于管理端邮箱账号</small></p></div></div></article>
-              <div class="settings-actions"><button class="button button-primary" type="submit">保存会议设置</button><button class="button button-ghost" type="button" id="resetDemo">恢复演示数据</button></div>
+              <div class="settings-actions"><button class="button button-primary" type="submit">保存会议设置</button><button class="button button-ghost is-hidden" type="button" id="resetDemo">恢复演示数据</button></div>
             </form>
           </section>
 

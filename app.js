@@ -702,6 +702,8 @@
     return { eventId:state.activeProjectId, eventName:state.settings.eventName, userId:state.currentUserId, operator:currentUser()?.name || '', enabled:!!state.settings.luggageEnabled, used:!!state.settings.luggageUsed, configured:!!state.settings.luggageConfigured, offlineUntil:offlineLuggageSession?.expiresAt || null };
   }
   async function init() {
+    const productionMode=window.APP_CONFIG?.mode === "production";
+    $("#demoDataBadge")?.classList.toggle("is-hidden",productionMode);
     luggageIntegration = window.createJourneyLuggage({
       current:luggageContext, canManage, isProduction:()=>window.APP_CONFIG?.mode === 'production', backend:()=>backend,
       authenticated:()=>staffAccess.allowed === true && !!backendMeetingId, attendees:()=>state.attendees, toast,
@@ -2204,7 +2206,7 @@
     renderSettingsQuotaSummary();
     renderSystemStaffDirectory();
     renderProjectClientAccounts();
-    $("#resetDemo").classList.toggle("is-hidden", !!backend);
+    $("#resetDemo").classList.toggle("is-hidden", window.APP_CONFIG?.mode === "production" || !!backend);
   }
 
   function renderTransportStationRules(){

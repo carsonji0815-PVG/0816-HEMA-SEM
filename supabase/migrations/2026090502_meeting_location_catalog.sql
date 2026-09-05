@@ -28,10 +28,10 @@ set custom_fields=jsonb_set(
   coalesce(a.custom_fields,'{}'::jsonb),
   '{_location}',
   jsonb_build_object('cityId',(
-    select city->>'id'
+    select city_item.value->>'id'
     from public.meetings m,
-         jsonb_array_elements(coalesce(m.field_config->'locationCatalog'->'cities','[]'::jsonb)) city
-    where m.id=a.meeting_id and lower(regexp_replace(city->>'name','\s','','g'))=lower(regexp_replace(coalesce(a.venue,''),'\s','','g'))
+         jsonb_array_elements(coalesce(m.field_config->'locationCatalog'->'cities','[]'::jsonb)) as city_item(value)
+    where m.id=a.meeting_id and lower(regexp_replace(city_item.value->>'name','\s','','g'))=lower(regexp_replace(coalesce(a.venue,''),'\s','','g'))
     limit 1
   ),'venueId',''),
   true
@@ -40,8 +40,8 @@ where coalesce(a.custom_fields->'_location'->>'cityId','')=''
 and exists(
   select 1
   from public.meetings m,
-       jsonb_array_elements(coalesce(m.field_config->'locationCatalog'->'cities','[]'::jsonb)) city
-  where m.id=a.meeting_id and lower(regexp_replace(city->>'name','\s','','g'))=lower(regexp_replace(coalesce(a.venue,''),'\s','','g'))
+       jsonb_array_elements(coalesce(m.field_config->'locationCatalog'->'cities','[]'::jsonb)) as city_item(value)
+  where m.id=a.meeting_id and lower(regexp_replace(city_item.value->>'name','\s','','g'))=lower(regexp_replace(coalesce(a.venue,''),'\s','','g'))
 );
 
 create or replace function public.validate_attendee_location_references()

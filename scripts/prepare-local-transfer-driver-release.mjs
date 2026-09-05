@@ -18,12 +18,15 @@ fs.writeFileSync(path.join(stage,'migration.sql'),[
   fs.readFileSync(path.join(root,'supabase/migrations/2026090504_privacy_storage_staff_access.sql'),'utf8'),
   fs.readFileSync(path.join(root,'supabase/migrations/2026090505_xian_xianyang_t5_station.sql'),'utf8'),
   fs.readFileSync(path.join(root,'supabase/migrations/2026090506_guangzhou_baiyun_t3_station.sql'),'utf8'),
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090507_dictionary_sync_tracking.sql'),'utf8'),
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090508_terminal_name_canonical_cleanup.sql'),'utf8'),
 ].join('\n\n'));
+fs.copyFileSync(path.join(root,'scripts/sync-station-dictionaries.mjs'),path.join(stage,'sync-station-dictionaries.mjs'));
 fs.copyFileSync(path.join(root,'scripts/deploy-local-transfer-driver-release.mjs'),path.join(stage,'deploy.mjs'));
 const staticHashes={};
 const walk=(dir,base='')=>{for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const name=path.posix.join(base,entry.name);if(entry.isDirectory())walk(path.join(dir,entry.name),name);else staticHashes[name]=hash(fs.readFileSync(path.join(dir,entry.name)));}};
 walk(path.join(stage,'site'));
-const manifest={staticHashes,edgeHash:hash(fs.readFileSync(path.join(stage,'public-trip-query.ts'))),migrationHash:hash(fs.readFileSync(path.join(stage,'migration.sql'))),deployHash:hash(fs.readFileSync(path.join(stage,'deploy.mjs')))};
+const manifest={staticHashes,edgeHash:hash(fs.readFileSync(path.join(stage,'public-trip-query.ts'))),migrationHash:hash(fs.readFileSync(path.join(stage,'migration.sql'))),syncHash:hash(fs.readFileSync(path.join(stage,'sync-station-dictionaries.mjs'))),deployHash:hash(fs.readFileSync(path.join(stage,'deploy.mjs')))};
 manifest.version=`local-transfer-driver-20260905-${hash(JSON.stringify(manifest)).slice(0,12)}`;
 fs.writeFileSync(path.join(stage,'manifest.json'),JSON.stringify(manifest,null,2));
 const output=path.join(root,'.tmp',`${manifest.version}.tar.gz`);

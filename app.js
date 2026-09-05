@@ -202,6 +202,7 @@
   let adminRealtimeChannel = null;
   let adminRealtimeMeetingId = null;
   let adminRevisionFingerprint = null;
+  let adminSystemRevisionFingerprint = null;
   let adminRefreshQueued = false;
   let lastAdminRefreshAt = 0;
   let lastLookupSchedule = null;
@@ -735,7 +736,7 @@
     }
     populateUsers(); populateProjects(); bindNavigation(); bindForms(); bindControls(); route(); renderAll(); maybeAutoBackup();
     window.setInterval(renderGreeting,60000);
-    window.setInterval(()=>refreshAdminState("poll"),5000);
+    window.setInterval(()=>refreshAdminState("poll"),3000);
     window.setInterval(async()=>{if(backend&&staffAccess.allowed){try{await registerStaffSession();}catch(error){if(error?.transient||isTransientBackendError(error))return;await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent="登录会话已在其他设备失效，请重新登录";$("#loginDialog").showModal();}}},5*60*1000);
     window.addEventListener("hashchange", route);
     window.addEventListener("scroll", () => $(".topbar")?.classList.toggle("scrolled", scrollY > 4));
@@ -964,13 +965,22 @@
     configureAdminAutoSync();
   }
 
-  function adminEditorIsActive(){
-    if(document.querySelector("dialog[open]"))return true;
-    const active=document.activeElement;
-    if(!active||active===document.body||!active.matches?.('input,select,textarea,[contenteditable="true"]'))return false;
-    if(active.matches('[type="search"],[role="searchbox"]')||/search|filter/i.test(active.id||""))return false;
-    const form=active.closest("form");
-    return !!form&&!!form.querySelector('button[type="submit"],input[type="submit"]');
+  function captureAdminInteraction(){
+    const active=document.activeElement,scroll={x:window.scrollX,y:window.scrollY};
+    if(!active||active===document.body||!active.matches?.('input,select,textarea,[contenteditable="true"]'))return{scroll};
+    const form=active.closest("form"),selector=active.id?`#${CSS.escape(active.id)}`:form?.id&&active.name?`#${CSS.escape(form.id)} [name="${CSS.escape(active.name)}"]`:"";
+    return{scroll,selector,value:"value" in active?active.value:null,checked:"checked" in active?active.checked:null,start:active.selectionStart,end:active.selectionEnd};
+  }
+  function restoreAdminInteraction(snapshot){
+    if(!snapshot)return;
+    const active=snapshot.selector?document.querySelector(snapshot.selector):null;
+    if(active){
+      if(snapshot.value!==null&&"value" in active)active.value=snapshot.value;
+      if(snapshot.checked!==null&&"checked" in active)active.checked=snapshot.checked;
+      active.focus({preventScroll:true});
+      if(typeof active.setSelectionRange==="function"&&snapshot.start!==null)try{active.setSelectionRange(snapshot.start,snapshot.end);}catch{}
+    }
+    window.scrollTo(snapshot.scroll.x,snapshot.scroll.y);
   }
   function adminRouteIsVisible(){
     const routeName=(location.hash||"#dashboard").slice(1).split("?")[0];
@@ -978,14 +988,25 @@
   }
   async function refreshAdminState(reason="poll",force=false){
     if(!backend||!backendMeetingId||!staffAccess.allowed||!adminRouteIsVisible()||document.visibilityState==="hidden"||navigator.onLine===false)return;
-    if(adminEditorIsActive()){adminRefreshQueued=true;return;}
     if(adminRefreshPromise)return adminRefreshPromise;
-    if(!force&&Date.now()-lastAdminRefreshAt<2500)return;
+    if(!force&&Date.now()-lastAdminRefreshAt<1400)return;
     const meetingId=backendMeetingId;adminRefreshQueued=false;
     adminRefreshPromise=(async()=>{try{
-      const revision=await backend.rpc("get_meeting_live_revision",{p_meeting_id:meetingId});
-      if(!revision.error){const fingerprint=String(revision.data||"");if(!force&&adminRevisionFingerprint===fingerprint){lastAdminRefreshAt=Date.now();return;}adminRevisionFingerprint=fingerprint;}
-      await loadBackendState(meetingId,{refreshAuxiliary:false});if(meetingId!==backendMeetingId)return;populateUsers();populateProjects();renderAll();lastAdminRefreshAt=Date.now();
+      const interaction=captureAdminInteraction();
+      const [revision,systemConfig]=await Promise.all([
+        backend.rpc("get_meeting_live_revision",{p_meeting_id:meetingId}),
+        isSystemAdmin()?backend.from("system_configuration").select("updated_at,settings").eq("singleton",true).maybeSingle():Promise.resolve({data:null,error:null}),
+      ]);
+      const meetingFingerprint=revision.error?"":String(revision.data||""),systemFingerprint=systemConfig.error?"":String(systemConfig.data?.updated_at||"");
+      const meetingChanged=force||revision.error||adminRevisionFingerprint!==meetingFingerprint;
+      const systemChanged=!!systemFingerprint&&adminSystemRevisionFingerprint!==systemFingerprint;
+      adminRevisionFingerprint=meetingFingerprint||adminRevisionFingerprint;
+      adminSystemRevisionFingerprint=systemFingerprint||adminSystemRevisionFingerprint;
+      if(!meetingChanged&&!systemChanged){lastAdminRefreshAt=Date.now();return;}
+      if(meetingChanged)await loadBackendState(meetingId,{refreshAuxiliary:false});
+      if(meetingId!==backendMeetingId)return;
+      if(systemChanged&&systemConfig.data?.settings)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify({...loadSystemPreferences(),...systemConfig.data.settings}));
+      populateUsers();populateProjects();renderAll();restoreAdminInteraction(interaction);lastAdminRefreshAt=Date.now();
     }catch(error){if(reason!=="poll"&&!isTransientBackendError(error))console.warn("自动同步失败",error);}finally{adminRefreshPromise=null;}})();
     return adminRefreshPromise;
   }
@@ -995,7 +1016,7 @@
     adminRefreshTimer=setTimeout(()=>refreshAdminState("realtime"),350);
   }
   function stopAdminAutoSync(){
-    clearTimeout(adminRefreshTimer);adminRefreshTimer=null;adminRefreshQueued=false;adminRealtimeMeetingId=null;adminRevisionFingerprint=null;
+    clearTimeout(adminRefreshTimer);adminRefreshTimer=null;adminRefreshQueued=false;adminRealtimeMeetingId=null;adminRevisionFingerprint=null;adminSystemRevisionFingerprint=null;
     if(adminRealtimeChannel&&backend?.removeChannel)backend.removeChannel(adminRealtimeChannel);adminRealtimeChannel=null;
   }
   function configureAdminAutoSync(){

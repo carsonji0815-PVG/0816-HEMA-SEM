@@ -12,12 +12,14 @@ for(const table of ["meetings","attendees","transports","column_locks","notifica
 assert.match(app,/function configureAdminAutoSync\(\)/);
 assert.match(app,/function refreshAdminState\(/);
 assert.match(app,/refreshAuxiliary:false/);
-assert.match(app,/dialog\[open\]/);
+assert.doesNotMatch(app,/if\(adminEditorIsActive\(\)\)/);
+assert.match(app,/captureAdminInteraction\(\)/);
+assert.match(app,/restoreAdminInteraction\(interaction\)/);
 assert.match(app,/document\.visibilityState==="hidden"/);
 assert.match(app,/navigator\.onLine===false/);
 assert.match(app,/get_meeting_live_revision/);
-assert.match(app,/setInterval\(\(\)=>refreshAdminState\("poll"\),5000\)/);
-assert.match(app,/search\|filter/);
+assert.match(app,/system_configuration/);
+assert.match(app,/setInterval\(\(\)=>refreshAdminState\("poll"\),3000\)/);
 assert.match(app,/table:"attendees",filter:`meeting_id=eq\.\$\{meetingId\}`/);
 assert.match(app,/table:"meetings",filter:`id=eq\.\$\{meetingId\}`/);
 assert.match(revisionMigration,/create or replace function public\.get_meeting_live_revision/);

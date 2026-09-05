@@ -65,8 +65,19 @@ const registrationView = (row: Record<string, unknown>) => ({
   region: row.region || "", contactName: row.contact_name || "", contactMobile: row.contact_mobile || "", mslContact: row.msl_contact || "", remarks: row.remarks === "公开报名认证，待填写完整信息" ? "" : row.remarks || "",
   customFields: row.custom_fields || {},
 });
+type LocationItem={id:string;cityId?:string;hotelId?:string;name:string;address?:string;isDefault?:boolean};
+const locationCatalog=(meeting:Record<string,unknown>)=>{
+  const config=(meeting.field_config||{}) as Record<string,unknown>,raw=(config.locationCatalog||{}) as Record<string,unknown>;
+  const items=(value:unknown)=>Array.isArray(value)?value.filter(item=>item&&typeof item==="object").map(item=>item as Record<string,unknown>):[];
+  return{
+    cities:items(raw.cities).map(item=>({id:clean(item.id,100),name:clean(item.name,100)})).filter(item=>item.id&&item.name) as LocationItem[],
+    hotels:items(raw.hotels).map(item=>({id:clean(item.id,100),cityId:clean(item.cityId,100),name:clean(item.name,150),address:clean(item.address,250)})).filter(item=>item.id&&item.cityId&&item.name) as LocationItem[],
+    meetingVenues:items(raw.meetingVenues||raw.venues).map(item=>({id:clean(item.id,100),cityId:clean(item.cityId,100),hotelId:clean(item.hotelId,100),name:clean(item.name,150),address:clean(item.address,250),isDefault:!!item.isDefault})).filter(item=>item.id&&item.cityId&&item.name) as LocationItem[],
+  };
+};
+const locationReference=(meeting:Record<string,unknown>,venue:unknown,current:Record<string,unknown>={})=>{const catalog=locationCatalog(meeting),city=catalog.cities.find(item=>normalized(item.name,100)===normalized(venue,100));if(!city)return current;const candidates=catalog.meetingVenues.filter(item=>item.cityId===city.id),currentVenue=candidates.find(item=>item.id===clean(current.venueId,100))||candidates.find(item=>item.isDefault)||(candidates.length===1?candidates[0]:undefined);return{...current,cityId:city.id,venueId:currentVenue?.id||""};};
 const projectView = (meeting: Record<string, unknown>, systemSettings:Record<string,unknown>={}) => ({
-  slug: meeting.slug || "", name: meeting.name || "参会服务", clientName: meeting.client_name || "", venues: meeting.venues || [], servicePhone: meeting.service_phone || "", brandColor: meeting.brand_color || "#5267d9", fieldConfig: meeting.field_config || {}, flightLeadMinutes: meeting.flight_lead_minutes || 120, trainLeadMinutes: meeting.train_lead_minutes || 90,
+  slug: meeting.slug || "", name: meeting.name || "参会服务", clientName: meeting.client_name || "", venues: meeting.venues || [], locationCatalog:locationCatalog(meeting), servicePhone: meeting.service_phone || "", brandColor: meeting.brand_color || "#5267d9", fieldConfig: meeting.field_config || {}, flightLeadMinutes: meeting.flight_lead_minutes || 120, trainLeadMinutes: meeting.train_lead_minutes || 90,
   startDate: meeting.start_date || "", endDate: meeting.end_date || "", deadline: meeting.deadline || "", masterLocked: !!meeting.master_locked, archiveReady: !!meeting.archive_ready,
   templateName: meeting.template_name || "", registrationTemplate: meeting.registration_template || {}, templateImported:!!meeting.template_imported_at,
   registrationOpen:!!meeting.registration_open, newRegistrationAllowed:!!meeting.registration_open,
@@ -211,7 +222,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const rawJourneySegments=Array.isArray(details.journeySegments)?details.journeySegments:[];
     if(rawJourneySegments.length>18)return reply({error:"单个参会人员最多可增加18段行程"},400);
     const journeySegments=rawJourneySegments.map((raw,index)=>{const item=(raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{}) as Record<string,unknown>,type=transportType(item.transportType);return{id:/^[a-zA-Z0-9-]{8,80}$/.test(clean(item.id,80))?clean(item.id,80):crypto.randomUUID(),direction:item.direction==="return"?"return":"outbound",order:index+2,departDate:clean(item.departDate,10),departCity:clean(item.departCity,50),transportType:type,departStation:type==="LOCAL_ATTEND"?"":clean(item.departStation,120),arriveDate:clean(item.arriveDate,10),arriveCity:clean(item.arriveCity,50),arriveStation:type==="LOCAL_ATTEND"?"":clean(item.arriveStation,120),number:clean(item.number,30),departure:clean(item.departure,5),arrival:clean(item.arrival,5)};});
-    const customFields = {...internalCustom,...Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)])),_journeySegments:journeySegments};
+    const customFields = {...internalCustom,...Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)])),_journeySegments:journeySegments,_location:locationReference(meeting,details.venue,(internalCustom._location||{}) as Record<string,unknown>)};
     const departType=transportType(details.departTransportType),arriveType=departType,returnDepartType=transportType(details.returnDepartTransportType),returnArriveType=returnDepartType;
     let departStation=departType==="LOCAL_ATTEND"?null:clean(details.departStation,120)||null,arriveStation=arriveType==="LOCAL_ATTEND"?null:clean(details.arriveStation,120)||null;
     let returnDepartStation=returnDepartType==="LOCAL_ATTEND"?null:clean(details.returnDepartStation,120)||null,returnArriveStation=returnArriveType==="LOCAL_ATTEND"?null:clean(details.returnArriveStation,120)||null;
@@ -349,7 +360,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     if (attendee.row_locked) return reply({ error:"该报名已锁定，不能修改" }, 423);
     const requestedCustom = payload.customFields && typeof payload.customFields === "object" && !Array.isArray(payload.customFields) ? payload.customFields as Record<string,unknown> : {};
     const allowedCustom = new Set(((meeting.registration_template as {columns?:Array<{key?:string,custom?:boolean}>})?.columns || []).filter(column=>column.custom).map(column=>clean(column.key,80)));
-    const customFields = Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)]));
+    const priorCustom=(attendee.custom_fields||{}) as Record<string,unknown>;const customFields = {...priorCustom,...Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)])),_location:locationReference(meeting,payload.venue,(priorCustom._location||{}) as Record<string,unknown>)};
     const values = {
       attendee_type:clean(payload.attendeeType,30), city:clean(payload.city,50), hospital:clean(payload.hospital,100), department:clean(payload.department,100), title:clean(payload.title,50), venue:clean(payload.venue,50), sex:clean(payload.sex,10), id_number:clean(payload.idNumber,100), hcp_id:clean(payload.hcpId,100), accommodation:yes(payload.accommodation), is_flight:yes(payload.flight),
       out_date:clean(payload.outDate,10) || null, out_from:clean(payload.outFrom,50), out_to:clean(payload.outTo,50), out_no:clean(payload.outNo,30), out_departure:clean(payload.outDeparture,5) || null, out_arrival:clean(payload.outArrival,5) || null,
@@ -400,10 +411,14 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
 
   const attendeeCustomFields=(attendee.custom_fields as Record<string,unknown>)||{};
   const finalRooming=(attendeeCustomFields._rooming as Record<string,unknown>)||{};
+  const finalLocation=(attendeeCustomFields._location as Record<string,unknown>)||{},catalog=locationCatalog(meeting);
+  const city=catalog.cities.find(item=>item.id===clean(finalLocation.cityId,100))||catalog.cities.find(item=>normalized(item.name,100)===normalized(attendee.venue,100));
+  const assignedHotel=catalog.hotels.find(item=>item.id===clean(finalRooming.hotelId,100)&&item.cityId===city?.id);
+  const cityVenues=catalog.meetingVenues.filter(item=>item.cityId===city?.id),assignedVenue=cityVenues.find(item=>item.id===clean(finalLocation.venueId,100))||cityVenues.find(item=>item.isDefault)||(cityVenues.length===1?cityVenues[0]:undefined);
   const roomTypeLabels:Record<string,string>={single:"单间",shared:"标间拼住",twin_single:"标间单住",none:"无需住宿"};
   const assignedRoomType=String(finalRooming.assignedType||"");
   const noStay=!attendee.accommodation||assignedRoomType==="none";
-  const finalHotel=noStay?"无需住宿":String(attendeeCustomFields.hotel||attendeeCustomFields.酒店||"待安排");
+  const finalHotel=noStay?"无需住宿":assignedHotel?.name||"待安排";
   const finalRoomType=noStay?"无需住宿":roomTypeLabels[assignedRoomType]||"待安排";
   const finalCheckIn=noStay?"无需住宿":String(finalRooming.checkInDate||"待安排");
   const finalCheckOut=noStay?"无需住宿":String(finalRooming.checkOutDate||"待安排");
@@ -411,7 +426,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     found: true,
     meeting: meeting.name,
     project: viewProject(meeting),
-    attendee: { name: `${attendee.name.slice(0, 1)}${"*".repeat(Math.max(attendee.name.length - 1, 1))}`, accommodation:noStay?"无需住宿":"需要住宿", hotel:finalHotel, roomType:finalRoomType, checkInDate:finalCheckIn, checkOutDate:finalCheckOut, outboundTransferOrigin:attendee.outbound_transfer_origin||"", outboundTransferTime:String(attendee.outbound_transfer_time||"").slice(0,16), outboundTransferNotes:attendee.outbound_transfer_notes||"", outboundTransferDriverName:attendee.outbound_transfer_driver_name||"", outboundTransferDriverPhone:attendee.outbound_transfer_driver_phone||"", outboundTransferVehicle:attendee.outbound_transfer_vehicle||"", returnTransferDestination:attendee.return_transfer_destination||"", returnTransferNotes:attendee.return_transfer_notes||"", returnTransferDriverName:attendee.return_transfer_driver_name||"", returnTransferDriverPhone:attendee.return_transfer_driver_phone||"", returnTransferVehicle:attendee.return_transfer_vehicle||"" },
+    attendee: { name: `${attendee.name.slice(0, 1)}${"*".repeat(Math.max(attendee.name.length - 1, 1))}`, accommodation:noStay?"无需住宿":"需要住宿", hotel:finalHotel, meetingVenue:assignedVenue?.name||"待公布", roomType:finalRoomType, checkInDate:finalCheckIn, checkOutDate:finalCheckOut, outboundTransferOrigin:attendee.outbound_transfer_origin||"", outboundTransferTime:String(attendee.outbound_transfer_time||"").slice(0,16), outboundTransferNotes:attendee.outbound_transfer_notes||"", outboundTransferDriverName:attendee.outbound_transfer_driver_name||"", outboundTransferDriverPhone:attendee.outbound_transfer_driver_phone||"", outboundTransferVehicle:attendee.outbound_transfer_vehicle||"", returnTransferDestination:attendee.return_transfer_destination||"", returnTransferNotes:attendee.return_transfer_notes||"", returnTransferDriverName:attendee.return_transfer_driver_name||"", returnTransferDriverPhone:attendee.return_transfer_driver_phone||"", returnTransferVehicle:attendee.return_transfer_vehicle||"" },
     outbound: { date: attendee.depart_date || attendee.out_date, arrivalDate:attendee.arrive_date || attendee.out_date, from: attendee.depart_city || attendee.out_from, fromStation:attendee.depart_station || attendee.out_from, fromTransportType:attendee.depart_transport_type, to: attendee.arrive_city || attendee.out_to, toStation:attendee.arrive_station || attendee.out_to, toTransportType:attendee.arrive_transport_type, number: attendee.out_no, departure: attendee.out_departure, arrival: attendee.out_arrival },
     returnTrip: { date: attendee.return_depart_date || attendee.return_date, from: attendee.return_depart_city || attendee.return_from, fromStation:attendee.return_depart_station || attendee.return_from, fromTransportType:attendee.return_depart_transport_type, to: attendee.return_arrive_city || attendee.return_to, toStation:attendee.return_arrive_station || attendee.return_to, toTransportType:attendee.return_arrive_transport_type, number: attendee.return_no, departure: attendee.return_departure, arrival: attendee.return_arrival, arrivalDate:attendee.return_arrive_date || attendee.return_date },
     transports: publicTransports,

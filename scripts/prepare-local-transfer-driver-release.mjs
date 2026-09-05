@@ -11,7 +11,11 @@ execFileSync(process.execPath,['scripts/build-site.mjs'],{cwd:root,stdio:'inheri
 const stage=fs.mkdtempSync(path.join(os.tmpdir(),'local-transfer-driver-'));
 fs.cpSync(path.join(root,'.site-build'),path.join(stage,'site'),{recursive:true});
 fs.copyFileSync(path.join(root,'supabase/functions/public-trip-query/index.ts'),path.join(stage,'public-trip-query.ts'));
-fs.copyFileSync(path.join(root,'supabase/migrations/2026090501_local_transfer_driver_fields.sql'),path.join(stage,'migration.sql'));
+fs.writeFileSync(path.join(stage,'migration.sql'),[
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090501_local_transfer_driver_fields.sql'),'utf8'),
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090502_meeting_location_catalog.sql'),'utf8'),
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090503_ticket_cta_workflow.sql'),'utf8'),
+].join('\n\n'));
 fs.copyFileSync(path.join(root,'scripts/deploy-local-transfer-driver-release.mjs'),path.join(stage,'deploy.mjs'));
 const staticHashes={};
 const walk=(dir,base='')=>{for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const name=path.posix.join(base,entry.name);if(entry.isDirectory())walk(path.join(dir,entry.name),name);else staticHashes[name]=hash(fs.readFileSync(path.join(dir,entry.name)));}};

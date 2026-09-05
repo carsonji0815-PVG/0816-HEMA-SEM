@@ -10,7 +10,7 @@ page.on("pageerror",error=>errors.push(error.message));
 await page.route("**/functions/v1/public-trip-query",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({
   found:true,
   project:{name:"IBU Efsitora China SEM",startDate:"2026-11-27",endDate:"2026-11-28",transferCollectionEnabled:true},
-  attendee:{name:"季凡希",accommodation:"需要住宿",hotel:"长沙国际会议中心酒店",roomType:"单间",checkInDate:"2026-11-27",checkOutDate:"2026-11-29",outboundTransferOrigin:"上海环宇城",outboundTransferTime:"2026-11-27T10:00:00+08:00",outboundTransferDriverName:"bob",outboundTransferDriverPhone:"1349349349",outboundTransferVehicle:"沪3483434",returnTransferDestination:"上海体育馆",returnTransferDriverName:"louis",returnTransferDriverPhone:"1323949349399",returnTransferVehicle:"沪34349349"},
+  attendee:{name:"季凡希",accommodation:"需要住宿",hotel:"长沙国际会议中心酒店",meetingVenue:"长沙国际会议中心三楼宴会厅",roomType:"单间",checkInDate:"2026-11-27",checkOutDate:"2026-11-29",outboundTransferOrigin:"上海环宇城",outboundTransferTime:"2026-11-27T10:00:00+08:00",outboundTransferDriverName:"bob",outboundTransferDriverPhone:"1349349349",outboundTransferVehicle:"沪3483434",returnTransferDestination:"上海体育馆",returnTransferDriverName:"louis",returnTransferDriverPhone:"1323949349399",returnTransferVehicle:"沪34349349"},
   outbound:{number:"CZ5828",from:"上海",fromStation:"上海浦东机场T2航站楼",to:"长沙",toStation:"长沙黄花机场T2航站楼",date:"2026-11-27",arrivalDate:"2026-11-27",departure:"12:10",arrival:"14:45"},
   returnTrip:{number:"MU5364",from:"长沙",fromStation:"长沙黄花机场T2航站楼",to:"上海",toStation:"上海虹桥机场T2航站楼",date:"2026-11-28",arrivalDate:"2026-11-28",departure:"19:20",arrival:"21:20"},
   transports:[
@@ -36,7 +36,7 @@ if(await page.locator(".lookup-placard-preview img").getAttribute("alt")!=="接�
 const journeyText=await page.locator(".lookup-transport-group.meeting .lookup-transfer-card").first().innerText();
 for(const expected of ["航班号 / 车次号","CZ5828","出发航站楼 / 高铁站","上海浦东机场T2航站楼","出发时间","2026-11-27 12:10","抵达航站楼 / 高铁站","长沙黄花机场T2航站楼","抵达时间","2026-11-27 14:45"]){if(!journeyText.includes(expected))throw new Error(`Journey detail missing: ${expected}`);}
 const stayText=await page.locator(".lookup-stay-summary").innerText();
-for(const expected of ["住宿酒店","长沙国际会议中心酒店","房型","单间","入住日期","2026-11-27","退房日期","2026-11-29"]){if(!stayText.includes(expected))throw new Error(`Final rooming detail missing: ${expected}`);}
+for(const expected of ["住宿酒店","长沙国际会议中心酒店","会议会场","长沙国际会议中心三楼宴会厅","房型","单间","入住日期","2026-11-27","退房日期","2026-11-29"]){if(!stayText.includes(expected))throw new Error(`Final rooming detail missing: ${expected}`);}
 if(await page.locator("#lookupResult .participant-info-card").count())throw new Error("Duplicate meeting overview still appears inside query result");
 const journeyRows=page.locator(".lookup-transport-group.meeting .lookup-transfer-card").first().locator(".lookup-journey-line");
 if(await journeyRows.count()!==3)throw new Error("Journey information must use three semantic rows");

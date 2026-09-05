@@ -124,6 +124,7 @@ create table if not exists public.attendees (
   return_transfer_vehicle text,
   custom_fields jsonb not null default '{}'::jsonb,
   privacy_letter_status text not null default 'pending',
+  cta_status text not null default 'pending' check (cta_status in ('pending','completed')),
   ticket_status text not null default 'pending',
   outbound_approval_status text not null default 'normal',
   return_approval_status text not null default 'normal',
@@ -137,6 +138,7 @@ create table if not exists public.attendees (
 
 alter table public.attendees add column if not exists contact_name text;
 alter table public.attendees add column if not exists contact_mobile text;
+alter table public.attendees add column if not exists cta_status text not null default 'pending';
 alter table public.attendees add column if not exists outbound_transfer_driver_name text;
 alter table public.attendees add column if not exists outbound_transfer_driver_phone text;
 alter table public.attendees add column if not exists outbound_transfer_vehicle text;

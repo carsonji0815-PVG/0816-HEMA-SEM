@@ -9,16 +9,17 @@ await page.addInitScript(()=>{localStorage.clear();Object.defineProperty(window,
 
 await page.goto(`${base}/#settings`,{waitUntil:"domcontentloaded"});
 await page.locator("#loginDialog").evaluate(dialog=>{if(dialog.open)dialog.close();});
-await page.locator('#settingsForm [name="venues"]').fill("长沙");
+await page.locator('#meetingCityRows [name="locationCityName"]').first().fill("长沙");
+await page.locator('#meetingCityRows .location-city-row').nth(1).locator('[data-remove-location="city"]').click();
 await page.locator("#settingsForm").evaluate(form=>form.requestSubmit());
 await page.waitForTimeout(250);
 await page.evaluate(()=>{location.hash="registration";});
 await page.waitForTimeout(150);
 
 const adminOptions=await page.locator('#registrationForm [name="venue"] option').allTextContents();
-if(JSON.stringify(adminOptions)!==JSON.stringify(["请选择当前项目会场","长沙"]))throw new Error(`Admin venue options are not meeting-scoped: ${JSON.stringify(adminOptions)}`);
+if(JSON.stringify(adminOptions)!==JSON.stringify(["请选择当前项目举办城市","长沙"]))throw new Error(`Admin city options are not meeting-scoped: ${JSON.stringify(adminOptions)}`);
 const filterOptions=await page.locator('#venueFilter option').allTextContents();
-if(JSON.stringify(filterOptions)!==JSON.stringify(["全部会场","长沙"]))throw new Error(`Roster venue filter is not meeting-scoped: ${JSON.stringify(filterOptions)}`);
+if(JSON.stringify(filterOptions)!==JSON.stringify(["全部举办城市","长沙"]))throw new Error(`Roster city filter is not meeting-scoped: ${JSON.stringify(filterOptions)}`);
 
 for(const selector of ["#adminReturnTransferCollectionSection","#publicReturnTransferCollectionSection"]){
   const control=page.locator(`${selector} input[readonly]`);

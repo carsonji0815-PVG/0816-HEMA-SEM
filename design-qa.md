@@ -10,6 +10,10 @@
 - Desktop result implementation: `.tmp/browser/portal-query-balanced.png`
 - Full-view comparison: `.tmp/browser/mobile-option1-comparison.png`
 - Focused journey comparison: `.tmp/browser/mobile-journey-comparison.png`
+- Current journey comparison: `.tmp/audit/query-comparison.png`
+- Admin transport issue source: `.tmp/audit/01-transport-before.png` (`2188 × 576`)
+- Admin transport implementation: `.tmp/audit/02-transport-table-after.png` (captured at `2048 × 900` CSS px, device scale factor `1`)
+- Admin same-input comparison: `.tmp/audit/transport-comparison.png`
 - State: participant portal, `参会信息查询` active; both empty/query-entry and successful query-result states.
 
 ## Viewport and normalization
@@ -30,9 +34,9 @@
 
 - Each outbound and return journey follows the selected direction 3 hierarchy exactly:
   1. `航班号 / 车次号` occupies one full-width row.
-  2. `出发时间` and `出发航站楼 / 高铁站` share the next row.
-  3. `抵达时间` and `抵达航站楼 / 高铁站` share the final row.
-- Long terminal and high-speed-rail station values wrap inside the station column without affecting the time column.
+  2. `出发时间` and `抵达时间` share the next row.
+  3. `出发航站楼 / 高铁站` and `抵达航站楼 / 高铁站` share the final row.
+- Flight, time, and station rows use dedicated 96px raster icon assets, rendered at 24–28px.
 - Meeting-city and local-origin transport sections reuse the same journey component on mobile and desktop.
 
 ## Required fidelity surfaces
@@ -42,6 +46,18 @@
 - Colors and visual tokens: Lilly red remains the primary brand/action color; warm ivory surfaces and restrained teal query accents match the established product palette.
 - Image quality and asset fidelity: supplied Lilly logo and existing service-desk raster icon are retained; no placeholder image replaces a source asset. Placard previews remain real thumbnails.
 - Copy and content: meeting facts, service contacts, portal purposes, journey numbers, departure/arrival times, and full station names remain intact.
+
+## Current query and admin fixes
+
+1. **P1 — Query result repeated meeting data and did not use final rooming values.**
+   - Fix: removed the repeated meeting name/date/venue block. Added hotel, final room type, check-in date, and check-out date from `custom_fields._rooming`, the persisted source used by rooming management.
+   - Evidence: `.tmp/browser/portal-query-balanced.png` and `.tmp/browser/mobile-portal-query-result.png`.
+2. **P1 — Admin transport table split labels and identifiers.**
+   - Fix: introduced stable semantic column widths, `word-break: keep-all`, no-wrap rules for direction/type/contact/plate/status/actions, and ellipsis for long journey and point summaries.
+   - Evidence: `.tmp/audit/transport-comparison.png`; page overflow is `0`, and critical columns compute to `white-space: nowrap`.
+3. **P2 — Admin-wide coordination check.**
+   - Audited dashboard, attendee roster, rooming, registration, transport, and luggage at `1440 × 1000`. No page-level horizontal overflow or visible text overlap was detected in the captured states.
+   - Evidence: `.tmp/audit/03-attendees.png` through `.tmp/audit/07-dashboard.png`.
 
 ## Findings
 
@@ -62,6 +78,7 @@
 2. Replaced it with a three-row journey component shared across mobile and desktop.
 3. Increased label/value sizes after focused comparison and re-captured both viewports.
 4. Post-fix smoke tests report zero overflow and no page errors.
+5. The final rooming source, duplicate overview removal, icon assets, and desktop no-wrap rules passed targeted source and browser smoke checks.
 
 ## Implementation checklist
 

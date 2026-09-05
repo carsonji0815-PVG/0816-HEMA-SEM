@@ -191,6 +191,7 @@
   let incompleteRosterOnly = false;
   let cancelledRosterView = false;
   const selectedAttendeeIds = new Set();
+  const pendingPrivacyPaperUploads = new Set();
   const selectedVerificationSegments = new Set();
   const disabledVerificationFlightSegments = new Set();
   let backend = null;
@@ -1483,7 +1484,7 @@
     const cancelledCount=visibleAttendees().filter(a=>a.businessStatus==="cancelled").length;$("#cancelledRosterCount").textContent=cancelledCount;$("#toggleCancelledRoster").classList.toggle("active",cancelledRosterView);$("#toggleCancelledRoster").innerHTML=cancelledRosterView?`← 返回参会名单 <span id="cancelledRosterCount">${cancelledCount}</span>`:`查看已删除报名 <span id="cancelledRosterCount">${cancelledCount}</span>`;
     $("#deleteSelectedAttendees").classList.toggle("is-hidden",cancelledRosterView);
     const progressSelect=(a,field,options)=>`<select class="progress-select ${["electronic","paper","ticketed"].includes(a[field])?"done":""}" data-progress-field="${field}" data-attendee-id="${a.id}" ${isLocked(a)||!canEditAttendeeData()||a.businessStatus==="cancelled"?"disabled":""}>${options.map(([value,label])=>`<option value="${value}" ${a[field]===value?"selected":""}>${label}</option>`).join("")}</select>`;
-    const privacyControl=a=>`<div class="privacy-progress-control">${progressSelect(a,"privacyLetterStatus",[["pending","未完成"],["electronic","已完成（隐私沟通函电子版）"],["paper","已完成（隐私沟通函纸质版）"]])}${a.privacyLetterStatus==="paper"?`<div class="privacy-file-actions">${a.privacyLetterFilePath?`<button type="button" data-download-privacy-letter="${a.id}" title="${escapeHtml(a.privacyLetterFileName)}">查看附件</button>`:`<span>缺少纸质版附件</span>`}<button type="button" data-upload-privacy-letter="${a.id}">${a.privacyLetterFilePath?"替换":"上传"}</button></div>`:""}</div>`;
+    const privacyControl=a=>{const awaiting=pendingPrivacyPaperUploads.has(a.id)&&!a.privacyLetterFilePath,display={...a,privacyLetterStatus:awaiting?"paper":a.privacyLetterStatus};return`<div class="privacy-progress-control ${awaiting?"awaiting-upload":""}">${progressSelect(display,"privacyLetterStatus",[["pending","未完成"],["electronic","已完成（隐私沟通函电子版）"],["paper","已完成（隐私沟通函纸质版）"]])}${awaiting?`<div class="privacy-upload-panel" data-privacy-upload-required="${a.id}"><strong>上传纸质版文件 <em>必传</em></strong><label class="privacy-upload-picker"><input type="file" data-privacy-file-input="${a.id}" accept="application/pdf,image/jpeg,image/png,image/webp"><span>选择文件并上传</span></label><small>支持 PDF、JPG、PNG 或 WebP，最大 15MB；上传成功后才会标记已完成</small><button type="button" data-cancel-privacy-upload="${a.id}">取消</button></div>`:a.privacyLetterStatus==="paper"?`<div class="privacy-file-actions">${a.privacyLetterFilePath?`<button type="button" data-download-privacy-letter="${a.id}" title="${escapeHtml(a.privacyLetterFileName)}">查看附件</button>`:`<span>缺少纸质版附件</span>`}<button type="button" data-upload-privacy-letter="${a.id}">${a.privacyLetterFilePath?"替换":"上传"}</button></div>`:""}</div>`;};
     const segmentBadge=(a,segment,label)=>{ const status=segmentApproval(a,segment); const text=status==="approved"?"已审批":status==="pending"?"待审批":status==="rejected"?"已退回":"无需审批"; return `<span class="segment-status ${status}">${label}·${text}</span>`; };
     const templateHeader=column=>escapeHtml(column.header||column.key||"未命名字段").replaceAll("\n","<br>");
     const templateValue=(attendee,column,index)=>{if(column.key==="sequence")return String(index+1);if(column.key==="contactName")return attendee.contactName||"";if(column.key==="contactMobile")return attendee.contactMobile||"";if(column.key==="venue")return normalizeVenueLabel(attendee.venue);if(/TransportType$/.test(column.key))return TravelFields.TYPES[attendee[column.key]]||attendee[column.key]||"";if(/Station$/.test(column.key))return TravelFields.displayStation(attendee[column.key],attendee[column.key.replace("Station","TransportType")],stationDictionary());return column.custom?attendee.customFields?.[column.key]??"":attendee[column.key]??"";};
@@ -1500,6 +1501,8 @@
     $("#selectVisibleAttendees").onchange=event=>{selectable.forEach(a=>event.target.checked?selectedAttendeeIds.add(a.id):selectedAttendeeIds.delete(a.id));renderAttendeeTable();};
     $$('[data-select-attendee]').forEach(input=>input.onchange=()=>{input.checked?selectedAttendeeIds.add(input.dataset.selectAttendee):selectedAttendeeIds.delete(input.dataset.selectAttendee);updateSelectedAttendeeControls();});
     $$('[data-progress-field]').forEach(select=>select.onchange=()=>updateProgressField(select));
+    $$('[data-privacy-file-input]').forEach(input=>input.onchange=()=>handlePrivacyLetterFileInput(input));
+    $$('[data-cancel-privacy-upload]').forEach(button=>button.onclick=()=>{pendingPrivacyPaperUploads.delete(button.dataset.cancelPrivacyUpload);renderAttendeeTable();toast("已取消上传，隐私沟通函仍保持原状态");});
     $$('[data-upload-privacy-letter]').forEach(button=>button.onclick=()=>requestPrivacyLetterUpload(state.attendees.find(item=>item.id===button.dataset.uploadPrivacyLetter)));
     $$('[data-download-privacy-letter]').forEach(button=>button.onclick=()=>downloadPrivacyLetter(state.attendees.find(item=>item.id===button.dataset.downloadPrivacyLetter)));
     $("#attendeeEmpty").textContent=cancelledRosterView?"暂无已删除或已取消报名人员":"没有符合条件的当前参会人员";$("#attendeeEmpty").classList.toggle("is-hidden", !!list.length); bindDynamicButtons();
@@ -1514,7 +1517,8 @@
     const a=state.attendees.find(item=>item.id===select.dataset.attendeeId); if(!a||isLocked(a)) return renderAttendeeTable();
     if(!canEditAttendeeData()||(currentUser().role==="sales"&&a.ownerId!==currentUser().id)) return deny();
     const field=select.dataset.progressField; const previous=a[field]||"pending"; const next=select.value; if(previous===next)return;
-    if(field==="privacyLetterStatus"&&next==="paper"&&!a.privacyLetterFilePath){select.value=previous;toast("纸质版必须上传附件；上传成功后状态会自动完成");requestPrivacyLetterUpload(a);return;}
+    if(field==="privacyLetterStatus"&&next==="paper"&&!a.privacyLetterFilePath){pendingPrivacyPaperUploads.add(a.id);renderAttendeeTable();toast("请在已展开的端口上传纸质版文件，上传成功后才会标记已完成");return;}
+    if(field==="privacyLetterStatus")pendingPrivacyPaperUploads.delete(a.id);
     if(field==="ctaStatus"&&!ctaWorkflowEnabled()){select.value=previous;return toast("仅已开启 CTA 签署的研究者会议可维护此状态","error");}
     if(field==="ticketStatus") { const blockers=ticketApprovalBlockers(a,next); if(blockers.length){ select.value=previous; const labels=blockers.map(segment=>segment==="outbound"?"去程":"返程").join("、"); return toast(`${a.name}的${labels}行程尚未审批通过，不能切换为“${ticketStatusLabel(next)}”`,"error"); } }
     const statusLabel=(key,value)=>key==="ticketStatus"?ticketStatusLabel(value):key==="ctaStatus"?(value==="completed"?"已完成":"未完成"):({pending:"未完成",electronic:"已完成（隐私沟通函电子版）",paper:"已完成（隐私沟通函纸质版）"}[value]||value);
@@ -1528,12 +1532,21 @@
     input.addEventListener("cancel",()=>{input.remove();renderAttendeeTable();toast("未选择附件，隐私沟通函仍保持原状态","error");},{once:true});input.click();
   }
 
+  async function handlePrivacyLetterFileInput(input){
+    const attendee=state.attendees.find(item=>item.id===input.dataset.privacyFileInput),file=input.files?.[0];
+    if(!attendee||!file)return;
+    if(file.size>15*1024*1024){input.value="";return toast("隐私沟通函附件不能超过 15MB","error");}
+    if(!["application/pdf","image/jpeg","image/png","image/webp"].includes(file.type)){input.value="";return toast("仅支持 PDF、JPG、PNG 或 WebP 文件","error");}
+    input.disabled=true;input.closest(".privacy-upload-picker")?.classList.add("uploading");
+    await uploadPrivacyLetter(attendee,file);
+  }
+
   async function uploadPrivacyLetter(attendee,file) {
     const previousPath=attendee.privacyLetterFilePath||"";const safeName=file.name.replace(/[^\p{L}\p{N}._-]+/gu,"-").slice(-120)||"privacy-letter";const path=`${backendMeetingId||state.activeProjectId}/${attendee.id}/${crypto.randomUUID()}-${safeName}`;
     try{
       if(backend){const upload=await backend.storage.from("privacy-letter-files").upload(path,file,{contentType:file.type,upsert:false});if(upload.error)throw upload.error;const values={privacy_letter_status:"paper",privacy_letter_file_path:path,privacy_letter_file_name:file.name,privacy_letter_file_size:file.size,privacy_letter_uploaded_at:new Date().toISOString(),privacy_letter_uploaded_by:state.currentUserId};const update=await backend.from("attendees").update(values).eq("id",attendee.id).eq("meeting_id",backendMeetingId);if(update.error){await backend.storage.from("privacy-letter-files").remove([path]);throw update.error;}if(previousPath&&previousPath!==path)await backend.storage.from("privacy-letter-files").remove([previousPath]);}
-      attendee.privacyLetterStatus="paper";attendee.privacyLetterFilePath=path;attendee.privacyLetterFileName=file.name;attendee.privacyLetterFileSize=file.size;attendee.privacyLetterUploadedAt=new Date().toISOString();attendee.privacyLetterUploadedBy=state.currentUserId;addNotification("change",`${currentUser().name}上传了${attendee.name}的纸质版隐私沟通函：${file.name}`);saveState();renderAll();toast(`${attendee.name}的纸质版隐私沟通函已上传`);
-    }catch(error){toast(error.message||"隐私沟通函上传失败","error");}
+      attendee.privacyLetterStatus="paper";attendee.privacyLetterFilePath=path;attendee.privacyLetterFileName=file.name;attendee.privacyLetterFileSize=file.size;attendee.privacyLetterUploadedAt=new Date().toISOString();attendee.privacyLetterUploadedBy=state.currentUserId;pendingPrivacyPaperUploads.delete(attendee.id);addNotification("change",`${currentUser().name}上传了${attendee.name}的纸质版隐私沟通函：${file.name}`);saveState();renderAll();toast(`${attendee.name}的纸质版隐私沟通函已上传，状态已闭环`);
+    }catch(error){renderAttendeeTable();toast(error.message||"隐私沟通函上传失败，状态未变更","error");}
   }
 
   async function downloadPrivacyLetter(attendee) {
@@ -2465,7 +2478,7 @@
         if (!payload.found) { result.innerHTML = `<div class="lookup-error">未查询到该手机号的行程，请确认号码或联系会务服务台。</div>`; return; }
         const pickup = payload.transports?.find(item => item.direction === "pickup") || {};
         const dropoff = payload.transports?.find(item => item.direction === "dropoff") || {};
-        result.innerHTML = renderLookupResult(payload.attendee, payload.outbound, payload.returnTrip, pickup, dropoff, payload.project);
+        result.innerHTML = renderLookupResult(payload.attendee, payload.outbound, payload.returnTrip, pickup, dropoff, payload.project);bindLookupPlacardPreviews(result);
         lastLookupSchedule = buildLookupSchedule(payload.attendee.name, pickup, dropoff);
         $("#addCalendarButton")?.addEventListener("click", downloadCalendar);
       } catch (error) { result.innerHTML = `<div class="lookup-error">${escapeHtml(error.message)}</div>`; }
@@ -2476,7 +2489,7 @@
     const outbound = { number:a.outNo, from:a.departCity||a.outFrom, to:a.arriveCity||a.outTo, fromStation:a.departStation||a.outFrom, toStation:a.arriveStation||a.outTo, date:a.departDate||a.outDate, arrivalDate:a.arriveDate||a.outDate, departure:a.outDeparture, arrival:a.outArrival };
     const returnTrip = { number:a.returnNo, from:a.returnDepartCity||a.returnFrom, to:a.returnArriveCity||a.returnTo, fromStation:a.returnDepartStation||a.returnFrom, toStation:a.returnArriveStation||a.returnTo, date:a.returnDepartDate||a.returnDate, arrivalDate:a.returnArriveDate||a.returnDate, departure:a.returnDeparture, arrival:a.returnArrival };
     const pickup = a.transport?.pickup || {}; const dropoff = a.transport?.dropoff || {}; const room=roomingRecord(a); const noStay=a.accommodation==="N"||room.assignedType==="none";
-    result.innerHTML = renderLookupResult({name:maskName(a.name),accommodation:noStay?"无需住宿":"需要住宿",hotel:noStay?"无需住宿":hotelNameForAttendee(a)||"待安排",meetingVenue:meetingVenueForAttendee(a)?.name||"待公布",roomType:noStay?"无需住宿":room.assignedType?roomTypeLabel(room.assignedType):"待安排",checkInDate:noStay?"无需住宿":room.checkInDate||"待安排",checkOutDate:noStay?"无需住宿":room.checkOutDate||"待安排",outboundTransferOrigin:a.outboundTransferOrigin,outboundTransferTime:a.outboundTransferTime,outboundTransferNotes:a.outboundTransferNotes,outboundTransferDriverName:a.outboundTransferDriverName,outboundTransferDriverPhone:a.outboundTransferDriverPhone,outboundTransferVehicle:a.outboundTransferVehicle,returnTransferDestination:a.returnTransferDestination,returnTransferNotes:a.returnTransferNotes,returnTransferDriverName:a.returnTransferDriverName,returnTransferDriverPhone:a.returnTransferDriverPhone,returnTransferVehicle:a.returnTransferVehicle}, outbound, returnTrip, pickup, dropoff, state.settings);
+    result.innerHTML = renderLookupResult({name:maskName(a.name),accommodation:noStay?"无需住宿":"需要住宿",hotel:noStay?"无需住宿":hotelNameForAttendee(a)||"待安排",meetingVenue:meetingVenueForAttendee(a)?.name||"待公布",roomType:noStay?"无需住宿":room.assignedType?roomTypeLabel(room.assignedType):"待安排",checkInDate:noStay?"无需住宿":room.checkInDate||"待安排",checkOutDate:noStay?"无需住宿":room.checkOutDate||"待安排",outboundTransferOrigin:a.outboundTransferOrigin,outboundTransferTime:a.outboundTransferTime,outboundTransferNotes:a.outboundTransferNotes,outboundTransferDriverName:a.outboundTransferDriverName,outboundTransferDriverPhone:a.outboundTransferDriverPhone,outboundTransferVehicle:a.outboundTransferVehicle,returnTransferDestination:a.returnTransferDestination,returnTransferNotes:a.returnTransferNotes,returnTransferDriverName:a.returnTransferDriverName,returnTransferDriverPhone:a.returnTransferDriverPhone,returnTransferVehicle:a.returnTransferVehicle}, outbound, returnTrip, pickup, dropoff, state.settings);bindLookupPlacardPreviews(result);
     lastLookupSchedule = buildLookupSchedule(a.name, pickup, dropoff);
     $("#addCalendarButton")?.addEventListener("click", downloadCalendar);
   }
@@ -2497,7 +2510,7 @@
       const vehicle = staff ? "无需司机及车辆信息" : (t.vehicle || "待分配");
       const placardName=String(t.placardFileName||"");
       const placardIsImage=!/\.pdf$/i.test(placardName);
-      const placardPreview=t.placardFileUrl?(placardIsImage?`<a class="lookup-placard-preview" href="${escapeHtml(t.placardFileUrl)}" target="_blank" rel="noopener noreferrer" aria-label="查看接机牌原图" title="点击查看原图"><img src="${escapeHtml(t.placardFileUrl)}" alt="接机牌样稿缩略图" loading="eager" decoding="async"></a>`:`<a class="lookup-placard-file" href="${escapeHtml(t.placardFileUrl)}" target="_blank" rel="noopener noreferrer">查看接机牌 PDF</a>`):"";
+      const placardPreview=t.placardFileUrl?(placardIsImage?`<a class="lookup-placard-preview" href="${escapeHtml(t.placardFileUrl)}" target="_blank" rel="noopener noreferrer" aria-label="查看接机牌原图" title="点击查看原图"><img src="${escapeHtml(t.placardFileUrl)}" alt="接机牌样稿缩略图" loading="eager" decoding="async"></a>`:`<a class="lookup-placard-file" href="${escapeHtml(t.placardFileUrl)}" target="_blank" rel="noopener noreferrer">查看接机牌 PDF</a>`):t.placardFileUnavailable?`<span class="lookup-placard-unavailable">接机牌文件已失效，请联系会务负责人重新上传</span>`:"";
       const execution=label.startsWith("接机")?`<div><small>实际抵达场站</small><strong>${escapeHtml(t.terminal||trip.toStation||trip.to||"待公布")}</strong></div><div><small>接机地点</small><strong>机场/高铁站出口处等待</strong></div>${t.placard||placardPreview?`<div class="lookup-transfer-note lookup-placard-field"><small>接机牌</small>${t.placard?`<strong>${escapeHtml(t.placard)}</strong>`:""}${placardPreview}</div>`:""}`:`<div><small>送机时间</small><strong>${escapeHtml(displayTime(t.time||t.service_time))}</strong></div><div><small>送机地点 / 集合点</small><strong>${escapeHtml(t.point||t.meeting_point||"待公布")}</strong></div><div><small>返程出发场站</small><strong>${escapeHtml(t.terminal||trip.fromStation||trip.from||"待公布")}</strong></div>`;
       return `<article class="lookup-transfer-card"><h3>${label}</h3><p>${escapeHtml(trip.from||"")} → ${escapeHtml(trip.to||"")}</p>${journeyDetails(trip)}<div class="lookup-transfer-details"><div><small>工作人员 / 司机</small><strong>${escapeHtml(driver)}</strong></div><div><small>联系电话</small><strong>${escapeHtml(phone)}</strong></div><div><small>车辆 / 车牌</small><strong>${escapeHtml(vehicle)}</strong></div>${execution}</div></article>`;
     };
@@ -2506,6 +2519,10 @@
     const localSection=localEnabled?`<section class="lookup-transport-group local"><div class="lookup-group-heading"><span>出发地（属地）接送安排</span><small>属地送站与返程接站</small></div><div class="lookup-transfer-grid">${localCard("去程属地送站",outbound,{point:info.outboundTransferOrigin,destination:outbound.fromStation||outbound.from,time:displayTime(info.outboundTransferTime),driver:info.outboundTransferDriverName,phone:info.outboundTransferDriverPhone,vehicle:info.outboundTransferVehicle,notes:info.outboundTransferNotes})}${localCard("返程属地接站",returnTrip,{point:returnTrip.toStation||returnTrip.to,destination:info.returnTransferDestination,time:"按照实际航班/车次抵达时间",driver:info.returnTransferDriverName,phone:info.returnTransferDriverPhone,vehicle:info.returnTransferVehicle,notes:info.returnTransferNotes})}</div></section>`:"";
     const noStay=info.accommodation==="无需住宿"||info.roomType==="无需住宿";
     return `<div class="lookup-name">${escapeHtml(name)}，你的参会安排如下</div><section class="lookup-stay-summary" aria-label="住宿与会场安排"><div class="lookup-stay-heading"><span>住宿与会场安排</span><small>与会议设置及分房管理最终安排同步</small></div><div class="lookup-stay-grid"><div><small>住宿酒店</small><strong>${escapeHtml(noStay?"无需住宿":info.hotel||"待安排")}</strong></div><div><small>会议会场</small><strong>${escapeHtml(info.meetingVenue||"待公布")}</strong></div><div><small>房型</small><strong>${escapeHtml(noStay?"无需住宿":info.roomType||"待安排")}</strong></div><div><small>入住日期</small><strong>${escapeHtml(noStay?"无需住宿":info.checkInDate||"待安排")}</strong></div><div><small>退房日期</small><strong>${escapeHtml(noStay?"无需住宿":info.checkOutDate||"待安排")}</strong></div></div></section><section class="lookup-transport-group meeting"><div class="lookup-group-heading"><span>会议地接送安排</span><small>会议举办城市内执行</small></div><div class="lookup-transfer-grid">${card("接机 / 接站",outbound,pickup)}${card("送机 / 送站",returnTrip,dropoff)}</div></section>${localSection}<div class="calendar-action"><strong>还差一步：开启手机自动提醒</strong><span>受手机隐私规则限制，网页不能静默写入日历。请点击并在系统弹窗中确认“添加全部”。</span><button class="button button-primary button-block calendar-button" id="addCalendarButton" type="button">加入手机日历 · 接送前 30 分钟提醒</button></div>`;
+  }
+
+  function bindLookupPlacardPreviews(scope){
+    $$(".lookup-placard-preview img",scope).forEach(image=>image.addEventListener("error",()=>{const link=image.closest(".lookup-placard-preview");if(!link)return;const warning=document.createElement("span");warning.className="lookup-placard-unavailable";warning.textContent="接机牌文件已失效，请联系会务负责人重新上传";link.replaceWith(warning);},{once:true}));
   }
 
   function buildLookupSchedule(name, pickup = {}, dropoff = {}) {

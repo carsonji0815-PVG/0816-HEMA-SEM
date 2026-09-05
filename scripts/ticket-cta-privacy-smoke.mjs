@@ -27,10 +27,13 @@ for(const label of ["待出票","出票中","已出票（机票）","已出票�
 if(await page.locator('[data-progress-field="ctaStatus"]').count()===0)throw new Error("CTA status control missing");
 
 const privacy=page.locator('[data-progress-field="privacyLetterStatus"]').first();
-const chooserPromise=page.waitForEvent("filechooser");
 await privacy.selectOption("paper");
-const chooser=await chooserPromise;
-await chooser.setFiles({name:"privacy-letter.pdf",mimeType:"application/pdf",buffer:Buffer.from("%PDF-1.4\n%%EOF")});
+const uploadPort=page.locator('[data-privacy-upload-required]').first();
+if(!await uploadPort.isVisible())throw new Error("Paper privacy upload port did not appear after selection");
+if(await page.locator('[data-download-privacy-letter]').first().count())throw new Error("Paper privacy status closed before file upload");
+await uploadPort.scrollIntoViewIfNeeded();
+await page.screenshot({path:".tmp/browser/privacy-paper-upload-port.png"});
+await uploadPort.locator('[data-privacy-file-input]').setInputFiles({name:"privacy-letter.pdf",mimeType:"application/pdf",buffer:Buffer.from("%PDF-1.4\n%%EOF")});
 await page.waitForTimeout(220);
 if(await privacy.inputValue()!=="paper")throw new Error("Paper privacy status was not committed after upload");
 if(!await page.locator('[data-download-privacy-letter]').first().count())throw new Error("Paper privacy attachment action missing");

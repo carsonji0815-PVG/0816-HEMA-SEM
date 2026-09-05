@@ -7,7 +7,7 @@
 - Public output: attendee lookup → hotel, meeting venue, room type and stay dates.
 - Reference: `/var/folders/qx/glgdffcs1cl2hszg7mnpcxp80000gn/T/codex-clipboard-a7f3fc2f-26d1-4200-8f77-bb847ab08ef2.png`.
 - Current captures: `.tmp/browser/location-catalog-settings.png`, `.tmp/browser/rooming-hotel-column.png`, `.tmp/browser/portal-query-balanced.png`.
-- Workflow captures: `.tmp/browser/ticket-cta-settings.png`, `.tmp/browser/ticket-cta-roster.png`.
+- Workflow captures: `.tmp/browser/ticket-cta-settings.png`, `.tmp/browser/ticket-cta-roster.png`, `.tmp/browser/privacy-paper-upload-port.png`.
 - Combined comparison: `.tmp/browser/reference-vs-location-query.png`.
 
 ## Data and interaction fidelity
@@ -28,6 +28,8 @@
 - Desktop and 390 × 844 mobile checks report no horizontal page overflow.
 - The signature and ticket workflow uses the same compact project-settings card language. Ticket labels and approval prerequisites remain aligned in three columns, and collapse to two fields plus a full-width action on small screens.
 - CTA controls are visibly disabled for ordinary meetings and appear in the roster only when a researcher meeting explicitly enables the feature.
+- Selecting the paper privacy-letter status expands a compact required-upload panel in the same roster cell; the stored status remains unchanged until a valid file finishes uploading.
+- Participant pickup-sign thumbnails now use an absolute private-storage URL. Broken or expired image loads are replaced in place with a readable re-upload notice instead of navigating to a raw 404 page.
 
 ## Verification
 
@@ -36,7 +38,8 @@
 - `portal-query-layout-smoke.mjs`: desktop and mobile layout, hotel and venue rendering passed.
 - `query-rooming-sync-smoke.mjs`: Edge query uses final rooming and venue records.
 - JavaScript syntax, static build and diff whitespace checks passed.
-- `ticket-cta-privacy-smoke.mjs`: editable ticket dictionary, researcher-only CTA column, paper privacy-letter upload requirement and post-upload completion state passed.
+- `ticket-cta-privacy-smoke.mjs`: editable ticket dictionary, researcher-only CTA column, visible paper privacy-letter upload port, pre-upload non-closure and post-upload completion state passed.
+- Production storage check: the existing pickup-sign object is present, and a freshly signed public-query URL returns HTTP 200 with `image/jpeg`.
 
 ## Findings
 

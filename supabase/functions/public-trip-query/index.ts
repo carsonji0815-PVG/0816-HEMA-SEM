@@ -22,12 +22,13 @@ const hash = async (value: string) => {
 
 const clean = (value: unknown, max = 200) => String(value || "").replace(/[\u200B-\u200D\uFEFF]/gu,"").replace(/\u3000/gu," ").trim().replace(/\s+/gu," ").slice(0, max);
 const normalized = (value: unknown, max = 200) => clean(value, max).replace(/\s+/g, "").toLowerCase();
+const publicSiteOrigin = clean(Deno.env.get("PUBLIC_SITE_ORIGIN") || "https://139.196.97.236", 300).replace(/\/$/, "");
 const publicStorageUrl = (value: unknown) => {
   if (!value) return "";
   try {
     const parsed = new URL(String(value));
     const publicPath = parsed.pathname.startsWith("/supabase/") ? parsed.pathname : `/supabase${parsed.pathname}`;
-    return `${publicPath}${parsed.search}`;
+    return `${publicSiteOrigin}${publicPath}${parsed.search}`;
   } catch {
     return "";
   }
@@ -403,10 +404,10 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
   const publicTransports=await Promise.all((transports || []).map(async item=>{
     let placardFileUrl="";
     if(item.direction==="pickup"&&item.placard_file_path){
-      const {data}=await db.storage.from("transport-placards").createSignedUrl(item.placard_file_path,900);
+      const {data}=await db.storage.from("transport-placards").createSignedUrl(item.placard_file_path,86400);
       placardFileUrl=publicStorageUrl(data?.signedUrl);
     }
-    return { direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, placardFileName:item.placard_file_name||"", placardFileUrl, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy };
+    return { direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, placardFileName:item.placard_file_name||"", placardFileUrl, placardFileUnavailable:!!item.placard_file_path&&!placardFileUrl, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy };
   }));
 
   const attendeeCustomFields=(attendee.custom_fields as Record<string,unknown>)||{};

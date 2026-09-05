@@ -192,6 +192,17 @@ tbody tr { transition: background .15s; } tbody tr:hover { background: #fafbf8; 
 .privacy-file-actions { display:flex; align-items:center; gap:5px; }
 .privacy-file-actions button { padding:0; border:0; color:#a42630; background:transparent; font-size:8px; font-weight:700; cursor:pointer; }
 .privacy-file-actions span { color:#b15642; font-size:8px; }
+.privacy-progress-control.awaiting-upload { min-width:220px; }
+.privacy-upload-panel { position:relative; display:grid; gap:7px; padding:10px; border:1px solid #e5b5ad; border-left:3px solid #d52b1e; border-radius:9px; background:#fff7f4; box-shadow:0 7px 18px rgba(117,49,43,.08); }
+.privacy-upload-panel strong { color:#6f332c; font-size:9px; }
+.privacy-upload-panel strong em { margin-left:4px; color:#d52b1e; font-size:7px; font-style:normal; }
+.privacy-upload-panel small { color:#8a6b66; font-size:7px; line-height:1.5; }
+.privacy-upload-panel>button { justify-self:start; padding:0; border:0; color:#8b6f6a; background:transparent; font-size:8px; cursor:pointer; }
+.privacy-upload-picker { position:relative; display:flex; align-items:center; justify-content:center; min-height:32px; padding:7px 10px; border:1px dashed #d77c70; border-radius:7px; color:#b42d22; background:#fff; font-size:8px; font-weight:800; cursor:pointer; }
+.privacy-upload-picker input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.privacy-upload-picker.uploading { opacity:.65; cursor:progress; }
+.privacy-upload-picker.uploading span::after { content:"· 上传中"; margin-left:4px; }
+.lookup-placard-unavailable { display:inline-flex; margin-top:5px; padding:7px 9px; border-radius:7px; color:#a43a30; background:#fff0ed; font-size:8px; font-weight:700; line-height:1.45; }
 .roster-table-wrap { max-width:100%; max-height:calc(100vh - 260px); overflow:auto; }
 .roster-template-table { width:max-content; min-width:100%; table-layout:auto; }
 .roster-template-table th { position:sticky; top:0; z-index:2; min-width:112px; max-width:190px; white-space:normal; line-height:1.45; }

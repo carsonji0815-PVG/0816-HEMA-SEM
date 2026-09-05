@@ -43,6 +43,23 @@ returns boolean language sql stable security definer set search_path=public,stor
   )
 $$;
 
+drop policy if exists "authorized users read privacy letters" on storage.objects;
+create policy "authorized users read privacy letters" on storage.objects for select to authenticated
+using (bucket_id='privacy-letter-files' and public.can_read_privacy_letter_object(name));
+
+drop policy if exists "authorized users upload privacy letters" on storage.objects;
+create policy "authorized users upload privacy letters" on storage.objects for insert to authenticated
+with check (bucket_id='privacy-letter-files' and public.can_write_privacy_letter_object(name));
+
+drop policy if exists "authorized users update privacy letters" on storage.objects;
+create policy "authorized users update privacy letters" on storage.objects for update to authenticated
+using (bucket_id='privacy-letter-files' and public.can_write_privacy_letter_object(name))
+with check (bucket_id='privacy-letter-files' and public.can_write_privacy_letter_object(name));
+
+drop policy if exists "authorized users delete privacy letters" on storage.objects;
+create policy "authorized users delete privacy letters" on storage.objects for delete to authenticated
+using (bucket_id='privacy-letter-files' and public.can_write_privacy_letter_object(name));
+
 revoke all on function public.is_active_global_super_admin() from public;
 grant execute on function public.is_active_global_super_admin() to authenticated;
 grant execute on function public.can_read_privacy_letter_object(text) to authenticated;

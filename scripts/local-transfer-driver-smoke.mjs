@@ -56,6 +56,8 @@ for (const placardColumn of ["placard_file_path", "placard_file_name"]) {
 }
 if (!edge.includes("publicStorageUrl(data?.signedUrl)") || !edge.includes("`${publicSiteOrigin}${publicPath}${parsed.search}`")) throw new Error("signed placard URL must use the absolute public storage route");
 if (!edge.includes("createSignedUrl(item.placard_file_path,86400)")) throw new Error("signed placard URL must remain available for the participant query session");
+if (!edge.includes('candidate.name===objectName') || !edge.includes('placardFileMimeType') || !edge.includes('placardFileSize')) throw new Error("public query must verify the exact stored placard before display");
+if (!app.includes('lookup-placard-preview ${placardIsPdf?"pdf":"image"}') || !app.includes('type="application/pdf"')) throw new Error("image and PDF placards must both render as uploaded-file previews");
 
 if (!css.includes("Compact admin density")) throw new Error("compact admin density rules missing");
 console.log("local transfer driver and compact admin smoke passed");

@@ -29,7 +29,7 @@
 - The signature and ticket workflow uses the same compact project-settings card language. Ticket labels and approval prerequisites remain aligned in three columns, and collapse to two fields plus a full-width action on small screens.
 - CTA controls are visibly disabled for ordinary meetings and appear in the roster only when a researcher meeting explicitly enables the feature.
 - Selecting the paper privacy-letter status expands a compact required-upload panel in the same roster cell; the stored status remains unchanged until a valid file finishes uploading.
-- Participant pickup-sign thumbnails now use an absolute private-storage URL. Broken or expired image loads are replaced in place with a readable re-upload notice instead of navigating to a raw 404 page.
+- Participant pickup-sign thumbnails now use an absolute private-storage URL. Before returning it, the query service confirms the exact current storage object and returns its MIME type and byte size; image and PDF uploads both render as previews of the current file. Broken image loads are replaced in place with a readable re-upload notice instead of navigating to a raw 404 page.
 
 ## Verification
 

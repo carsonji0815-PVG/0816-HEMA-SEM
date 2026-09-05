@@ -403,11 +403,22 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     .eq("attendee_id", attendee.id);
   const publicTransports=await Promise.all((transports || []).map(async item=>{
     let placardFileUrl="";
+    let placardFileVerified=false;
+    let placardFileMimeType="";
+    let placardFileSize=0;
     if(item.direction==="pickup"&&item.placard_file_path){
-      const {data}=await db.storage.from("transport-placards").createSignedUrl(item.placard_file_path,86400);
-      placardFileUrl=publicStorageUrl(data?.signedUrl);
+      const parts=String(item.placard_file_path).split("/"),objectName=parts.pop()||"",folder=parts.join("/");
+      const {data:objects,error:listError}=await db.storage.from("transport-placards").list(folder,{limit:20,search:objectName});
+      const object=!listError?(objects||[]).find(candidate=>candidate.name===objectName):undefined;
+      if(object){
+        const {data,error:signError}=await db.storage.from("transport-placards").createSignedUrl(item.placard_file_path,86400);
+        placardFileUrl=signError?"":publicStorageUrl(data?.signedUrl);
+        placardFileVerified=!!placardFileUrl;
+        placardFileMimeType=clean(object.metadata?.mimetype||object.metadata?.contentType,100);
+        placardFileSize=Number(object.metadata?.size||object.metadata?.contentLength)||0;
+      }
     }
-    return { direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, placardFileName:item.placard_file_name||"", placardFileUrl, placardFileUnavailable:!!item.placard_file_path&&!placardFileUrl, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy };
+    return { direction:item.direction, driver:item.driver_name, staffName:item.staff_name, phone:item.driver_phone, vehicle:item.vehicle, time:item.service_time, point:item.meeting_point, mode:item.service_mode, batchId:item.batch_id, batchName:item.batch_name, terminal:item.terminal, placard:item.placard, placardFileName:item.placard_file_name||"", placardFileUrl, placardFileVerified, placardFileMimeType, placardFileSize, placardFileUnavailable:!!item.placard_file_path&&!placardFileVerified, capacity:item.capacity, notes:item.notes, timeStrategy:item.time_strategy };
   }));
 
   const attendeeCustomFields=(attendee.custom_fields as Record<string,unknown>)||{};

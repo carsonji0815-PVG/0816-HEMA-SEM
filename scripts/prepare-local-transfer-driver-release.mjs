@@ -17,6 +17,7 @@ fs.writeFileSync(path.join(stage,'migration.sql'),[
   fs.readFileSync(path.join(root,'supabase/migrations/2026090503_ticket_cta_workflow.sql'),'utf8'),
   fs.readFileSync(path.join(root,'supabase/migrations/2026090504_privacy_storage_staff_access.sql'),'utf8'),
   fs.readFileSync(path.join(root,'supabase/migrations/2026090505_xian_xianyang_t5_station.sql'),'utf8'),
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090506_guangzhou_baiyun_t3_station.sql'),'utf8'),
 ].join('\n\n'));
 fs.copyFileSync(path.join(root,'scripts/deploy-local-transfer-driver-release.mjs'),path.join(stage,'deploy.mjs'));
 const staticHashes={};

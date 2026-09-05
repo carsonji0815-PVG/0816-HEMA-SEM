@@ -1865,6 +1865,13 @@
     persistStateLocally();
   }
   const verificationSelectionKey=(attendeeId,segment)=>`${attendeeId}:${segment}`;
+  function friendlyVerificationError(error,fallback="核验服务暂时不可用，请稍后重试"){
+    const message=String(error?.message||error||"").trim();
+    if(!message)return fallback;
+    if(error?.name==="AbortError"||/abort|timeout|timed out/i.test(message))return"核验服务响应超时，请稍后重试";
+    if(/load failed|failed to fetch|networkerror|network request failed|fetch failed/i.test(message))return"核验服务连接失败，请检查网络后重试";
+    return message;
+  }
   async function verifyTravelAttendees(attendees,{allowPaid=false,selection=null,disabledPaid=disabledVerificationFlightSegments}={}) {
     const meetingId=backendMeetingId;
     const isSelected=(attendee,segment)=>!selection||selection.has(verificationSelectionKey(attendee.id,segment));
@@ -1895,7 +1902,7 @@
         ready=true;
         const flightQuota=status.flight.unlimited?'不限每日次数':`每日 ${status.flight.dailyLimit} 次，今日已用 ${status.flight.usedToday||0} 次`;
         $("#verificationProviderStatus").textContent=`高铁：${status.train.configured?'已启用':'待配置'}；飞常准：${status.flight.configured?'已启用':'服务器待启用'}，全局查询${status.flight.globalEnabled?'已开启':'已关闭'}（${flightQuota}）。查询不代表已出票。`;
-      }catch(error){failure=error.message||'无法确认服务器核验版本';}
+      }catch(error){failure=friendlyVerificationError(error,'无法确认服务器核验版本');}
     }
     let completed=0;
     const queuedGroups=[...groups.values()];
@@ -1910,7 +1917,7 @@
         const result=batch.results?.find(item=>item.attendeeId===group[0].attendeeId&&item.segment===group[0].segment);
         group.forEach(j=>results.push({...result,attendeeId:j.attendeeId,segment:j.segment,found:result?.found===true,warnings:result?.warnings||['接口未返回本段核验结果']}));
         cacheHits+=batch.usage?.cacheHits||0;
-      }catch(error){failure=error.message||'接口暂时不可用';group.forEach(j=>results.push({...j,found:false,warnings:[failure]}));}
+      }catch(error){failure=friendlyVerificationError(error);group.forEach(j=>results.push({...j,found:false,warnings:[failure]}));}
       $("#verificationProgress").textContent=`请求队列处理中：${++completed} / ${queuedGroups.length} 个不重复行程；不会自动覆盖名单。`;
       if(completed<queuedGroups.length)await new Promise(resolve=>setTimeout(resolve,250));
     }

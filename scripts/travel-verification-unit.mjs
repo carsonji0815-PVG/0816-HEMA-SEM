@@ -4,7 +4,9 @@ import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {createTravelProviders,chooseMatch} from '../modules/travel-verification/server/index.mjs';
 import {today} from '../modules/travel-verification/server/core.mjs';
-const require=createRequire(import.meta.url),F=require('../travel-fields.js'),V=require('../travel-verification.js'),P=require('../travel-verification-panel.js'),S=require('../travel-verification-storage.js');
+const require=createRequire(import.meta.url),F=require('../travel-fields.js');
+globalThis.TravelFields=F;
+const V=require('../travel-verification.js'),P=require('../travel-verification-panel.js'),S=require('../travel-verification-storage.js');
 const a=F.applyLegacy({id:'a',name:'测试记录',departDate:today(),departCity:'上海',departTransportType:'PLANE',departStation:'上海虹桥机场T2航站楼',arriveDate:today(),arriveCity:'北京',arriveTransportType:'PLANE',arriveStation:'北京首都机场T3航站楼',outNo:'MU5101',outDeparture:'09:00',outArrival:'11:00'});
 const plan=V.snapshot(a,'outbound');
 const candidate={code:'MU5101',date:today(),arrivalDate:today(),from:'SHA',to:'PEK',depart:'09:30',arrive:'11:30',departureTerminal:'T2',arrivalTerminal:'T3'};
@@ -52,6 +54,13 @@ test('ambiguous G54220 and airline-like numbers are not silently treated as trai
  const legacy={...plan,departTransportType:'',arriveTransportType:''};
  assert.equal(V.transportMode({...legacy,number:'G54220'}),'unknown');assert.equal(V.transportMode({...legacy,number:'G5123',from:'上海',to:'北京'}),'unknown');
  assert.equal(V.transportMode({...legacy,number:'G123',from:'上海虹桥站'}),'train');
+});
+test('new or manually entered terminals are not falsely rejected by a stale dictionary',()=>{
+ const terminal=F.applyLegacy({...a,returnDepartCity:'西安',returnDepartTransportType:'PLANE',returnDepartStation:'西安咸阳机场T5航站楼'});
+ const stale=[{city:'西安',type:'PLANE',name:'西安咸阳机场T3航站楼'}];
+ assert.deepEqual(V.dictionaryIssues(terminal,'return',stale),[]);
+ const knownElsewhere=[...stale,{city:'咸阳',type:'PLANE',name:'西安咸阳机场T5航站楼'}];
+ assert.equal(V.dictionaryIssues(terminal,'return',knownElsewhere)[0].field,'returnDepartStation');
 });
 test('candidate selection requires exact date and number; multi-leg ambiguity fails closed',()=>{
  assert.equal(chooseMatch(j,[{...candidate,code:'MU5102'}]).match,null);

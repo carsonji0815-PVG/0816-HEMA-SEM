@@ -65,7 +65,14 @@
       const choices=root.TravelFields.stationList(dictionary,data[side.city],data[side.type]);
       if(!choices.length)continue;
       const official=root.TravelFields.officialStation(data[side.station],data[side.type],dictionary);
-      if(!choices.some(item=>item.name===official))issues.push({field:map[side.station],message:`场站与城市、出行方式不匹配`,current:data[side.station]});
+      if(choices.some(item=>item.name===official))continue;
+      // A newly opened terminal or a manually entered station may not have
+      // reached this browser's dictionary snapshot yet. Only report a
+      // mismatch when the same canonical station is positively known under a
+      // different city or transport type; an unknown custom value remains
+      // valid and can still be checked by the schedule provider.
+      const known=root.TravelFields.dictionary(dictionary).find(item=>item.name===official);
+      if(known&&(known.city!==root.TravelFields.normalizeCity(data[side.city])||known.type!==root.TravelFields.normalizeType(data[side.type])))issues.push({field:map[side.station],message:`场站与城市、出行方式不匹配`,current:data[side.station]});
     }
     return issues;
   }

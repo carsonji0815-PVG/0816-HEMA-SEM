@@ -33,10 +33,17 @@ fs.writeFileSync(path.join(backup,'frontend-target.txt'),previous,{mode:0o600});
 run('systemctl',['start','lilly-platform-backup.service']);
 check('pre-release encrypted backup',run('systemctl',['show','lilly-platform-backup.service','--property=Result','--value']).trim()==='success');
 fs.mkdirSync(site,{recursive:true,mode:0o755});
+fs.chmodSync(site,0o755);
 for(const [name,expected] of Object.entries(manifest.staticHashes)){
   const source=path.join(bundle,'site',name),target=path.join(site,name);
   if(!source.startsWith(path.join(bundle,'site')+path.sep)||hash(fs.readFileSync(source))!==expected)throw new Error(`Static hash mismatch: ${name}`);
   fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o755});
+  let directory=path.dirname(target);
+  while(directory.startsWith(site)){
+    fs.chmodSync(directory,0o755);
+    if(directory===site)break;
+    directory=path.dirname(directory);
+  }
   fs.copyFileSync(source,target);fs.chmodSync(target,0o644);
 }
 const candidate=fs.readFileSync(path.join(bundle,'public-trip-query.ts'));

@@ -15,7 +15,14 @@ const releaseRoot=`/opt/lilly-security-release/${manifest.version}`;
 const site=`/var/www/lilly-platform/releases/${manifest.version}`;
 const result={version:manifest.version,checks:[]};
 const check=(name,passed)=>{result.checks.push({name,passed:!!passed});if(!passed)throw new Error(`Check failed: ${name}`);};
-const switchSite=target=>{const next=`${current}.notifications-next`;if(fs.existsSync(next))fs.unlinkSync(next);fs.symlinkSync(target,next);fs.renameSync(next,current);};
+const switchSite=target=>{
+  const next=`${current}.notifications-next`;
+  if(fs.existsSync(next))fs.unlinkSync(next);
+  fs.symlinkSync(target,next);
+  fs.renameSync(next,current);
+  run('nginx',['-t']);
+  run('systemctl',['reload','nginx']);
+};
 if(process.platform!=='linux'||process.getuid()!==0||!fs.existsSync(marker))throw new Error('Confirmed Alibaba production host/root required');
 if(fs.existsSync(releaseRoot))throw new Error('Immutable release already exists');
 const previous=fs.realpathSync(current);

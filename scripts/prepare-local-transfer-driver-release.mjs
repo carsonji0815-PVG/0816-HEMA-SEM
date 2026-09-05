@@ -20,6 +20,8 @@ fs.writeFileSync(path.join(stage,'migration.sql'),[
   fs.readFileSync(path.join(root,'supabase/migrations/2026090506_guangzhou_baiyun_t3_station.sql'),'utf8'),
   fs.readFileSync(path.join(root,'supabase/migrations/2026090507_dictionary_sync_tracking.sql'),'utf8'),
   fs.readFileSync(path.join(root,'supabase/migrations/2026090508_terminal_name_canonical_cleanup.sql'),'utf8'),
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090509_unconfigured_region_quota_passthrough.sql'),'utf8'),
+  fs.readFileSync(path.join(root,'supabase/migrations/2026090510_admin_realtime_refresh.sql'),'utf8'),
 ].join('\n\n'));
 fs.copyFileSync(path.join(root,'scripts/sync-station-dictionaries.mjs'),path.join(stage,'sync-station-dictionaries.mjs'));
 fs.copyFileSync(path.join(root,'scripts/deploy-local-transfer-driver-release.mjs'),path.join(stage,'deploy.mjs'));

@@ -197,6 +197,12 @@
   let backend = null;
   let backendMeetingId = null;
   let syncTimer = null;
+  let adminRefreshTimer = null;
+  let adminRefreshPromise = null;
+  let adminRealtimeChannel = null;
+  let adminRealtimeMeetingId = null;
+  let adminRefreshQueued = false;
+  let lastAdminRefreshAt = 0;
   let lastLookupSchedule = null;
   let publicAuthSession = null;
   let publicProjectConfig = null;
@@ -717,7 +723,7 @@
     const config = window.APP_CONFIG || {};
     if (config.mode === "production" && config.supabaseUrl && config.supabaseAnonKey && window.supabase) {
       backend = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-      backend.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") { luggageIntegration?.clearAccess(); staffAccess.allowed=false; luggageIntegration?.unmount(); } });
+      backend.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") { stopAdminAutoSync(); luggageIntegration?.clearAccess(); staffAccess.allowed=false; luggageIntegration?.unmount(); } });
       await validateAdminAccessLink().catch(()=>{});
       const { data } = offlineLuggageSession ? {data:{session:null}} : await backend.auth.getSession();
       if (data.session) {
@@ -728,6 +734,7 @@
     }
     populateUsers(); populateProjects(); bindNavigation(); bindForms(); bindControls(); route(); renderAll(); maybeAutoBackup();
     window.setInterval(renderGreeting,60000);
+    window.setInterval(()=>refreshAdminState("poll"),12000);
     window.setInterval(async()=>{if(backend&&staffAccess.allowed){try{await registerStaffSession();}catch(error){if(error?.transient||isTransientBackendError(error))return;await backend.auth.signOut();staffAccess={allowed:false,email:"",displayName:"",systemRole:""};$("#loginError").textContent="登录会话已在其他设备失效，请重新登录";$("#loginDialog").showModal();}}},5*60*1000);
     window.addEventListener("hashchange", route);
     window.addEventListener("scroll", () => $(".topbar")?.classList.toggle("scrolled", scrollY > 4));
@@ -884,7 +891,7 @@
     });
   }
 
-  async function loadBackendState(preferredMeetingId = null) {
+  async function loadBackendState(preferredMeetingId = null,{refreshAuxiliary=true}={}) {
     const { data: authData } = await backend.auth.getUser();
     if (!authData.user) throw new Error("登录已过期");
     const [profileRes,projectsRes]=await Promise.all([backend.from("profiles").select("display_name,phone,role").eq("user_id",authData.user.id).maybeSingle(),backend.from("meetings").select("*").is("archived_at",null).order("created_at",{ascending:false})]);
@@ -893,7 +900,7 @@
     if (!manageableProjects.length) {
       const blank = initialState(); backendMeetingId = null;
       state = { ...blank, currentUserId:authData.user.id, activeProjectId:null, projects:[], users:[{id:authData.user.id,name:profileRes.data.display_name,role:accountRole,label:signedInAccessLabel(),phone:profileRes.data.phone||""}], attendees:[], notifications:[], locks:{master:false,columns:[],rows:[]} };
-      localStorage.removeItem("journey-desk-active-project"); return;
+      localStorage.removeItem("journey-desk-active-project"); stopAdminAutoSync(); return;
     }
     const savedProjectId = localStorage.getItem("journey-desk-active-project");
     backendMeetingId = [preferredMeetingId,savedProjectId,backendMeetingId].find(id => projectMemberships.some(item => item.meeting_id === id)) || projectMemberships[0].meeting_id;
@@ -941,16 +948,63 @@
     }
     persistStateLocally();
     syncActiveProjectQuery();
-    await loadProjectArchiveStates();
-    await loadStaffDirectory();
-    await loadProjectClientAccounts();
-    const systemConfig=await backend.from("system_configuration").select("settings").eq("singleton",true).maybeSingle();
-    if(!systemConfig.error&&systemConfig.data?.settings)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify({...loadSystemPreferences(),...systemConfig.data.settings}));
-    const [stationRows,aliasRows]=await Promise.all([
-      fetchAllStationRows(),
-      backend.from("city_alias").select("alias_name,standard_city_name").order("alias_name"),
-    ]);
-    if(!stationRows.error&&stationRows.data?.length)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify({...loadSystemPreferences(),stationDictionary:stationRows.data.map(row=>({city:row.city_name,type:row.transport_type,name:row.station_name,shortName:row.station_short_name||""})),cityAliases:aliasRows.error?[]:(aliasRows.data||[]).map(row=>({alias:row.alias_name,city:row.standard_city_name}))}));
+    if(refreshAuxiliary){
+      await loadProjectArchiveStates();
+      await loadStaffDirectory();
+      await loadProjectClientAccounts();
+      const systemConfig=await backend.from("system_configuration").select("settings").eq("singleton",true).maybeSingle();
+      if(!systemConfig.error&&systemConfig.data?.settings)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify({...loadSystemPreferences(),...systemConfig.data.settings}));
+      const [stationRows,aliasRows]=await Promise.all([
+        fetchAllStationRows(),
+        backend.from("city_alias").select("alias_name,standard_city_name").order("alias_name"),
+      ]);
+      if(!stationRows.error&&stationRows.data?.length)localStorage.setItem(SYSTEM_PREFS_KEY,JSON.stringify({...loadSystemPreferences(),stationDictionary:stationRows.data.map(row=>({city:row.city_name,type:row.transport_type,name:row.station_name,shortName:row.station_short_name||""})),cityAliases:aliasRows.error?[]:(aliasRows.data||[]).map(row=>({alias:row.alias_name,city:row.standard_city_name}))}));
+    }
+    configureAdminAutoSync();
+  }
+
+  function adminEditorIsActive(){
+    if(document.querySelector("dialog[open]"))return true;
+    const active=document.activeElement;
+    return !!active&&active!==document.body&&active.matches?.('input,select,textarea,[contenteditable="true"]');
+  }
+  function adminRouteIsVisible(){
+    const routeName=(location.hash||"#dashboard").slice(1).split("?")[0];
+    return !["portal","register","manage","lookup"].includes(routeName);
+  }
+  async function refreshAdminState(reason="poll",force=false){
+    if(!backend||!backendMeetingId||!staffAccess.allowed||!adminRouteIsVisible()||document.visibilityState==="hidden"||navigator.onLine===false)return;
+    if(adminEditorIsActive()){adminRefreshQueued=true;return;}
+    if(adminRefreshPromise)return adminRefreshPromise;
+    if(!force&&Date.now()-lastAdminRefreshAt<2500)return;
+    const meetingId=backendMeetingId;adminRefreshQueued=false;
+    adminRefreshPromise=(async()=>{try{await loadBackendState(meetingId,{refreshAuxiliary:false});if(meetingId!==backendMeetingId)return;populateUsers();populateProjects();renderAll();lastAdminRefreshAt=Date.now();}catch(error){if(reason!=="poll"&&!isTransientBackendError(error))console.warn("自动同步失败",error);}finally{adminRefreshPromise=null;}})();
+    return adminRefreshPromise;
+  }
+  function scheduleAdminRefresh(){
+    adminRefreshQueued=true;
+    clearTimeout(adminRefreshTimer);
+    adminRefreshTimer=setTimeout(()=>refreshAdminState("realtime"),350);
+  }
+  function stopAdminAutoSync(){
+    clearTimeout(adminRefreshTimer);adminRefreshTimer=null;adminRefreshQueued=false;adminRealtimeMeetingId=null;
+    if(adminRealtimeChannel&&backend?.removeChannel)backend.removeChannel(adminRealtimeChannel);adminRealtimeChannel=null;
+  }
+  function configureAdminAutoSync(){
+    if(!backend||!backendMeetingId||!staffAccess.allowed)return;
+    if(adminRealtimeMeetingId===backendMeetingId)return;
+    if(adminRealtimeChannel&&backend.removeChannel)backend.removeChannel(adminRealtimeChannel);
+    adminRealtimeMeetingId=backendMeetingId;
+    if(typeof backend.channel!=="function")return;
+    const meetingId=backendMeetingId,changed=()=>scheduleAdminRefresh();
+    let channel=backend.channel(`meeting-live-${meetingId}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"meetings",filter:`id=eq.${meetingId}`},changed)
+      .on("postgres_changes",{event:"*",schema:"public",table:"attendees",filter:`meeting_id=eq.${meetingId}`},changed)
+      .on("postgres_changes",{event:"*",schema:"public",table:"column_locks",filter:`meeting_id=eq.${meetingId}`},changed)
+      .on("postgres_changes",{event:"*",schema:"public",table:"notifications",filter:`meeting_id=eq.${meetingId}`},changed)
+      .on("postgres_changes",{event:"*",schema:"public",table:"registrants",filter:`meeting_id=eq.${meetingId}`},changed)
+      .on("postgres_changes",{event:"*",schema:"public",table:"transports"},changed);
+    adminRealtimeChannel=channel.subscribe();
   }
 
   function fromDbAttendeeBase(row) {
@@ -1119,7 +1173,10 @@
     window.addEventListener("focus",refreshPublicProject);
     window.addEventListener("pageshow",refreshPublicProject);
     window.addEventListener("online",refreshPublicProject);
-    document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")refreshPublicProject();});
+    window.addEventListener("focus",()=>refreshAdminState("focus",true));
+    window.addEventListener("pageshow",()=>refreshAdminState("pageshow",true));
+    window.addEventListener("online",()=>refreshAdminState("online",true));
+    document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){refreshPublicProject();refreshAdminState("visible",true);}});
     $("#resetDemo").addEventListener("click", () => { if (!confirm("确认恢复全部演示数据？")) return; state = initialState(); saveState(); populateUsers(); populateProjects(); renderAll(); toast("已恢复演示数据"); });
     $("#downloadBackup").addEventListener("click",downloadSystemBackup);
     $("#restoreBackupFile").addEventListener("change",event=>restoreSystemBackup(event.target.files[0]));
@@ -1381,13 +1438,14 @@
       return [...actualGroups.values()];
     }
     const configured=normalizedQuotaConfiguration();
-    const actualMap=new Map(); activeVisibleAttendees().forEach(attendee=>{const key=quotaKey(attendee.venue,attendee.region,attendee.attendeeType);actualMap.set(key,(actualMap.get(key)||0)+1);});
-    const rows=configured.filter(item=>item.role===role).map(item=>{const actual=actualMap.get(quotaKey(item.venue,item.region,item.role))||0;actualMap.delete(quotaKey(item.venue,item.region,item.role));return{...item,actual};});
-    return rows.map(item=>{const gap=item.actual-item.quota;const remaining=Math.max(item.quota-item.actual,0);const percent=item.quota?item.actual/item.quota*100:item.actual?100:0;return{...item,gap,remaining,percent};});
+    const actualMap=new Map(); activeVisibleAttendees().filter(attendee=>normalizeQuotaRole(attendee.attendeeType)===role).forEach(attendee=>{const item={venue:normalizeVenueLabel(attendee.venue)||"未填写会场",region:normalizeQuotaRegion(attendee.region),role};const key=quotaKey(item.venue,item.region,item.role);actualMap.set(key,{...item,actual:(actualMap.get(key)?.actual||0)+1});});
+    const rows=configured.filter(item=>item.role===role).map(item=>{const key=quotaKey(item.venue,item.region,item.role);const actual=actualMap.get(key)?.actual||0;actualMap.delete(key);return{...item,actual,unallocated:item.quota===0};});
+    for(const item of actualMap.values())rows.push({...item,quota:0,unallocated:true});
+    return rows.map(item=>{const gap=item.unallocated?0:item.actual-item.quota;const remaining=item.unallocated?0:Math.max(item.quota-item.actual,0);const percent=item.unallocated?0:item.quota?item.actual/item.quota*100:0;return{...item,gap,remaining,percent};});
   }
   function unmatchedQuotaAttendeeCount(role=activeQuotaRole) {
     if(role==="角色嘉宾")return 0;
-    const configuredKeys=new Set(normalizedQuotaConfiguration().filter(item=>item.role===role).map(item=>quotaKey(item.venue,item.region,item.role)));
+    const configuredKeys=new Set(normalizedQuotaConfiguration().filter(item=>item.role===role&&item.quota>0).map(item=>quotaKey(item.venue,item.region,item.role)));
     return activeVisibleAttendees().filter(attendee=>normalizeQuotaRole(attendee.attendeeType)===role&&!configuredKeys.has(quotaKey(attendee.venue,attendee.region,attendee.attendeeType))).length;
   }
   function quotaRoleOptions() {
@@ -1401,22 +1459,22 @@
     $$('[data-quota-role]').forEach(button=>button.onclick=()=>{activeQuotaRole=button.dataset.quotaRole;renderRegistrationProgress();});
     const internal=state.settings.activityType==="internal";$("#configureQuotas").classList.toggle("is-hidden",!canManage()||internal);
     $("#quotaProgressDescription").textContent=internal?"内部会议不设报名名额，以下数据直接来自当前有效参会名单。":"名额与实际报名均直接读取当前会议配置和有效参会名单。";$("#quotaDetailDescription").textContent=internal?"按实际会场、大区和会议角色统计，不计算名额、Gap 或完成率。":"Gap = 实际报名 - 分配名额";
-    const rows=registrationQuotaRows();const unlimitedRole=activeQuotaRole==="角色嘉宾"||internal;const quotaConfigured=!unlimitedRole&&normalizedQuotaConfiguration().some(item=>item.role===activeQuotaRole);const quota=rows.reduce((sum,row)=>sum+row.quota,0);const actual=rows.reduce((sum,row)=>sum+row.actual,0);const unmatched=internal?0:unmatchedQuotaAttendeeCount();const totalActual=actual+unmatched;const gap=actual-quota;const remaining=Math.max(quota-actual,0);const percent=quota?actual/quota*100:0;
+    const rows=registrationQuotaRows();const unlimitedRole=activeQuotaRole==="角色嘉宾"||internal;const quotaConfigured=!unlimitedRole&&normalizedQuotaConfiguration().some(item=>item.role===activeQuotaRole&&item.quota>0);const allocatedRows=rows.filter(row=>!row.unallocated);const quota=allocatedRows.reduce((sum,row)=>sum+row.quota,0);const allocatedActual=allocatedRows.reduce((sum,row)=>sum+row.actual,0);const totalActual=rows.reduce((sum,row)=>sum+row.actual,0);const unmatched=internal?0:unmatchedQuotaAttendeeCount();const actual=unlimitedRole?totalActual:allocatedActual;const gap=allocatedActual-quota;const remaining=Math.max(quota-allocatedActual,0);const percent=quota?allocatedActual/quota*100:0;
     const summaryCards=unlimitedRole?[
       ["名额限制",internal?"不启用":"不限",internal?"内部会议不做名额管控":"角色嘉宾不参与名额分配","quota"],["实际报名",actual,"直接读取当前有效名单","actual"],["涉及会场",new Set(rows.map(row=>row.venue)).size,"按实际报名会场汇总","over"],["涉及大区",new Set(rows.map(row=>row.region)).size,"按实际报名大区汇总","rate"],
     ]:quotaConfigured?[
-      ["分配名额",quota,"当前类别目标","quota"],["实际报名",actual,unmatched?`另有 ${unmatched} 人的大区或会场未匹配配置`:"已匹配当前名额配置","actual"],[gap<0?"名额缺口":"名额差额",gap<0?remaining:`+${gap}`,gap<0?"仍需继续报名":"已达到或超过目标",gap<0?"shortage":"over"],["完成率",`${percent.toFixed(1)}%`,`${actual} / ${quota||0}`,"rate"],
+      ["分配名额",quota,"当前类别目标","quota"],["实际报名",totalActual,unmatched?`含 ${unmatched} 人未分配名额，均已纳入统计`:"全部匹配当前名额配置","actual"],[gap<0?"名额缺口":"名额差额",gap<0?remaining:`+${gap}`,gap<0?"仅按已分配名额计算":"已分配名额已达到目标",gap<0?"shortage":"over"],["完成率",`${percent.toFixed(1)}%`,`${allocatedActual} / ${quota||0}（已分配组）`,"rate"],
     ]:[
-      ["分配名额","未配置","点击右上角配置名额","quota"],["实际报名",totalActual,"配置名额后按预设大区匹配","actual"],["未匹配人数",unmatched,"不会自动生成非预设大区","over"],["统计类别",activeQuotaRole,"仅统计已配置名额范围","rate"],
+      ["分配名额","未配置","未分配名额不阻止报名","quota"],["实际报名",totalActual,"所有有效报名均已纳入统计","actual"],["未分配名额",unmatched,"允许报名，明细按实际大区显示","over"],["统计类别",activeQuotaRole,"统计当前全部有效名单","rate"],
     ];
     $("#quotaSummary").innerHTML=summaryCards.map(([label,value,note,type])=>`<div class="quota-summary-item ${type}"><small>${label}</small><strong>${escapeHtml(String(value))}</strong><span>${note}</span></div>`).join("");
-    const byVenue=[...new Set(rows.map(row=>row.venue))].map(venue=>{const list=rows.filter(row=>row.venue===venue);const venueQuota=list.reduce((sum,row)=>sum+row.quota,0);const venueActual=list.reduce((sum,row)=>sum+row.actual,0);return{venue,quota:venueQuota,actual:venueActual,gap:venueActual-venueQuota,percent:venueQuota?venueActual/venueQuota*100:0};});
-    $("#quotaVenueProgress").innerHTML=byVenue.length?byVenue.map(item=>`<div class="quota-venue-row"><div><strong>${escapeHtml(item.venue)}</strong><span>${quotaConfigured?`${item.actual} / ${item.quota} 人`:`当前名单 ${item.actual} 人`}</span></div><div class="quota-venue-numbers">${quotaConfigured?`<span>尚缺 <b class="${item.gap<0?"negative":"positive"}">${Math.max(-item.gap,0)}</b></span><strong>${item.percent.toFixed(1)}%</strong>`:`<span>分配名额待配置</span><strong>${item.actual}人</strong>`}</div><div class="quota-meter"><i class="${quotaConfigured&&item.percent>=100?"over":""}" style="width:${quotaConfigured?Math.min(item.percent,100):0}%"></i>${quotaConfigured?`<span style="left:${Math.min(item.percent,100)}%"></span>`:""}</div></div>`).join(""):`<div class="empty-state">当前名单中暂无${escapeHtml(activeQuotaRole)}数据</div>`;
+    const byVenue=[...new Set(rows.map(row=>row.venue))].map(venue=>{const list=rows.filter(row=>row.venue===venue);const allocated=list.filter(row=>!row.unallocated);const venueQuota=allocated.reduce((sum,row)=>sum+row.quota,0);const venueAllocatedActual=allocated.reduce((sum,row)=>sum+row.actual,0);const venueActual=list.reduce((sum,row)=>sum+row.actual,0);return{venue,quota:venueQuota,actual:venueActual,allocatedActual:venueAllocatedActual,gap:venueAllocatedActual-venueQuota,percent:venueQuota?venueAllocatedActual/venueQuota*100:0};});
+    $("#quotaVenueProgress").innerHTML=byVenue.length?byVenue.map(item=>`<div class="quota-venue-row"><div><strong>${escapeHtml(item.venue)}</strong><span>${quotaConfigured?`实际 ${item.actual} 人 · 已分配组 ${item.allocatedActual} / ${item.quota}`:`当前名单 ${item.actual} 人`}</span></div><div class="quota-venue-numbers">${quotaConfigured?`<span>尚缺 <b class="${item.gap<0?"negative":"positive"}">${Math.max(-item.gap,0)}</b></span><strong>${item.percent.toFixed(1)}%</strong>`:`<span>未分配名额也可报名</span><strong>${item.actual}人</strong>`}</div><div class="quota-meter"><i class="${quotaConfigured&&item.percent>=100?"over":""}" style="width:${quotaConfigured?Math.min(item.percent,100):0}%"></i>${quotaConfigured?`<span style="left:${Math.min(item.percent,100)}%"></span>`:""}</div></div>`).join(""):`<div class="empty-state">当前名单中暂无${escapeHtml(activeQuotaRole)}数据</div>`;
     const alertHtml=(items,type)=>items.length?items.slice(0,3).map((row,index)=>`<div class="quota-alert-row"><b>${index+1}</b><span><strong>${escapeHtml(row.region)}</strong><small>${escapeHtml(row.venue)} · ${escapeHtml(row.role)}</small></span><em class="${type}">${row.gap>0?"+":""}${row.gap}</em></div>`).join(""):`<div class="quota-alert-empty">暂无${type==="shortage"?"名额缺口":"超额报名"}</div>`;
     $("#quotaShortageList").innerHTML=unlimitedRole?`<div class="quota-alert-empty">${internal?"内部会议":"角色嘉宾"}按实际报名统计，无缺口预警</div>`:quotaConfigured?alertHtml(rows.filter(row=>row.gap<0).sort((a,b)=>a.gap-b.gap),"shortage"):`<div class="quota-alert-empty">配置分组名额后生成缺口预警</div>`;$("#quotaOverList").innerHTML=unlimitedRole?`<div class="quota-alert-empty">${internal?"内部会议":"角色嘉宾"}按实际报名统计，无超额提醒</div>`:quotaConfigured?alertHtml(rows.filter(row=>row.gap>0).sort((a,b)=>b.gap-a.gap),"over"):`<div class="quota-alert-empty">配置分组名额后生成超额提醒</div>`;
     if(!rows.length){$("#quotaProgressBody").innerHTML=`<tr><td colspan="9"><div class="empty-state">${unlimitedRole?"当前暂无角色嘉宾报名数据":"点击“调整听众名额”建立报名目标后即可统计"}</div></td></tr>`;return;}
-    const detailRow=row=>{if(unlimitedRole)return`<tr><td><strong>${escapeHtml(row.venue)}</strong></td><td>${escapeHtml(row.region)}</td><td>${escapeHtml(row.role)}</td><td>${internal?"不适用":"不限"}</td><td>${row.actual}</td><td>—</td><td>—</td><td>—</td><td><span class="quota-status unlimited">实际统计</span></td></tr>`;if(!quotaConfigured)return`<tr><td><strong>${escapeHtml(row.venue)}</strong></td><td>${escapeHtml(row.region)}</td><td>${escapeHtml(row.role)}</td><td>—</td><td>${row.actual}</td><td>—</td><td>—</td><td>—</td><td><span class="quota-status neutral">未配置名额</span></td></tr>`;const[stateClass,label]=quotaState(row);return`<tr><td><strong>${escapeHtml(row.venue)}</strong></td><td>${escapeHtml(row.region)}</td><td>${escapeHtml(row.role)}</td><td>${row.quota}</td><td>${row.actual}</td><td><b class="quota-gap ${stateClass}">${row.gap>0?"+":""}${row.gap}</b></td><td>${row.remaining}</td><td><div class="quota-rate"><span>${row.percent.toFixed(1)}%</span><i><b class="${stateClass}" style="width:${Math.min(row.percent,100)}%"></b></i></div></td><td><span class="quota-status ${stateClass}">${label}</span></td></tr>`;};
-    const summaryRow=(venue,list,grand=false)=>{const firstCells=`<td><strong>${escapeHtml(venue)}</strong></td><td>${grand?"全部大区":"小计"}</td><td>${escapeHtml(activeQuotaRole)}</td>`;const subtotalQuota=list.reduce((sum,row)=>sum+row.quota,0);const subtotalActual=list.reduce((sum,row)=>sum+row.actual,0);if(unlimitedRole)return`<tr class="${grand?"quota-grand-total":"quota-subtotal"}">${firstCells}<td>${internal?"不适用":"不限"}</td><td>${subtotalActual}</td><td>—</td><td>—</td><td>—</td><td><span class="quota-status unlimited">实际统计</span></td></tr>`;if(!quotaConfigured)return`<tr class="${grand?"quota-grand-total":"quota-subtotal"}">${firstCells}<td>—</td><td>${subtotalActual}</td><td>—</td><td>—</td><td>—</td><td><span class="quota-status neutral">名单直连</span></td></tr>`;const subtotalGap=subtotalActual-subtotalQuota;const subtotalRemaining=Math.max(subtotalQuota-subtotalActual,0);const subtotalPercent=subtotalQuota?subtotalActual/subtotalQuota*100:0;const[stateClass,statusLabel]=quotaState({gap:subtotalGap,quota:subtotalQuota});return`<tr class="${grand?"quota-grand-total":"quota-subtotal"}">${firstCells}<td>${subtotalQuota}</td><td>${subtotalActual}</td><td><b class="quota-gap ${stateClass}">${subtotalGap>0?"+":""}${subtotalGap}</b></td><td>${subtotalRemaining}</td><td><strong>${subtotalPercent.toFixed(1)}%</strong></td><td><span class="quota-status ${stateClass}">${statusLabel}</span></td></tr>`;};
+    const detailRow=row=>{if(unlimitedRole)return`<tr><td><strong>${escapeHtml(row.venue)}</strong></td><td>${escapeHtml(row.region)}</td><td>${escapeHtml(row.role)}</td><td>${internal?"不适用":"不限"}</td><td>${row.actual}</td><td>—</td><td>—</td><td>—</td><td><span class="quota-status unlimited">实际统计</span></td></tr>`;if(row.unallocated||!quotaConfigured)return`<tr><td><strong>${escapeHtml(row.venue)}</strong></td><td>${escapeHtml(row.region)}</td><td>${escapeHtml(row.role)}</td><td>未分配</td><td>${row.actual}</td><td>—</td><td>—</td><td>—</td><td><span class="quota-status neutral">已统计 · 不限额</span></td></tr>`;const[stateClass,label]=quotaState(row);return`<tr><td><strong>${escapeHtml(row.venue)}</strong></td><td>${escapeHtml(row.region)}</td><td>${escapeHtml(row.role)}</td><td>${row.quota}</td><td>${row.actual}</td><td><b class="quota-gap ${stateClass}">${row.gap>0?"+":""}${row.gap}</b></td><td>${row.remaining}</td><td><div class="quota-rate"><span>${row.percent.toFixed(1)}%</span><i><b class="${stateClass}" style="width:${Math.min(row.percent,100)}%"></b></i></div></td><td><span class="quota-status ${stateClass}">${label}</span></td></tr>`;};
+    const summaryRow=(venue,list,grand=false)=>{const firstCells=`<td><strong>${escapeHtml(venue)}</strong></td><td>${grand?"全部大区":"小计"}</td><td>${escapeHtml(activeQuotaRole)}</td>`;const allocated=list.filter(row=>!row.unallocated);const subtotalQuota=allocated.reduce((sum,row)=>sum+row.quota,0);const subtotalAllocatedActual=allocated.reduce((sum,row)=>sum+row.actual,0);const subtotalActual=list.reduce((sum,row)=>sum+row.actual,0);if(unlimitedRole)return`<tr class="${grand?"quota-grand-total":"quota-subtotal"}">${firstCells}<td>${internal?"不适用":"不限"}</td><td>${subtotalActual}</td><td>—</td><td>—</td><td>—</td><td><span class="quota-status unlimited">实际统计</span></td></tr>`;if(!quotaConfigured)return`<tr class="${grand?"quota-grand-total":"quota-subtotal"}">${firstCells}<td>未分配</td><td>${subtotalActual}</td><td>—</td><td>—</td><td>—</td><td><span class="quota-status neutral">已统计 · 不限额</span></td></tr>`;const subtotalGap=subtotalAllocatedActual-subtotalQuota;const subtotalRemaining=Math.max(subtotalQuota-subtotalAllocatedActual,0);const subtotalPercent=subtotalQuota?subtotalAllocatedActual/subtotalQuota*100:0;const[stateClass,statusLabel]=quotaState({gap:subtotalGap,quota:subtotalQuota});return`<tr class="${grand?"quota-grand-total":"quota-subtotal"}">${firstCells}<td>${subtotalQuota}</td><td>${subtotalActual}</td><td><b class="quota-gap ${stateClass}">${subtotalGap>0?"+":""}${subtotalGap}</b></td><td>${subtotalRemaining}</td><td><strong>${subtotalPercent.toFixed(1)}%</strong></td><td><span class="quota-status ${stateClass}">${statusLabel}${subtotalActual>subtotalAllocatedActual?" · 含未分配":""}</span></td></tr>`;};
     const ordered=[...rows].sort((a,b)=>a.venue.localeCompare(b.venue,"zh-CN")||a.region.localeCompare(b.region,"zh-CN")||a.role.localeCompare(b.role,"zh-CN"));const venues=[...new Set(ordered.map(row=>row.venue))];
     $("#quotaProgressBody").innerHTML=venues.map(venue=>{const list=ordered.filter(row=>row.venue===venue);return list.map(detailRow).join("")+summaryRow(venue,list);}).join("")+summaryRow("全部举办城市",ordered,true);
   }

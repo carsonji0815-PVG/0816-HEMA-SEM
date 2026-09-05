@@ -35,6 +35,15 @@ const publicStorageUrl = (value: unknown) => {
 };
 const yes = (value: unknown) => ["Y", "true", "1", "是"].includes(String(value));
 const transportType = (value: unknown) => ({飞机:"PLANE",高铁:"HIGH_SPEED_RAIL",本地参会:"LOCAL_ATTEND",PLANE:"PLANE",HIGH_SPEED_RAIL:"HIGH_SPEED_RAIL",LOCAL_ATTEND:"LOCAL_ATTEND"}[clean(value,30)] || "");
+const canonicalStation=(value:unknown,type:string)=>{
+  let raw=clean(value,120);if(!raw||type==="LOCAL_ATTEND")return"";
+  if(!["PLANE","HIGH_SPEED_RAIL"].includes(type))return raw;
+  if(type==="HIGH_SPEED_RAIL")return raw.replace(/(?:火车|高铁)站$/u,"站").replace(/站+$/u,"")+"站";
+  raw=raw.replace(/国际机场/gu,"机场").replace(/\s+/gu,"").replace(/(机场|航站楼)站$/u,"$1");
+  const terminal=raw.match(/(?:T\s*)?(\d+)号?航站楼$/iu)||raw.match(/T\s*(\d+)$/iu);
+  if(terminal){const base=raw.slice(0,terminal.index).replace(/机场$/u,"");return`${base}机场T${terminal[1]}航站楼`;}
+  return/机场$/u.test(raw)?raw:`${raw}机场`;
+};
 const notificationLabels:Record<string,string>={
   phone:"手机号",email:"邮箱",hospital:"单位 / 医院",title:"职称",depart_city:"去程出发城市",depart_station:"去程出发场站",
   out_departure:"去程出发时间",arrive_city:"去程抵达城市",arrive_station:"去程抵达场站",out_no:"去程航班 / 车次号",
@@ -222,11 +231,11 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
     const internalCustom=Object.fromEntries(Object.entries((attendee?.custom_fields as Record<string,unknown>)||{}).filter(([key])=>key.startsWith("_")));
     const rawJourneySegments=Array.isArray(details.journeySegments)?details.journeySegments:[];
     if(rawJourneySegments.length>18)return reply({error:"单个参会人员最多可增加18段行程"},400);
-    const journeySegments=rawJourneySegments.map((raw,index)=>{const item=(raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{}) as Record<string,unknown>,type=transportType(item.transportType);return{id:/^[a-zA-Z0-9-]{8,80}$/.test(clean(item.id,80))?clean(item.id,80):crypto.randomUUID(),direction:item.direction==="return"?"return":"outbound",order:index+2,departDate:clean(item.departDate,10),departCity:clean(item.departCity,50),transportType:type,departStation:type==="LOCAL_ATTEND"?"":clean(item.departStation,120),arriveDate:clean(item.arriveDate,10),arriveCity:clean(item.arriveCity,50),arriveStation:type==="LOCAL_ATTEND"?"":clean(item.arriveStation,120),number:clean(item.number,30),departure:clean(item.departure,5),arrival:clean(item.arrival,5)};});
+    const journeySegments=rawJourneySegments.map((raw,index)=>{const item=(raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{}) as Record<string,unknown>,type=transportType(item.transportType);return{id:/^[a-zA-Z0-9-]{8,80}$/.test(clean(item.id,80))?clean(item.id,80):crypto.randomUUID(),direction:item.direction==="return"?"return":"outbound",order:index+2,departDate:clean(item.departDate,10),departCity:clean(item.departCity,50),transportType:type,departStation:type==="LOCAL_ATTEND"?"":canonicalStation(item.departStation,type),arriveDate:clean(item.arriveDate,10),arriveCity:clean(item.arriveCity,50),arriveStation:type==="LOCAL_ATTEND"?"":canonicalStation(item.arriveStation,type),number:clean(item.number,30),departure:clean(item.departure,5),arrival:clean(item.arrival,5)};});
     const customFields = {...internalCustom,...Object.fromEntries(Object.entries(requestedCustom).filter(([key])=>allowedCustom.has(key)).slice(0,50).map(([key,value])=>[key,clean(value,500)])),_journeySegments:journeySegments,_location:locationReference(meeting,details.venue,(internalCustom._location||{}) as Record<string,unknown>)};
     const departType=transportType(details.departTransportType),arriveType=departType,returnDepartType=transportType(details.returnDepartTransportType),returnArriveType=returnDepartType;
-    let departStation=departType==="LOCAL_ATTEND"?null:clean(details.departStation,120)||null,arriveStation=arriveType==="LOCAL_ATTEND"?null:clean(details.arriveStation,120)||null;
-    let returnDepartStation=returnDepartType==="LOCAL_ATTEND"?null:clean(details.returnDepartStation,120)||null,returnArriveStation=returnArriveType==="LOCAL_ATTEND"?null:clean(details.returnArriveStation,120)||null;
+    let departStation=departType==="LOCAL_ATTEND"?null:canonicalStation(details.departStation,departType)||null,arriveStation=arriveType==="LOCAL_ATTEND"?null:canonicalStation(details.arriveStation,arriveType)||null;
+    let returnDepartStation=returnDepartType==="LOCAL_ATTEND"?null:canonicalStation(details.returnDepartStation,returnDepartType)||null,returnArriveStation=returnArriveType==="LOCAL_ATTEND"?null:canonicalStation(details.returnArriveStation,returnArriveType)||null;
     const stationChecks=[
       {label:"出发场站",city:details.departCity,type:departType,value:departStation,set:(value:string)=>departStation=value},
       {label:"抵达场站",city:details.arriveCity,type:arriveType,value:arriveStation,set:(value:string)=>arriveStation=value},
@@ -238,13 +247,16 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       ]),
     ].filter(item=>item.type!=="LOCAL_ATTEND"&&item.city&&item.value);
     const stationResults=await Promise.all(stationChecks.map(item=>db.rpc("get_station_list",{p_city_name:clean(item.city,50),p_transport_type:item.type})));
+    const customStations:Array<Record<string,string>>=[];
     for(let index=0;index<stationChecks.length;index++){
       const item=stationChecks[index],rows=(stationResults[index].data||[]) as Array<Record<string,unknown>>;
       if(stationResults[index].error)continue;
       const matched=rows.find(row=>normalized(row.station_name,150)===normalized(item.value,150)||normalized(row.station_short_name,150)===normalized(item.value,150));
-      if(rows.length&&!matched)return reply({error:`${item.label}与城市、出行方式不匹配，请重新选择`},400);
       if(matched)item.set(clean(matched.station_name,120));
+      else{const value=canonicalStation(item.value,item.type);item.set(value);customStations.push({label:item.label,city:clean(item.city,50),type:item.type,value});}
     }
+    if(customStations.length)customFields._customStations=customStations;
+    else delete customFields._customStations;
     const requestedAttendeeType=clean(details.attendeeType,30)||"HCP";const transferRole=/赞助商|sponsor/i.test(requestedAttendeeType)?"赞助商":/主席|主持|讲者|讨论嘉宾|组长|嘉宾|chair|moderator|speaker|panelist/i.test(requestedAttendeeType)?"角色嘉宾":"听众";const transferAllowed=!!meeting.transfer_collection_enabled&&Array.isArray(meeting.transfer_collection_roles)&&(meeting.transfer_collection_roles as unknown[]).map(String).includes(transferRole);const transferValue=(key:string,value:unknown,max:number)=>transferAllowed?(clean(value,max)||null):(attendee?.[key]||null);
     const values: Record<string,unknown> = {
       attendee_type:clean(details.attendeeType,30) || "HCP", name:attendeeName, city:clean(details.city,50), hospital:clean(details.hospital,100), department:clean(details.department,100), title:clean(details.title,50), venue:clean(details.venue,50), sex:clean(details.sex,10), id_number:clean(details.idNumber,100), phone:attendeePhone, hcp_id:clean(details.hcpId,100), accommodation:yes(details.accommodation), is_flight:yes(details.flight), region:clean(registrant.region,50),

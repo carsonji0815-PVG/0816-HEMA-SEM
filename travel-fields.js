@@ -20,7 +20,16 @@
   ].map(([city,type,name])=>({city,type,name}));
   const clean=value=>String(value??"").replace(/[\u200B-\u200D\uFEFF]/gu,"").replace(/\u3000/gu," ").trim().replace(/\s+/g," ");
   const normalizeCity=value=>clean(value).replace(/(?:市|地区)$/u,"");
-  const canonicalStation=(value,type)=>normalizeType(type)==="PLANE"?clean(value).replace(/国际机场/gu,"机场").replace(/(机场|航站楼)站$/u,"$1"):clean(value);
+  const canonicalStation=(value,type)=>{
+    const mode=normalizeType(type);let raw=clean(value);
+    if(!raw||mode==="LOCAL_ATTEND")return"";
+    if(!["PLANE","HIGH_SPEED_RAIL"].includes(mode))return raw;
+    if(mode==="HIGH_SPEED_RAIL")return raw.replace(/(?:火车|高铁)站$/u,"站").replace(/站+$/u,"")+"站";
+    raw=raw.replace(/国际机场/gu,"机场").replace(/\s+/gu,"").replace(/(机场|航站楼)站$/u,"$1");
+    const terminal=raw.match(/(?:T\s*)?(\d+)号?航站楼$/iu)||raw.match(/T\s*(\d+)$/iu);
+    if(terminal){const suffix=`T${terminal[1]}航站楼`,base=raw.slice(0,terminal.index).replace(/机场$/u,"");return`${base}机场${suffix}`;}
+    return/机场$/u.test(raw)?raw:`${raw}机场`;
+  };
   function normalizeType(value,number=""){
     const raw=clean(value);if(TYPE_ALIASES.has(raw))return TYPE_ALIASES.get(raw);
     if(/本地参会|本地客户/u.test(raw)||/本地参会/u.test(number))return"LOCAL_ATTEND";
@@ -127,13 +136,14 @@
         select.value=item.name;select.name=`${side}Station`;input.name="";input.value=item.shortName||displayStation(item.name,item.type);input.dataset.stationMode="selected";closeList();input.dispatchEvent(new Event("change",{bubbles:true}));
       };
       const drawOptions=(query="",{clearSelection=true}={})=>{
-        filtered=filterStationOptions(matches,query);activeIndex=-1;
+        const manualValue=clean(query);filtered=filterStationOptions(matches,query);activeIndex=-1;
         if(clearSelection){select.value="";input.dataset.stationMode="search";}
-        if(query&&filtered.length===0){
+        if(manualValue){
           select.name="";input.name=`${side}Station`;input.dataset.stationMode="manual";input.placeholder="未查询到对应场站，请手动录入";
-          listbox.innerHTML='<div class="station-search-empty">未查询到对应场站，请手动录入</div>';openList();return;
+          if(filtered.length===0){listbox.innerHTML='<div class="station-search-empty"><strong>字典暂未收录，可手动录入</strong><span>可直接填写并保存；机场请写明航站楼，高铁站请以“站”结尾。</span></div>';openList();return;}
+        }else{
+          select.name=`${side}Station`;input.name="";input.placeholder="输入关键词搜索或选择场站";
         }
-        select.name=`${side}Station`;input.name="";input.placeholder="输入关键词搜索或选择场站";
         listbox.innerHTML=filtered.map((item,index)=>`<button type="button" role="option" data-index="${index}" aria-selected="false"><span>${(item.shortName||displayStation(item.name,item.type)).replace(/&/g,"&amp;").replace(/</g,"&lt;")}</span><small>${item.name.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</small></button>`).join("");
         if(filtered.length)openList();else closeList();
       };

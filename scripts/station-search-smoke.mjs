@@ -23,7 +23,9 @@ try{
     const input=smoke.locator(`[data-station-input="${side}"]`);await input.waitFor({state:"visible"});
     await input.fill("北京南");assert.deepEqual(await smoke.locator(`[data-station-select="${side}"] + input + .station-search-listbox [role="option"] span`).allTextContents(),["北京南站"]);
     await input.fill("北京");assert.equal(await smoke.locator(`[data-station-select="${side}"] + input + .station-search-listbox [role="option"]`).count(),6);
+    assert.equal(await page.evaluate(side=>new FormData(document.querySelector("#stationSearchSmoke")).get(`${side}Station`),side),"北京");
     await input.fill("不存在");assert.match(await smoke.locator(`[data-station-select="${side}"] + input + .station-search-listbox`).textContent(),/手动录入/);
+    assert.match(await smoke.locator(`[data-station-select="${side}"] + input + .station-search-listbox`).textContent(),/直接填写并保存/);
     await input.fill("北京南");await smoke.locator(`[data-station-select="${side}"] + input + .station-search-listbox [role="option"]`).click();
     assert.equal(await page.evaluate(side=>new FormData(document.querySelector("#stationSearchSmoke")).get(`${side}Station`),side),"北京南站");
   }

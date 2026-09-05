@@ -18,6 +18,9 @@ test("display is abbreviated and storage remains official",()=>{
   assert.equal(F.officialStation("大连北","高铁"),"大连北站");
   assert.equal(F.officialStation("大连周水子机场站","PLANE"),"大连周水子机场");
   assert.equal(F.officialStation("成都天府机场T2航站楼站","PLANE"),"成都天府机场T2航站楼");
+  assert.equal(F.officialStation("广州白云 T3","PLANE"),"广州白云机场T3航站楼");
+  assert.equal(F.officialStation("西安咸阳国际机场 5号航站楼","PLANE"),"西安咸阳机场T5航站楼");
+  assert.equal(F.officialStation("泸州东高铁站","HIGH_SPEED_RAIL"),"泸州东站");
 });
 test("custom dictionary is data-driven",()=>{
   const parsed=F.parseDictionary("合肥|PLANE|合肥新桥机场T2航站楼\n合肥|HIGH_SPEED_RAIL|合肥南站");

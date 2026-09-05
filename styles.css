@@ -965,7 +965,9 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
 .station-search-listbox button:hover,.station-search-listbox button.active { color:#8f2019; background:#fff0ec; }
 .station-search-listbox button span { font-weight:700; }
 .station-search-listbox button small { overflow:hidden; color:var(--ink-soft); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
-.station-search-empty { padding:13px 11px; color:#9a5147; background:#fff5f1; border-radius:8px; font-size:11px; line-height:1.5; }
+.station-search-empty { display:grid; gap:3px; padding:13px 11px; color:#9a5147; background:#fff5f1; border-radius:8px; font-size:11px; line-height:1.5; }
+.station-search-empty strong { color:#7e2018; font-size:12px; }
+.station-search-empty span { color:#7b6f70; }
 [data-theme="dark"] .station-search-listbox { border-color:var(--line); background:#222734; box-shadow:0 18px 42px rgba(0,0,0,.42); }
 [data-theme="dark"] .station-search-listbox button:hover,[data-theme="dark"] .station-search-listbox button.active { color:#ffd4cc; background:#472b2b; }
 [data-theme="dark"] .field-grid .travel-problem-field { background:#482622; color:#ffd2c6; }

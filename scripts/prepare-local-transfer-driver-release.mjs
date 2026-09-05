@@ -11,20 +11,7 @@ execFileSync(process.execPath,['scripts/build-site.mjs'],{cwd:root,stdio:'inheri
 const stage=fs.mkdtempSync(path.join(os.tmpdir(),'local-transfer-driver-'));
 fs.cpSync(path.join(root,'.site-build'),path.join(stage,'site'),{recursive:true});
 fs.copyFileSync(path.join(root,'supabase/functions/public-trip-query/index.ts'),path.join(stage,'public-trip-query.ts'));
-fs.writeFileSync(path.join(stage,'migration.sql'),[
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090501_local_transfer_driver_fields.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090502_meeting_location_catalog.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090503_ticket_cta_workflow.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090504_privacy_storage_staff_access.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090505_xian_xianyang_t5_station.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090506_guangzhou_baiyun_t3_station.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090507_dictionary_sync_tracking.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090508_terminal_name_canonical_cleanup.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090509_unconfigured_region_quota_passthrough.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090510_admin_realtime_refresh.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090511_meeting_live_revision.sql'),'utf8'),
-  fs.readFileSync(path.join(root,'supabase/migrations/2026090512_journey_date_integrity.sql'),'utf8'),
-].join('\n\n'));
+fs.copyFileSync(path.join(root,'supabase/migrations/2026090513_rooming_conflict_approval.sql'),path.join(stage,'migration.sql'));
 fs.copyFileSync(path.join(root,'scripts/sync-station-dictionaries.mjs'),path.join(stage,'sync-station-dictionaries.mjs'));
 fs.copyFileSync(path.join(root,'scripts/deploy-local-transfer-driver-release.mjs'),path.join(stage,'deploy.mjs'));
 const staticHashes={};

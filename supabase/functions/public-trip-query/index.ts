@@ -70,19 +70,33 @@ const publicChangeDetails=(before:Record<string,unknown>,after:Record<string,unk
   }
   return changes;
 };
-const registrationView = (row: Record<string, unknown>) => ({
+const registrationView = (row: Record<string, unknown>) => {
+  // Records created by earlier releases only have the legacy out_from/out_to
+  // columns. Return those values as station fallbacks as well as city
+  // fallbacks so opening an existing registration never presents an empty
+  // station field. Canonical columns always win when they are available.
+  const departType=transportType(row.depart_transport_type);
+  const arriveType=transportType(row.arrive_transport_type)||departType;
+  const returnDepartType=transportType(row.return_depart_transport_type);
+  const returnArriveType=transportType(row.return_arrive_transport_type)||returnDepartType;
+  const departStation=departType==="LOCAL_ATTEND"?"":row.depart_station||row.out_from||"";
+  const arriveStation=arriveType==="LOCAL_ATTEND"?"":row.arrive_station||row.out_to||"";
+  const returnDepartStation=returnDepartType==="LOCAL_ATTEND"?"":row.return_depart_station||row.return_from||"";
+  const returnArriveStation=returnArriveType==="LOCAL_ATTEND"?"":row.return_arrive_station||row.return_to||"";
+  return ({
   attendeeType: row.attendee_type || "HCP", name: row.name || "", city: row.city || "", hospital: row.hospital || "", department: row.department || "", title: row.title || "", venue: row.venue || "", sex: row.sex || "",
   idNumber: row.id_number === "待补充" ? "" : row.id_number || "", phone: row.phone || "", hcpId: String(row.hcp_id || "").startsWith("WEB-") ? "" : row.hcp_id || "", accommodation: row.accommodation ? "Y" : "N", flight: row.is_flight ? "Y" : "N",
-  departDate:row.depart_date||row.out_date||"",departCity:row.depart_city||row.out_from||"",departTransportType:row.depart_transport_type||"",departStation:row.depart_station||"",
-  arriveDate:row.arrive_date||row.out_date||"",arriveCity:row.arrive_city||row.out_to||"",arriveTransportType:row.arrive_transport_type||"",arriveStation:row.arrive_station||"",
-  returnDepartDate:row.return_depart_date||row.return_date||"",returnDepartCity:row.return_depart_city||row.return_from||"",returnDepartTransportType:row.return_depart_transport_type||"",returnDepartStation:row.return_depart_station||"",
-  returnArriveDate:row.return_arrive_date||row.return_date||"",returnArriveCity:row.return_arrive_city||row.return_to||"",returnArriveTransportType:row.return_arrive_transport_type||"",returnArriveStation:row.return_arrive_station||"",
+  departDate:row.depart_date||row.out_date||"",departCity:row.depart_city||row.out_from||"",departTransportType:departType,departStation,
+  arriveDate:row.arrive_date||row.out_date||"",arriveCity:row.arrive_city||row.out_to||"",arriveTransportType:arriveType,arriveStation,
+  returnDepartDate:row.return_depart_date||row.return_date||"",returnDepartCity:row.return_depart_city||row.return_from||"",returnDepartTransportType:returnDepartType,returnDepartStation,
+  returnArriveDate:row.return_arrive_date||row.return_date||"",returnArriveCity:row.return_arrive_city||row.return_to||"",returnArriveTransportType:returnArriveType,returnArriveStation,
   outDate: row.out_date || "", outFrom: row.out_from || "", outTo: row.out_to || "", outNo: row.out_no || "", outDeparture: String(row.out_departure || "").slice(0, 5), outArrival: String(row.out_arrival || "").slice(0, 5),
   returnDate: row.return_date || "", returnFrom: row.return_from || "", returnTo: row.return_to || "", returnNo: row.return_no || "", returnDeparture: String(row.return_departure || "").slice(0, 5), returnArrival: String(row.return_arrival || "").slice(0, 5),
   outboundTransferOrigin:row.outbound_transfer_origin||"",outboundTransferTime:String(row.outbound_transfer_time||"").slice(0,16),outboundTransferNotes:row.outbound_transfer_notes||"",outboundTransferDriverName:row.outbound_transfer_driver_name||"",outboundTransferDriverPhone:row.outbound_transfer_driver_phone||"",outboundTransferVehicle:row.outbound_transfer_vehicle||"",returnTransferDestination:row.return_transfer_destination||"",returnTransferTime:String(row.return_transfer_time||"").slice(0,16),returnTransferNotes:row.return_transfer_notes||"",returnTransferDriverName:row.return_transfer_driver_name||"",returnTransferDriverPhone:row.return_transfer_driver_phone||"",returnTransferVehicle:row.return_transfer_vehicle||"",
   region: row.region || "", contactName: row.contact_name || "", contactMobile: row.contact_mobile || "", mslContact: row.msl_contact || "", remarks: row.remarks === "公开报名认证，待填写完整信息" ? "" : row.remarks || "",
   customFields: row.custom_fields || {},
-});
+  });
+};
 type LocationItem={id:string;cityId?:string;hotelId?:string;name:string;address?:string;isDefault?:boolean};
 const locationCatalog=(meeting:Record<string,unknown>)=>{
   const config=(meeting.field_config||{}) as Record<string,unknown>,raw=(config.locationCatalog||{}) as Record<string,unknown>;
@@ -329,7 +343,7 @@ fetch: withSupabase({ auth: ["publishable", "secret"] }, async request => {
       const message=!attendee?`【新报名提交】${saved.name}`:`${saved.name}发生报名信息变更（${changes.length}项）`;
       await db.from("notifications").insert({meeting_id:meeting.id,attendee_id:saved.id,recipient_id:null,type:attendee?"change":"create",message,actor_label:`${registrant.display_name}（报名端）`,source:"public_registration",change_details:changes,email_requested:false});
     }
-    return reply({ saved:true, attendee:{id:saved.id,rowLocked:!!saved.row_locked,approval:saved.approval||"normal",ticketStatus:saved.ticket_status||"pending",businessStatus:saved.business_status||"active",...registrationView(saved)}, needsApproval:aggregateApproval==="pending", project:viewProject(meeting) });
+    return reply({ saved:true, attendee:{id:saved.id,rowLocked:!!saved.row_locked,approval:saved.approval||"normal",ticketStatus:saved.ticket_status||"pending",businessStatus:saved.business_status||"active",...registrationView(saved)}, needsApproval:saved.approval==="pending", project:viewProject(meeting) });
   }
 
   if (action === "cancel-attendee") {

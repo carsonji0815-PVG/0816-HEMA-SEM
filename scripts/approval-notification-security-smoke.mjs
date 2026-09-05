@@ -1,12 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
-const app=readFileSync('app.js','utf8'),html=readFileSync('index.html','utf8'),edge=readFileSync('supabase/functions/public-trip-query/index.ts','utf8'),sql=readFileSync('supabase/migrations/2026090304_approval_notifications_security.sql','utf8');
+const app=readFileSync('app.js','utf8'),html=readFileSync('index.html','utf8'),edge=readFileSync('supabase/functions/public-trip-query/index.ts','utf8'),sql=readFileSync('supabase/migrations/2026090304_approval_notifications_security.sql','utf8'),roomSql=readFileSync('supabase/migrations/2026090513_rooming_conflict_approval.sql','utf8');
 const checks={
   externalOnly:app.includes('if(isInternalMeeting())return {outbound:[],return:[]};')&&sql.includes("activity_type,'external')='internal'"),
   thresholds:html.includes('name="earliestArrival"')&&html.includes('name="latestDeparture"')&&edge.includes('去程抵达早于会议允许最早抵达时间'),
   cityMismatch:edge.includes('去程出发城市与返程抵达城市不一致'),
-  roomException:sql.includes("requestedType','')='single'")&&app.includes('非副高及以上职称申请单间'),
+  roomConflict:roomSql.includes("v_requested<>v_suggested")&&roomSql.includes("meetings_refresh_rooming_approvals")&&app.includes('申请房型与当前会议的默认房型规则不一致'),
+  editableRules:html.includes('name="mismatchRule"')&&html.includes('name="defaultRoomType"')&&html.includes('name="roomConflictApproval"')&&app.includes('roomingRules:isInternalMeeting()'),
   structuredNotice:edge.includes('publicChangeDetails')&&edge.includes('change_details:changes')&&sql.includes("source text not null default 'system'"),
   adminAuditOnly:sql.includes('User-visible reminders are intentionally created only')&&app.includes('item.auditOnly=true'),
   inAppOnly:sql.includes('notification_email_outbox')&&!html.includes('approvalEmailNotifications')&&edge.includes('email_requested:false')&&!edge.includes('notification_email_outbox").insert'),

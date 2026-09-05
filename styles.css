@@ -1005,6 +1005,7 @@ html[data-theme="dark"]{--ink:#f2f3f7;--ink-soft:#aeb4c1;--canvas:#10131a;--card
 .page[data-page="projects"] .project-utility-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
 .page[data-page="projects"] .project-utility-actions .text-button,
 .page[data-page="projects"] .project-utility-actions .danger{width:100%;min-height:26px;margin:0;padding:4px 2px;text-align:center;font-size:8px}
+.topbar-event .live-dot.is-closed{background:#9e9693;box-shadow:0 0 0 4px rgba(110,105,103,.1)}
 @media(max-width:1280px){
   .page[data-page="projects"] .project-card{min-height:0}
   .page[data-page="projects"] .project-primary-actions{grid-template-columns:repeat(3,minmax(0,1fr))}

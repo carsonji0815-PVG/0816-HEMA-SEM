@@ -18,7 +18,8 @@ const walk=(dir,base='')=>{for(const entry of fs.readdirSync(dir,{withFileTypes:
 walk(site);
 const edgeHash=hash(fs.readFileSync(path.join(stage,'public-trip-query.ts')));
 const migrationHash=hash(fs.readFileSync(path.join(stage,'migration.sql')));
-const version=`registration-identity-ui-20260904-${hash(JSON.stringify({staticHashes,edgeHash,migrationHash})).slice(0,12)}`;
+const deployHash=hash(fs.readFileSync(path.join(root,'scripts/deploy-in-app-notifications-release.mjs')));
+const version=`registration-identity-ui-20260905-${hash(JSON.stringify({staticHashes,edgeHash,migrationHash,deployHash})).slice(0,12)}`;
 fs.writeFileSync(path.join(stage,'manifest.json'),JSON.stringify({version,staticHashes,edgeHash,migrationHash},null,2));
 fs.copyFileSync(path.join(root,'scripts/deploy-in-app-notifications-release.mjs'),path.join(stage,'deploy.mjs'));
 const out=path.join(root,'.tmp',`${version}.tar.gz`);

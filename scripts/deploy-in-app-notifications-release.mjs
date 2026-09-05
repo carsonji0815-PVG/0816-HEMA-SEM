@@ -52,7 +52,11 @@ try{
   }
   switchSite(site);
   for(const name of ['app.js','index.html','styles.css']){
-    const response=await fetch(`https://139.196.97.236/meeting/${name}`,{signal:AbortSignal.timeout(15000)});
+    const response=await fetch(`https://139.196.97.236/meeting/${name}?release=${encodeURIComponent(manifest.version)}`,{
+      cache:'no-store',
+      headers:{'Cache-Control':'no-cache','Pragma':'no-cache'},
+      signal:AbortSignal.timeout(15000),
+    });
     const bytes=Buffer.from(await response.arrayBuffer());
     check(`published ${name}`,response.ok&&hash(bytes)===manifest.staticHashes[name]);
   }

@@ -6,7 +6,7 @@
     <meta name="description" content="无服务器行程报名、审批与接送机管理工具" />
     <meta name="theme-color" content="#D52B1E" />
     <title>礼来会议管理平台</title>
-    <link rel="stylesheet" href="styles.css?v=20260905-live-layout-22" />
+    <link rel="stylesheet" href="styles.css?v=20260905-room-type-flow-23" />
     <script src="assets/vendor/qrcode.min.js" defer></script>
     <script src="assets/vendor/supabase.js" defer></script>
     <script>
@@ -36,8 +36,8 @@
     <script src="travel-verification.js?v=20260905-station-match-03" defer></script>
     <script src="travel-verification-storage.js?v=20260902-multi-journey-01" defer></script>
     <script src="travel-verification-panel.js?v=20260905-station-match-03" defer></script>
-    <script src="rooming-engine.js?v=20260903-room-counting-01" defer></script>
-    <script src="app.js?v=20260905-production-gate-24" defer></script>
+    <script src="rooming-engine.js?v=20260905-room-type-flow-02" defer></script>
+    <script src="app.js?v=20260905-room-type-flow-25" defer></script>
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -120,6 +120,7 @@
                   <label data-template-field="phone">手机号<input name="phone" inputmode="numeric" maxlength="11" required /></label>
                   <label data-template-field="hcpId" data-config-field="hcpId" data-external-field>客户编号 HCP ID<input name="hcpId" required /></label>
                   <label data-template-field="accommodation" data-config-field="accommodation">住宿安排<select name="accommodation"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
+                  <label data-template-field="roomType" data-config-field="accommodation">申请房型<select name="roomType"><option value="">请选择</option><option value="single">单间</option><option value="shared">标间拼住</option><option value="twin_single">标间单住</option><option value="none">无需住宿</option></select></label>
                   <label data-template-field="flight" data-config-field="flight">是否航空<select name="flight"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
                   <label data-template-field="region">大区<input name="region" readonly required /></label>
                   <label data-template-field="contactName" data-external-field>销售联系人姓名<input name="contactName" autocomplete="off" required /></label>
@@ -284,6 +285,7 @@
                     <label>手机号 *<input name="phone" required inputmode="numeric" maxlength="11" /></label>
                     <label data-external-field>客户编号 HCP ID *<input name="hcpId" required /></label>
                     <label>住宿安排<select name="accommodation"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
+                    <label>申请房型<select name="roomType"><option value="">请选择</option><option value="single">单间</option><option value="shared">标间拼住</option><option value="twin_single">标间单住</option><option value="none">无需住宿</option></select></label>
                     <label>是否航空<select name="flight"><option value="Y">是 / Y</option><option value="N">否 / N</option></select></label>
                     <label>大区<input name="region" /></label>
                     <label data-external-field>销售联系人姓名 *<input name="contactName" autocomplete="off" required /></label>

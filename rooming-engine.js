@@ -26,14 +26,14 @@
     const rawNights=saved.actualNights;
     const actualNights=rawNights===""||rawNights===null||rawNights===undefined?"":Math.max(0,Math.trunc(Number(rawNights)||0));
     return{
-      requestedType:normalizeType(saved.requestedType||attendee?.customFields?.roomType),
+      requestedType:normalizeType(Object.hasOwn(attendee?.customFields||{},"roomType")?attendee.customFields.roomType:saved.requestedType),
       assignedType:normalizeType(saved.assignedType),
       roommateId:clean(saved.roommateId),roomNumber:clean(saved.roomNumber),
       actualNights,approvalStatus:saved.approvalStatus||"normal",approvalNote:saved.approvalNote||"",
       assignmentSource:saved.assignmentSource||"",roommateSource:saved.roommateSource||"",
       pairingReason:saved.pairingReason||"",pendingManual:!!saved.pendingManual,
       manualFields:manualFields(saved.manualFields),...saved,
-      requestedType:normalizeType(saved.requestedType||attendee?.customFields?.roomType),assignedType:normalizeType(saved.assignedType),actualNights,manualFields:manualFields(saved.manualFields)
+      requestedType:normalizeType(Object.hasOwn(attendee?.customFields||{},"roomType")?attendee.customFields.roomType:saved.requestedType),assignedType:normalizeType(saved.assignedType),actualNights,manualFields:manualFields(saved.manualFields)
     };
   }
 

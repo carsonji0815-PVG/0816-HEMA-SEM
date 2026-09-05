@@ -10,7 +10,7 @@ const [app,edge,styles]=await Promise.all([
 for(const token of ["finalRooming","assignedRoomType","finalHotel","assignedVenue","meetingVenue","finalRoomType","finalCheckIn","finalCheckOut"]){
   assert.ok(edge.includes(token),`query edge is not using final rooming field: ${token}`);
 }
-for(const token of ["lookup-stay-summary","住宿酒店","会议会场","房型","入住日期","退房日期","lookup-flight.png","lookup-time.png","lookup-station.png"]){
+for(const token of ["lookup-stay-summary","住宿酒店","会议会场","申请房型","实际房型","入住日期","退房日期","lookup-flight.png","lookup-time.png","lookup-station.png"]){
   assert.ok(app.includes(token)||styles.includes(token),`query result token is missing: ${token}`);
 }
 assert.ok(!app.includes('<div class="participant-info-card"><div><small>会议</small>'),"query result still duplicates meeting overview");

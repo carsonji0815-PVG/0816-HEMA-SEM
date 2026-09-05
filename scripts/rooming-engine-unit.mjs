@@ -6,6 +6,8 @@ const R=require("../rooming-engine.js");
 assert.equal(R.normalizeType("标间单住"),"twin_single");
 assert.equal(R.normalizeType("标间拼住"),"shared");
 assert.equal(R.label("twin_single"),"标间单住");
+assert.equal(R.normalizeType("无需住宿"),"none");
+assert.equal(R.record({customFields:{roomType:"标间单住",_rooming:{requestedType:"single"}}}).requestedType,"twin_single","the canonical registration field must override an old rooming snapshot");
 
 const rules={singleTitles:["主任医师","副主任医师"],twinSingleKeywords:["标间单住"],defaultType:"shared",pairingPriorities:["hospital","city","province","region"]};
 assert.deepEqual(R.recommendation({title:"主任医师",remarks:"请安排标间单住"},rules),{type:"twin_single",source:"备注要求标间单住"});

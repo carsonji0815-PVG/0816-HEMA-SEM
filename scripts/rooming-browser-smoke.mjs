@@ -35,10 +35,12 @@ try{
   assert.deepEqual(await page.locator(".rooming-occupancy-table thead").evaluate(node=>{const style=getComputedStyle(node.querySelector("th"));return{position:style.position,background:style.backgroundColor,color:style.color};}),{position:"sticky",background:"rgb(23, 57, 94)",color:"rgb(255, 255, 255)"},"daily occupancy header must stay fixed and visibly match quota table");
   const occupancyDates=await page.locator("#roomingOccupancyBody tr td:first-child").allTextContents();
   if(occupancyDates.length>1){const date=occupancyDates[1].slice(0,10);await page.locator("#roomingOccupancyFrom").fill(date);await page.locator("#roomingOccupancyFrom").dispatchEvent("change");await page.locator("#roomingOccupancyTo").fill(date);await page.locator("#roomingOccupancyTo").dispatchEvent("change");assert.equal(await page.locator("#roomingOccupancyBody tr").count(),1,"inclusive date filter must show the selected day only");}
-  await page.evaluate(()=>{window.__roomingWorkbook=null;window.XLSX.writeFile=workbook=>{window.__roomingWorkbook=workbook;};});
+  await page.evaluate(()=>{window.__roomingWorkbook=null;window.addEventListener("rooming-workbook-export",event=>{window.__roomingWorkbook=event.detail.workbook;});});
   await page.locator("#exportRoomingList").click();
+  await page.waitForFunction(()=>window.__roomingWorkbook?.SheetNames?.length===3);
   assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["住宿统计","分房统计","Rooming List"]);
   await page.locator("#exportRoomingOccupancy").click();
+  await page.waitForFunction(()=>window.__roomingWorkbook?.SheetNames?.length===1);
   assert.deepEqual(await page.evaluate(()=>window.__roomingWorkbook?.SheetNames),["分房统计"]);
   const exportedOccupancy=await page.evaluate(()=>XLSX.utils.sheet_to_json(window.__roomingWorkbook.Sheets["分房统计"],{header:1}).slice(1).map(row=>row.map(String)));
   assert.ok(exportedOccupancy.length>0,"existing detailed rooming export must remain available");
